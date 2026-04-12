@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,10 +10,12 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useOrders, OrderItem } from "@/components/orders-provider"
 import { categorias, bebidas, proteinas, getPrecioConProteina, Proteina } from "@/lib/menu-data"
+import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { Plus, Minus, Trash2, ChefHat, Users, ArrowLeft, QrCode } from "lucide-react"
 
 export default function StaffPage() {
   const { addOrder, getNextOrderNumber, orders } = useOrders()
+  const proteinaImgs = useProteinaImagenes()
   const [currentItems, setCurrentItems] = useState<OrderItem[]>([])
   const [nombreCliente, setNombreCliente] = useState("")
   const [mesa, setMesa] = useState("")
@@ -188,11 +191,24 @@ export default function StaffPage() {
                                 <Button
                                   key={proteina}
                                   variant="outline"
-                                  className="h-auto py-4 flex-col gap-1"
+                                  className="h-auto p-0 flex-col gap-0 overflow-hidden"
                                   onClick={() => addItem(categoria, proteina)}
                                 >
-                                  <span className="font-semibold">{proteina}</span>
-                                  <span className="text-sm text-muted-foreground">${precio}</span>
+                                  <span className="relative block w-full aspect-[4/3] bg-muted">
+                                    <Image
+                                      src={proteinaImgs[proteina]}
+                                      alt=""
+                                      fill
+                                      className="object-cover"
+                                      sizes="140px"
+                                    />
+                                  </span>
+                                  <span className="font-semibold py-2 px-1 text-center">
+                                    {proteina}
+                                  </span>
+                                  <span className="text-sm text-muted-foreground pb-3">
+                                    ${precio}
+                                  </span>
                                 </Button>
                               )
                             })}

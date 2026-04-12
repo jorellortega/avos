@@ -1,7 +1,7 @@
 export const proteinas = ["Asada", "Pollo", "Pastor", "Camarón"] as const
 export type Proteina = (typeof proteinas)[number]
 
-/** Per-protein photo URL. Replace values (or merge from API) when images are in your database. */
+/** Fallback protein thumbnails. Live URLs: `ai_settings.public_proteina_imagenes` (edit at /edit as CEO). */
 const PROTEINA_IMG_PLACEHOLDER = "/placeholder.svg"
 export const imagenProteinaPorId: Record<Proteina, string> = {
   Asada: PROTEINA_IMG_PLACEHOLDER,

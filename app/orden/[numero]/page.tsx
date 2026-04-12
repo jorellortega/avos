@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useOrders, OrderStatus, OrderItem } from "@/components/orders-provider"
 import { categorias, bebidas, proteinas, getPrecioConProteina, Proteina } from "@/lib/menu-data"
+import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { 
   Clock, Check, ChefHat, Package, CreditCard, ArrowLeft, 
   Plus, Minus, Trash2, RefreshCw, Home
@@ -47,6 +48,7 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
   const [isPayDialogOpen, setIsPayDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | null>(null)
   const [paymentComplete, setPaymentComplete] = useState(false)
+  const proteinaImgs = useProteinaImagenes()
 
   // Auto-refresh every 10 seconds
   useEffect(() => {
@@ -338,17 +340,27 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                   {categorias.map(cat => (
                     <div key={cat.id}>
                       <p className="text-sm font-medium mb-2">{cat.nombre}</p>
-                      <div className="grid grid-cols-4 gap-2">
-                        {proteinas.map(prot => (
-                          <Button
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {proteinas.map((prot) => (
+                          <button
                             key={prot}
-                            variant="outline"
-                            size="sm"
-                            className="text-xs"
+                            type="button"
                             onClick={() => addItemToEdit(cat, prot)}
+                            className="rounded-lg border border-border bg-card overflow-hidden hover:border-primary/50 text-left"
                           >
-                            {prot}
-                          </Button>
+                            <span className="relative block aspect-[4/3] w-full bg-muted">
+                              <Image
+                                src={proteinaImgs[prot]}
+                                alt=""
+                                fill
+                                className="object-cover"
+                                sizes="100px"
+                              />
+                            </span>
+                            <span className="block px-1 py-1.5 text-[10px] sm:text-xs font-medium text-center leading-tight">
+                              {prot}
+                            </span>
+                          </button>
                         ))}
                       </div>
                     </div>

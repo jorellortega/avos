@@ -6,6 +6,9 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { MenuItemCard } from "@/components/menu-item-card"
 import { categorias, getCategoriaById } from "@/lib/menu-data"
+import { getSiteMedia } from "@/lib/get-site-media"
+
+export const revalidate = 30
 
 type Props = {
   params: Promise<{ categoriaId: string }>
@@ -34,6 +37,10 @@ export default async function CategoriaMenuPage({ params }: Props) {
     notFound()
   }
 
+  const media = await getSiteMedia()
+  const heroImagen =
+    media.categoriaImagenes[categoria.id] ?? categoria.imagen
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -41,7 +48,7 @@ export default async function CategoriaMenuPage({ params }: Props) {
       <main className="flex-1">
         <section className="relative h-40 md:h-52 bg-primary/10">
           <Image
-            src={categoria.imagen}
+            src={heroImagen}
             alt={categoria.nombre}
             fill
             className="object-cover object-top opacity-30"
@@ -75,7 +82,8 @@ export default async function CategoriaMenuPage({ params }: Props) {
               descripcion={categoria.descripcion}
               precioBase={categoria.precioBase}
               tieneProteinas={categoria.tieneProteinas}
-              imagen={categoria.imagen}
+              imagen={heroImagen}
+              proteinaImagenes={media.proteinaImagenes}
             />
           </div>
 

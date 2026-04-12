@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import { StaffAuthLinks } from "@/components/staff-auth-links"
 
 export function Header() {
   const { itemCount } = useCart()
@@ -55,12 +56,20 @@ export function Header() {
             >
               Mi Orden
             </Link>
+            <StaffAuthLinks />
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-1 text-foreground/80 hover:text-primary transition-colors font-medium">
                 Staff
                 <ChevronDown className="h-4 w-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href="/staff/dashboard" className="flex items-center gap-2 cursor-pointer">
+                    <ClipboardList className="h-4 w-4" />
+                    Panel personal
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/staff" className="flex items-center gap-2 cursor-pointer">
                     <Users className="h-4 w-4" />
@@ -130,8 +139,22 @@ export function Header() {
               >
                 Mi Orden
               </Link>
+              <div
+                className="py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <StaffAuthLinks />
+              </div>
               <div className="border-t border-border pt-4 mt-2">
                 <p className="text-sm text-muted-foreground mb-2">Staff</p>
+                <Link
+                  href="/staff/dashboard"
+                  className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  Panel personal
+                </Link>
                 <Link
                   href="/staff"
                   className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"

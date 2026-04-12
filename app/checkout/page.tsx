@@ -10,14 +10,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useCart } from "@/components/cart-provider"
-import { ArrowLeft, Clock, MapPin, CreditCard, Check } from "lucide-react"
+import { ArrowLeft, Clock, MapPin, CreditCard } from "lucide-react"
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { items, total, clearCart } = useCart()
+  const { items, total } = useCart()
   const [isProcessing, setIsProcessing] = useState(false)
-  const [orderComplete, setOrderComplete] = useState(false)
-  const [orderNumber, setOrderNumber] = useState("")
+  const [checkoutError, setCheckoutError] = useState("")
   const [isRedirecting, setIsRedirecting] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -56,20 +55,42 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
     if (!validateForm()) return
 
+    setCheckoutError("")
     setIsProcessing(true)
-    
-    // Simulate payment processing
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    
-    // Generate order number
-    const newOrderNumber = `AVO-${Date.now().toString().slice(-6)}`
-    setOrderNumber(newOrderNumber)
-    setOrderComplete(true)
-    clearCart()
-    setIsProcessing(false)
+
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            nombre: i.nombre,
+            precio: i.precio,
+            cantidad: i.cantidad,
+          })),
+          customerEmail: formData.email.trim(),
+          nombre: formData.nombre.trim(),
+          telefono: formData.telefono.trim(),
+          horaRecogida: formData.horaRecogida,
+          notasEspeciales: formData.notasEspeciales,
+        }),
+      })
+
+      const data = (await res.json()) as { url?: string; error?: string }
+
+      if (!res.ok || !data.url) {
+        setCheckoutError(data.error ?? "No se pudo iniciar el pago.")
+        setIsProcessing(false)
+        return
+      }
+
+      window.location.href = data.url
+    } catch {
+      setCheckoutError("Error de red. Intenta de nuevo.")
+      setIsProcessing(false)
+    }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -98,70 +119,16 @@ export default function CheckoutPage() {
 
   // Redirect to cart if empty
   useEffect(() => {
-    if (items.length === 0 && !orderComplete && !isRedirecting) {
+    if (items.length === 0 && !isRedirecting) {
       setIsRedirecting(true)
       router.push("/carrito")
     }
-  }, [items.length, orderComplete, router, isRedirecting])
+  }, [items.length, router, isRedirecting])
 
-  if (items.length === 0 && !orderComplete) {
+  if (items.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted-foreground">Redirigiendo al carrito...</p>
-      </div>
-    )
-  }
-
-  if (orderComplete) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header />
-        <main className="flex-1 flex items-center justify-center py-16">
-          <div className="text-center px-4 max-w-md mx-auto">
-            <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center mx-auto mb-6">
-              <Check className="h-10 w-10 text-primary-foreground" />
-            </div>
-            <h1 
-              className="text-2xl md:text-3xl font-bold text-foreground mb-3"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              ¡Pedido Confirmado!
-            </h1>
-            <p className="text-muted-foreground mb-2">
-              Tu número de orden es:
-            </p>
-            <p className="text-2xl font-bold text-primary mb-6">{orderNumber}</p>
-            <Card className="mb-6">
-              <CardContent className="p-4 text-left">
-                <div className="flex items-start gap-3 mb-3">
-                  <Clock className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Hora de recogida</p>
-                    <p className="text-muted-foreground">{formData.horaRecogida}</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Dirección</p>
-                    <p className="text-muted-foreground text-sm">
-                      Av. Revolución 123, Col. Centro, Ciudad de México
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <p className="text-sm text-muted-foreground mb-6">
-              Te enviaremos un correo de confirmación a {formData.email}
-            </p>
-            <Link href="/menu">
-              <Button size="lg">
-                Hacer Otro Pedido
-              </Button>
-            </Link>
-          </div>
-        </main>
-        <Footer />
       </div>
     )
   }
@@ -301,23 +268,28 @@ export default function CheckoutPage() {
                   </CardContent>
                 </Card>
 
-                {/* Payment - Simulated */}
                 <Card>
                   <CardContent className="p-6">
                     <h2 className="text-lg font-semibold mb-4" style={{ fontFamily: 'var(--font-heading)' }}>
-                      Método de Pago
+                      Pago
                     </h2>
                     <div className="flex items-center gap-3 p-4 border border-primary rounded-lg bg-primary/5">
-                      <CreditCard className="h-6 w-6 text-primary" />
+                      <CreditCard className="h-6 w-6 text-primary flex-shrink-0" />
                       <div>
-                        <p className="font-medium">Pago en el local</p>
+                        <p className="font-medium">Tarjeta (MXN)</p>
                         <p className="text-sm text-muted-foreground">
-                          Paga con tarjeta o efectivo al recoger tu pedido
+                          Continuarás en una página segura para completar el pago con tarjeta.
                         </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
+
+                {checkoutError && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {checkoutError}
+                  </p>
+                )}
 
                 <Button 
                   type="submit" 
@@ -325,7 +297,9 @@ export default function CheckoutPage() {
                   className="w-full"
                   disabled={isProcessing}
                 >
-                  {isProcessing ? "Procesando..." : `Confirmar Pedido - $${total.toFixed(2)}`}
+                  {isProcessing
+                    ? "Abriendo pago seguro..."
+                    : `Pagar $${total.toFixed(2)}`}
                 </Button>
               </form>
             </div>

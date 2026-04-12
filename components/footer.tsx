@@ -32,9 +32,12 @@ export function Footer() {
                 <MapPin className="h-5 w-5 flex-shrink-0 mt-0.5" />
                 <span>Pastor Ortiz Michoacan</span>
               </div>
-              <div className="flex items-center gap-3">
+              <div
+                className="flex items-center gap-3"
+                aria-label="Teléfono"
+                title="Teléfono"
+              >
                 <Phone className="h-5 w-5 flex-shrink-0" />
-                <span>+52 55 1234 5678</span>
               </div>
             </div>
           </div>
@@ -46,7 +49,7 @@ export function Footer() {
             </h3>
             <div className="flex items-center gap-3 text-sm">
               <Clock className="h-5 w-5 flex-shrink-0" />
-              <span>6am-9pm</span>
+              <span>6am to 8pm</span>
             </div>
           </div>
         </div>

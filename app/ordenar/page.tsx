@@ -26,6 +26,7 @@ import {
   type BebidaOrdenar,
   type Proteina,
 } from "@/lib/menu-data"
+import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { useOrders, type OrderItem } from "@/components/orders-provider"
 
 interface CartItem {
@@ -40,6 +41,7 @@ interface CartItem {
 export default function OrdenarPage() {
   const router = useRouter()
   const { addOrder } = useOrders()
+  const proteinaImgs = useProteinaImagenes()
   const [orderType, setOrderType] = useState<"dine-in" | "takeout" | null>(null)
   const [tableNumber, setTableNumber] = useState("")
   const [customerName, setCustomerName] = useState("")
@@ -249,18 +251,30 @@ export default function OrdenarPage() {
                             </div>
                           </div>
                           
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {item.proteins.map((protein) => (
-                              <Button
+                              <button
                                 key={protein}
-                                size="sm"
-                                variant="outline"
-                                onClick={() => addToCart(item, category.name, protein)}
-                                className="text-xs"
+                                type="button"
+                                onClick={() =>
+                                  addToCart(item, category.name, protein)
+                                }
+                                className="flex flex-col rounded-lg border border-border bg-card overflow-hidden hover:border-primary/60 hover:bg-accent/30 transition-colors text-left"
                               >
-                                <Plus className="h-3 w-3 mr-1" />
-                                {protein}
-                              </Button>
+                                <span className="relative aspect-[4/3] w-full bg-muted">
+                                  <Image
+                                    src={proteinaImgs[protein]}
+                                    alt=""
+                                    fill
+                                    className="object-cover"
+                                    sizes="(max-width: 640px) 45vw, 140px"
+                                  />
+                                </span>
+                                <span className="flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium">
+                                  <Plus className="h-3 w-3 shrink-0" />
+                                  {protein}
+                                </span>
+                              </button>
                             ))}
                           </div>
                         </CardContent>

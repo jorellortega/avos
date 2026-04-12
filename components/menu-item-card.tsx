@@ -20,6 +20,8 @@ interface MenuItemCardProps {
   precioBase: number
   tieneProteinas: boolean
   imagen: string
+  /** Optional overrides from DB (`/edit`); defaults in `imagenProteinaPorId` */
+  proteinaImagenes?: Partial<Record<Proteina, string>>
 }
 
 export function MenuItemCard({
@@ -29,6 +31,7 @@ export function MenuItemCard({
   precioBase,
   tieneProteinas,
   imagen,
+  proteinaImagenes,
 }: MenuItemCardProps) {
   const { addItem } = useCart()
   const [selectedProteina, setSelectedProteina] = useState<Proteina>("Asada")
@@ -98,7 +101,10 @@ export function MenuItemCard({
                   >
                     <span className="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-muted">
                       <Image
-                        src={imagenProteinaPorId[proteina]}
+                        src={
+                          proteinaImagenes?.[proteina] ??
+                          imagenProteinaPorId[proteina]
+                        }
                         alt=""
                         fill
                         className="object-cover"
