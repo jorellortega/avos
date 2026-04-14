@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { StaffSignOutButton } from "@/components/staff-sign-out-button"
 import { createServerSupabase } from "@/lib/supabase/server"
 import type { StaffProfile } from "@/lib/profile-types"
+import { isStaffOrdersRole } from "@/lib/profile-types"
 
 function roleLabel(role: string) {
   switch (role) {
@@ -115,9 +116,19 @@ export default async function StaffDashboardPage() {
                   <strong>staff</strong>.
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  {isStaffOrdersRole(profile.role) && (
+                    <>
+                      <Button asChild variant="default">
+                        <Link href="/staff/ordenes">Órdenes y pagos</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/staff/menu-catalog">Precios y disponibilidad</Link>
+                      </Button>
+                    </>
+                  )}
                   {profile.role === "ceo" && (
                     <>
-                      <Button asChild>
+                      <Button asChild variant="secondary">
                         <Link href="/edit">Editar sitio</Link>
                       </Button>
                       <Button asChild variant="secondary">

@@ -10,3 +10,8 @@ export interface StaffProfile {
   created_at?: string
   updated_at?: string
 }
+
+/** Staff-facing tools (e.g. Órdenes y pagos): nav + route guards */
+export function isStaffOrdersRole(role: AppRole | string | undefined | null): boolean {
+  return role === "staff" || role === "manager" || role === "ceo"
+}

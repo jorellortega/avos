@@ -5,6 +5,7 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useCart } from "@/components/cart-provider"
+import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 
 interface BebidaCardProps {
   id: string
@@ -12,11 +13,16 @@ interface BebidaCardProps {
   precio: number
 }
 
-export function BebidaCard({ id, nombre, precio }: BebidaCardProps) {
+export function BebidaCard({ id, nombre, precio: precioDefault }: BebidaCardProps) {
   const { addItem } = useCart()
+  const { catalog } = useMenuCatalogContext()
   const [showSuccess, setShowSuccess] = useState(false)
 
+  const precio = catalog?.getBebidaPrecio(id) ?? precioDefault
+  const agotada = catalog?.isBebidaOut(id) ?? false
+
   const handleAddToCart = () => {
+    if (agotada) return
     addItem({
       id: `bebida-${id}-${Date.now()}`,
       nombre,
@@ -31,15 +37,21 @@ export function BebidaCard({ id, nombre, precio }: BebidaCardProps) {
   }
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card
+      className={`hover:shadow-md transition-shadow ${agotada ? "opacity-60" : ""}`}
+    >
       <CardContent className="p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div>
             <h4 className="font-medium text-foreground">{nombre}</h4>
             <span className="text-primary font-semibold">${precio}</span>
+            {agotada && (
+              <p className="text-xs text-destructive font-medium mt-1">Agotado</p>
+            )}
           </div>
           <Button
             size="sm"
+            disabled={agotada}
             onClick={handleAddToCart}
             className={`transition-all ${showSuccess ? "bg-green-600 hover:bg-green-600" : ""}`}
           >

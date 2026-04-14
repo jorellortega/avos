@@ -1,15 +1,20 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useCart } from "@/components/cart-provider"
+import { MenuOrderServicePicker } from "@/components/menu-order-service-picker"
+import { useMenuOrderService } from "@/hooks/use-menu-order-service"
 import { Trash2, Plus, Minus, ShoppingBag, ArrowLeft } from "lucide-react"
 
 export default function CarritoPage() {
+  const router = useRouter()
   const { items, removeItem, updateQuantity, total, clearCart } = useCart()
+  const service = useMenuOrderService()
 
   if (items.length === 0) {
     return (
@@ -162,11 +167,25 @@ export default function CarritoPage() {
                     </div>
                   </div>
 
-                  <Link href="/checkout" className="block">
-                    <Button className="w-full" size="lg">
-                      Continuar al Pago
-                    </Button>
-                  </Link>
+                  <MenuOrderServicePicker {...service} className="mb-6 border-t border-border pt-6" />
+
+                  <Button
+                    type="button"
+                    className="w-full"
+                    size="lg"
+                    disabled={!service.isComplete}
+                    onClick={() => {
+                      if (!service.isComplete) return
+                      router.push("/checkout")
+                    }}
+                  >
+                    Continuar al Pago
+                  </Button>
+                  {!service.isComplete && service.hydrated && (
+                    <p className="mt-2 text-center text-xs text-muted-foreground">
+                      Elige para llevar o para aquí (y mesa si aplica).
+                    </p>
+                  )}
 
                   <Link href="/menu" className="block mt-3">
                     <Button variant="outline" className="w-full">

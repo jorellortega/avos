@@ -1,6 +1,7 @@
 import { homeHeroSlides, type HeroSlide } from "@/lib/home-hero-slides"
 import {
   categorias,
+  imagenCategoriaBebidas,
   imagenProteinaPorId,
   type Proteina,
 } from "@/lib/menu-data"
@@ -28,6 +29,7 @@ export function defaultSiteMedia(): SiteMedia {
   for (const c of categorias) {
     categoriaImagenes[c.id] = c.imagen
   }
+  categoriaImagenes.bebidas = imagenCategoriaBebidas
   return {
     heroSlides: [...homeHeroSlides],
     menuBannerUrl: DEFAULT_MENU_BANNER,

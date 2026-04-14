@@ -9,12 +9,16 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useOrders, OrderItem } from "@/components/orders-provider"
-import { categorias, bebidas, proteinas, getPrecioConProteina, Proteina } from "@/lib/menu-data"
+import { insertAvosOrderToSupabase } from "@/lib/avos-orders-sync"
+import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
+import { categorias, bebidas, proteinas, Proteina } from "@/lib/menu-data"
+import { precioItemConProteina } from "@/lib/menu-catalog-shared"
 import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { Plus, Minus, Trash2, ChefHat, Users, ArrowLeft, QrCode } from "lucide-react"
 
 export default function StaffPage() {
   const { addOrder, getNextOrderNumber, orders } = useOrders()
+  const { catalog } = useMenuCatalogContext()
   const proteinaImgs = useProteinaImagenes()
   const [currentItems, setCurrentItems] = useState<OrderItem[]>([])
   const [nombreCliente, setNombreCliente] = useState("")
@@ -23,9 +27,12 @@ export default function StaffPage() {
   const [orderCreated, setOrderCreated] = useState<{ numero: number } | null>(null)
 
   const addItem = (categoria: typeof categorias[number], proteina?: Proteina) => {
-    const precio = proteina 
-      ? getPrecioConProteina(categoria.precioBase, proteina)
-      : categoria.precioBase
+    const base =
+      catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
+    const extra = catalog?.getCamarónExtra() ?? 20
+    const precio = proteina
+      ? precioItemConProteina(base, proteina, extra)
+      : base
     
     const itemId = `${categoria.id}-${proteina || "default"}`
     const existingItem = currentItems.find(i => i.id === itemId)
@@ -49,6 +56,7 @@ export default function StaffPage() {
   }
 
   const addBebida = (bebida: typeof bebidas[number]) => {
+    const unit = catalog?.getBebidaPrecio(bebida.id) ?? bebida.precio
     const existingItem = currentItems.find(i => i.id === bebida.id)
     
     if (existingItem) {
@@ -63,7 +71,7 @@ export default function StaffPage() {
         categoria: "bebidas",
         nombre: bebida.nombre,
         cantidad: 1,
-        precio: bebida.precio
+        precio: unit
       }])
     }
   }
@@ -95,6 +103,8 @@ export default function StaffPage() {
       status: "pendiente",
       total
     })
+
+    void insertAvosOrderToSupabase(order)
 
     setOrderCreated({ numero: order.numero })
     setCurrentItems([])
@@ -186,7 +196,15 @@ export default function StaffPage() {
                         {categoria.tieneProteinas && (
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {proteinas.map(proteina => {
-                              const precio = getPrecioConProteina(categoria.precioBase, proteina)
+                              const base =
+                                catalog?.getCategoriaPrecioBase(categoria.id) ??
+                                categoria.precioBase
+                              const extra = catalog?.getCamarónExtra() ?? 20
+                              const precio = precioItemConProteina(
+                                base,
+                                proteina,
+                                extra,
+                              )
                               return (
                                 <Button
                                   key={proteina}
@@ -228,7 +246,9 @@ export default function StaffPage() {
                           onClick={() => addBebida(bebida)}
                         >
                           <span className="font-semibold text-sm">{bebida.nombre}</span>
-                          <span className="text-sm text-muted-foreground">${bebida.precio}</span>
+                          <span className="text-sm text-muted-foreground">
+                            ${catalog?.getBebidaPrecio(bebida.id) ?? bebida.precio}
+                          </span>
                         </Button>
                       ))}
                     </div>

@@ -10,11 +10,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useCart } from "@/components/cart-provider"
-import { ArrowLeft, Clock, MapPin, CreditCard } from "lucide-react"
+import { MenuOrderServicePicker } from "@/components/menu-order-service-picker"
+import { useMenuOrderService } from "@/hooks/use-menu-order-service"
+import { ArrowLeft, MapPin, CreditCard } from "lucide-react"
 
 export default function CheckoutPage() {
   const router = useRouter()
   const { items, total } = useCart()
+  const service = useMenuOrderService()
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutError, setCheckoutError] = useState("")
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -31,7 +34,12 @@ export default function CheckoutPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
-    
+
+    if (!service.isComplete) {
+      newErrors.serviceMode =
+        "Elige para llevar o para aquí e indica tu mesa si comes en el local."
+    }
+
     if (!formData.nombre.trim()) {
       newErrors.nombre = "El nombre es requerido"
     }
@@ -56,6 +64,7 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!validateForm()) return
+    if (!service.mode) return
 
     setCheckoutError("")
     setIsProcessing(true)
@@ -75,6 +84,8 @@ export default function CheckoutPage() {
           telefono: formData.telefono.trim(),
           horaRecogida: formData.horaRecogida,
           notasEspeciales: formData.notasEspeciales,
+          orderType: service.mode,
+          mesa: service.mode === "dine-in" ? service.mesa.trim() : undefined,
         }),
       })
 
@@ -125,6 +136,17 @@ export default function CheckoutPage() {
     }
   }, [items.length, router, isRedirecting])
 
+  useEffect(() => {
+    if (service.isComplete) {
+      setErrors((prev) => {
+        if (!prev.serviceMode) return prev
+        const next = { ...prev }
+        delete next.serviceMode
+        return next
+      })
+    }
+  }, [service.isComplete])
+
   if (items.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -158,6 +180,13 @@ export default function CheckoutPage() {
             {/* Checkout Form */}
             <div className="lg:col-span-2">
               <form onSubmit={handleSubmit} className="space-y-6">
+                <MenuOrderServicePicker {...service} />
+                {errors.serviceMode && (
+                  <p className="text-sm text-destructive -mt-2" role="alert">
+                    {errors.serviceMode}
+                  </p>
+                )}
+
                 {/* Contact Info */}
                 <Card>
                   <CardContent className="p-6">
@@ -212,18 +241,20 @@ export default function CheckoutPage() {
                   </CardContent>
                 </Card>
 
-                {/* Pickup Time */}
+                {/* Pickup / order time */}
                 <Card>
                   <CardContent className="p-6">
                     <h2 className="text-lg font-semibold mb-4" style={{ fontFamily: 'var(--font-heading)' }}>
-                      Hora de Recogida
+                      {service.mode === "dine-in" ? "Hora del pedido (en mesa)" : "Hora de recogida"}
                     </h2>
                     <div className="flex items-start gap-3 mb-4 p-3 bg-primary/5 rounded-lg">
                       <MapPin className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="font-medium text-foreground">Avos Mexican Grill</p>
                         <p className="text-sm text-muted-foreground">
-                          Av. Revolución 123, Col. Centro, Ciudad de México
+                          {service.mode === "dine-in"
+                            ? "Te llevamos el pedido a tu mesa cuando esté listo."
+                            : "Av. Revolución 123, Col. Centro, Ciudad de México"}
                         </p>
                       </div>
                     </div>
@@ -295,7 +326,7 @@ export default function CheckoutPage() {
                   type="submit" 
                   size="lg" 
                   className="w-full"
-                  disabled={isProcessing}
+                  disabled={isProcessing || !service.isComplete}
                 >
                   {isProcessing
                     ? "Abriendo pago seguro..."
@@ -314,6 +345,13 @@ export default function CheckoutPage() {
                   >
                     Tu Pedido
                   </h2>
+                  {service.hydrated && service.mode && (
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {service.mode === "takeout"
+                        ? "Para llevar"
+                        : `Para aquí · Mesa ${service.mesa || "—"}`}
+                    </p>
+                  )}
 
                   <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
                     {items.map((item) => (

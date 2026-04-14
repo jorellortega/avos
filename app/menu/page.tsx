@@ -3,8 +3,8 @@ import Link from "next/link"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { MenuItemCard } from "@/components/menu-item-card"
-import { BebidaCard } from "@/components/bebida-card"
-import { categorias, bebidas } from "@/lib/menu-data"
+import { MenuBebidasSection } from "@/components/menu-bebidas-section"
+import { categorias } from "@/lib/menu-data"
 import { getSiteMedia } from "@/lib/get-site-media"
 
 export const revalidate = 30
@@ -74,6 +74,7 @@ export default async function MenuPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <MenuItemCard
+                      categoriaId={categoria.id}
                       categoria={categoria.nombre}
                       nombre={categoria.nombre}
                       descripcion={categoria.descripcion}
@@ -87,29 +88,7 @@ export default async function MenuPage() {
               )
             })}
 
-            {/* Bebidas Section */}
-            <div className="pt-8 border-t border-border" id="bebidas">
-              <div className="mb-6">
-                <h2
-                  className="text-2xl md:text-3xl font-bold text-foreground"
-                  style={{ fontFamily: "var(--font-heading)" }}
-                >
-                  Bebidas
-                </h2>
-                <p className="text-muted-foreground mt-1">Aguas Frescas</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {bebidas.map((bebida) => (
-                  <BebidaCard
-                    key={bebida.id}
-                    id={bebida.id}
-                    nombre={bebida.nombre}
-                    precio={bebida.precio}
-                  />
-                ))}
-              </div>
-            </div>
+            <MenuBebidasSection />
           </div>
         </section>
       </main>

@@ -16,6 +16,9 @@ type CheckoutBody = {
   telefono: string
   horaRecogida: string
   notasEspeciales?: string
+  /** Menú en línea: para llevar o comer en mesa */
+  orderType?: "takeout" | "dine-in"
+  mesa?: string
 }
 
 export async function POST(request: Request) {
@@ -36,13 +39,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 })
   }
 
-  const { items, customerEmail, nombre, telefono, horaRecogida, notasEspeciales } = body
+  const { items, customerEmail, nombre, telefono, horaRecogida, notasEspeciales, orderType, mesa } =
+    body
 
   if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: "El carrito está vacío" }, { status: 400 })
   }
   if (!customerEmail?.trim() || !nombre?.trim() || !telefono?.trim() || !horaRecogida) {
     return NextResponse.json({ error: "Faltan datos de contacto" }, { status: 400 })
+  }
+  if (!orderType || (orderType !== "takeout" && orderType !== "dine-in")) {
+    return NextResponse.json(
+      { error: "Indica si el pedido es para llevar o para aquí." },
+      { status: 400 },
+    )
+  }
+  if (orderType === "dine-in" && !mesa?.trim()) {
+    return NextResponse.json({ error: "Indica el número de mesa." }, { status: 400 })
   }
 
   const origin =
@@ -82,6 +95,8 @@ export async function POST(request: Request) {
         telefono: telefono.trim().slice(0, 50),
         horaRecogida: horaRecogida.slice(0, 100),
         notas: (notasEspeciales ?? "").slice(0, 500),
+        orderType: orderType.slice(0, 20),
+        mesa: orderType === "dine-in" ? (mesa ?? "").trim().slice(0, 20) : "",
       },
       locale: "es",
     })

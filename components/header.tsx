@@ -1,7 +1,17 @@
 "use client"
 
 import Link from "next/link"
-import { ShoppingCart, Menu, X, ChevronDown, Users, ChefHat, ClipboardList } from "lucide-react"
+import {
+  ShoppingCart,
+  Menu,
+  X,
+  ChevronDown,
+  Users,
+  ChefHat,
+  ClipboardList,
+  Banknote,
+  Tags,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/components/cart-provider"
 import { useState } from "react"
@@ -13,10 +23,12 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { StaffAuthLinks } from "@/components/staff-auth-links"
+import { useStaffOrdenesNavAccess } from "@/hooks/use-staff-ordenes-nav-access"
 
 export function Header() {
   const { itemCount } = useCart()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const staffOrdenesNav = useStaffOrdenesNavAccess()
 
   return (
     <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border">
@@ -69,6 +81,22 @@ export function Header() {
                     Panel personal
                   </Link>
                 </DropdownMenuItem>
+                {staffOrdenesNav === true && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/staff/ordenes" className="flex items-center gap-2 cursor-pointer">
+                        <Banknote className="h-4 w-4" />
+                        Órdenes y pagos
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/staff/menu-catalog" className="flex items-center gap-2 cursor-pointer">
+                        <Tags className="h-4 w-4" />
+                        Precios y disponibilidad
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <Link href="/staff" className="flex items-center gap-2 cursor-pointer">
@@ -155,6 +183,26 @@ export function Header() {
                   <ClipboardList className="h-4 w-4" />
                   Panel personal
                 </Link>
+                {staffOrdenesNav === true && (
+                  <>
+                    <Link
+                      href="/staff/ordenes"
+                      className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Banknote className="h-4 w-4" />
+                      Órdenes y pagos
+                    </Link>
+                    <Link
+                      href="/staff/menu-catalog"
+                      className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Tags className="h-4 w-4" />
+                      Precios y disponibilidad
+                    </Link>
+                  </>
+                )}
                 <Link
                   href="/staff"
                   className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"

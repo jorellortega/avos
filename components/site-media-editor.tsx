@@ -16,7 +16,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import type { HeroSlide } from "@/lib/home-hero-slides"
-import { categorias, proteinas, type Proteina } from "@/lib/menu-data"
+import {
+  BEBIDAS_CATEGORIA_ID,
+  categorias,
+  proteinas,
+  type Proteina,
+} from "@/lib/menu-data"
 import {
   SITE_MEDIA_KEYS,
   defaultSiteMedia,
@@ -148,6 +153,10 @@ export function SiteMediaEditor({
             const v = parsed[c.id]
             if (typeof v === "string" && v.trim()) merged[c.id] = v.trim()
           }
+          const bebV = parsed[BEBIDAS_CATEGORIA_ID]
+          if (typeof bebV === "string" && bebV.trim()) {
+            merged[BEBIDAS_CATEGORIA_ID] = bebV.trim()
+          }
           setCatUrls(merged)
         } catch {
           setCatUrls({ ...base })
@@ -250,6 +259,8 @@ export function SiteMediaEditor({
         const u = catUrls[c.id]?.trim()
         if (u) categoriaPayload[c.id] = u
       }
+      const bebUrl = catUrls[BEBIDAS_CATEGORIA_ID]?.trim()
+      if (bebUrl) categoriaPayload[BEBIDAS_CATEGORIA_ID] = bebUrl
 
       const proteinaPayload: Record<string, string> = {}
       for (const p of proteinas) {
@@ -526,8 +537,9 @@ export function SiteMediaEditor({
               <CardTitle className="text-lg">Menú — miniaturas por categoría</CardTitle>
               <CardDescription>
                 Usadas en tarjetas de <code className="text-xs">/menu</code>,{" "}
-                <code className="text-xs">/menu/[categoría]</code> y vista previa del
-                inicio.
+                <code className="text-xs">/menu/[categoría]</code>, vista previa del
+                inicio y miniatura de Bebidas en{" "}
+                <code className="text-xs">/ordenar</code>.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -555,6 +567,31 @@ export function SiteMediaEditor({
                   />
                 </div>
               ))}
+              <div className="space-y-2">
+                <Label htmlFor={`cat-${BEBIDAS_CATEGORIA_ID}`}>Bebidas</Label>
+                <Input
+                  id={`cat-${BEBIDAS_CATEGORIA_ID}`}
+                  value={catUrls[BEBIDAS_CATEGORIA_ID] ?? ""}
+                  onChange={(e) => {
+                    setCatUrls((prev) => ({
+                      ...prev,
+                      [BEBIDAS_CATEGORIA_ID]: e.target.value,
+                    }))
+                    setSaveOk(false)
+                  }}
+                  placeholder="https://..."
+                />
+                <StorageUploadButton
+                  folderPath={`site/categoria/${BEBIDAS_CATEGORIA_ID}`}
+                  onUploaded={(url) => {
+                    setCatUrls((prev) => ({
+                      ...prev,
+                      [BEBIDAS_CATEGORIA_ID]: url,
+                    }))
+                    setSaveOk(false)
+                  }}
+                />
+              </div>
             </CardContent>
           </Card>
 

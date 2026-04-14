@@ -62,6 +62,13 @@ export const categorias = [
   },
 ] as const
 
+/** Key used in `public_menu_categoria_imagenes` JSON and ordenar grid */
+export const BEBIDAS_CATEGORIA_ID = "bebidas" as const
+
+/** Default thumbnail for Bebidas (override via CEO site media or `ai_settings`) */
+export const imagenCategoriaBebidas =
+  "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/EF86E926-0FA5-43B4-9510-F5D519A6D85E-ucnuQ69jJ38YUSen21k9W930qGkzQO.png"
+
 export type CategoriaMenu = (typeof categorias)[number]
 
 export function getCategoriaById(id: string): CategoriaMenu | undefined {

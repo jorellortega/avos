@@ -3,6 +3,7 @@ import { Montserrat, Open_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { CartProvider } from '@/components/cart-provider'
+import { MenuCatalogProvider } from '@/components/menu-catalog-provider'
 import { OrdersProvider } from '@/components/orders-provider'
 
 const montserrat = Montserrat({ 
@@ -50,7 +51,7 @@ export default function RootLayout({
       <body className={`${montserrat.variable} ${openSans.variable} font-sans antialiased`}>
         <OrdersProvider>
           <CartProvider>
-            {children}
+            <MenuCatalogProvider>{children}</MenuCatalogProvider>
           </CartProvider>
         </OrdersProvider>
         <Analytics />

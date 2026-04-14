@@ -1,23 +1,14 @@
-import Image from "next/image"
 import Link from "next/link"
 import { Utensils, ShoppingBag } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { HeroSlideshow } from "@/components/hero-slideshow"
 import { HomeAiChat } from "@/components/home-ai-chat"
+import { HomeMenuGrid } from "@/components/home-menu-grid"
 import { Button } from "@/components/ui/button"
-import { categorias } from "@/lib/menu-data"
 import { getSiteMedia } from "@/lib/get-site-media"
 
 export const revalidate = 30
-
-const categoriaEmoji: Record<string, string> = {
-  tacos: "🌮",
-  tortas: "🥪",
-  burritos: "🌯",
-  quesadillas: "🧀",
-  platillos: "🍽️",
-}
 
 export default async function HomePage() {
   const media = await getSiteMedia()
@@ -82,35 +73,7 @@ export default async function HomePage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
-              {categorias.map((categoria) => {
-                const thumb =
-                  media.categoriaImagenes[categoria.id] ?? categoria.imagen
-                return (
-                  <Link
-                    key={categoria.id}
-                    href={`/menu/${categoria.id}`}
-                    className="bg-card rounded-2xl p-4 md:p-6 text-center shadow-sm hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 block cursor-pointer overflow-hidden"
-                  >
-                    <div className="relative aspect-[4/3] w-full max-w-[140px] mx-auto mb-3 rounded-xl overflow-hidden bg-muted">
-                      <Image
-                        src={thumb}
-                        alt=""
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 40vw, 140px"
-                      />
-                    </div>
-                    <div className="text-3xl mb-2" aria-hidden>
-                      {categoriaEmoji[categoria.id] ?? "🍴"}
-                    </div>
-                    <h3 className="font-semibold text-foreground text-sm md:text-base">
-                      {categoria.nombre}
-                    </h3>
-                  </Link>
-                )
-              })}
-            </div>
+            <HomeMenuGrid media={media} />
           </div>
         </section>
 

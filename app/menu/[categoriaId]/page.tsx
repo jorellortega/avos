@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { MenuItemCard } from "@/components/menu-item-card"
+import { MenuCategoryCartBar } from "@/components/menu-category-cart-bar"
 import { categorias, getCategoriaById } from "@/lib/menu-data"
 import { getSiteMedia } from "@/lib/get-site-media"
 
@@ -77,6 +78,7 @@ export default async function CategoriaMenuPage({ params }: Props) {
         <section className="py-10 md:py-14">
           <div className="container mx-auto px-4 max-w-lg">
             <MenuItemCard
+              categoriaId={categoria.id}
               categoria={categoria.nombre}
               nombre={categoria.nombre}
               descripcion={categoria.descripcion}
@@ -85,6 +87,7 @@ export default async function CategoriaMenuPage({ params }: Props) {
               imagen={heroImagen}
               proteinaImagenes={media.proteinaImagenes}
             />
+            <MenuCategoryCartBar />
           </div>
 
           <div className="container mx-auto px-4 mt-12 max-w-2xl">
