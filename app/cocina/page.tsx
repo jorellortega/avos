@@ -35,13 +35,13 @@ export default function CocinaPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Filter active orders (not delivered or paid)
+  // Incluye pagado (pago en línea) hasta que cocina avance; excluye solo entregado.
   const activeOrders = orders
-    .filter(o => o.status !== "entregado" && o.status !== "pagado")
+    .filter(o => o.status !== "entregado")
     .sort((a, b) => {
       // Sort by status priority, then by creation time
-      const statusOrder = { pendiente: 0, preparando: 1, listo: 2 }
-      const statusDiff = (statusOrder[a.status as keyof typeof statusOrder] || 3) - (statusOrder[b.status as keyof typeof statusOrder] || 3)
+      const statusOrder = { pendiente: 0, pagado: 1, preparando: 2, listo: 3 }
+      const statusDiff = (statusOrder[a.status as keyof typeof statusOrder] ?? 9) - (statusOrder[b.status as keyof typeof statusOrder] ?? 9)
       if (statusDiff !== 0) return statusDiff
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     })
@@ -57,32 +57,61 @@ export default function CocinaPage() {
     return `${mins} min`
   }
 
-  const handleStatusChange = (orderId: string, currentStatus: OrderStatus) => {
+  const handleStatusChange = async (orderId: string, currentStatus: OrderStatus) => {
     const nextStatus: Record<OrderStatus, OrderStatus> = {
       pendiente: "preparando",
       preparando: "listo",
       listo: "entregado",
       entregado: "entregado",
-      pagado: "pagado"
+      pagado: "preparando",
     }
-    updateOrderStatus(orderId, nextStatus[currentStatus])
+    const next = nextStatus[currentStatus]
+    if (!next || next === currentStatus) return
+
+    try {
+      const res = await fetch("/api/kitchen/advance-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string; status?: string }
+      if (!res.ok || !data.ok) {
+        console.error("[cocina]", data.error)
+        alert(data.error ?? "No se pudo actualizar en el servidor. Revisa la consola.")
+        return
+      }
+      updateOrderStatus(orderId, (data.status as OrderStatus) ?? next)
+    } catch (e) {
+      console.error("[cocina]", e)
+      alert("Error de red al guardar el estado.")
+    }
   }
 
   const getNextActionLabel = (status: OrderStatus) => {
     switch (status) {
-      case "pendiente": return "Empezar"
-      case "preparando": return "Listo"
-      case "listo": return "Entregado"
-      default: return ""
+      case "pendiente":
+      case "pagado":
+        return "Empezar"
+      case "preparando":
+        return "Listo"
+      case "listo":
+        return "Entregado"
+      default:
+        return ""
     }
   }
 
   const getNextActionIcon = (status: OrderStatus) => {
     switch (status) {
-      case "pendiente": return <Play className="h-4 w-4" />
-      case "preparando": return <Check className="h-4 w-4" />
-      case "listo": return <Check className="h-4 w-4" />
-      default: return null
+      case "pendiente":
+      case "pagado":
+        return <Play className="h-4 w-4" />
+      case "preparando":
+        return <Check className="h-4 w-4" />
+      case "listo":
+        return <Check className="h-4 w-4" />
+      default:
+        return null
     }
   }
 
@@ -192,12 +221,12 @@ export default function CocinaPage() {
                     </div>
 
                     {/* Action Button */}
-                    {order.status !== "entregado" && order.status !== "pagado" && (
+                    {order.status !== "entregado" && (
                       <Button
                         className="w-full gap-2"
                         size="lg"
                         variant={order.status === "listo" ? "secondary" : "default"}
-                        onClick={() => handleStatusChange(order.id, order.status)}
+                        onClick={() => void handleStatusChange(order.id, order.status)}
                       >
                         {getNextActionIcon(order.status)}
                         {getNextActionLabel(order.status)}

@@ -71,6 +71,8 @@ export default function OrdenarPage() {
   const [pickerQty, setPickerQty] = useState(1)
   const [selectedBebidaId, setSelectedBebidaId] = useState<string | null>(null)
   const [bebidaPickerQty, setBebidaPickerQty] = useState(1)
+  const [placeOrderLoading, setPlaceOrderLoading] = useState(false)
+  const [placeOrderError, setPlaceOrderError] = useState("")
   const expandPanelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -208,8 +210,10 @@ export default function OrdenarPage() {
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
 
-  const handlePlaceOrder = () => {
-    if (cart.length === 0) return
+  const handlePlaceOrder = async () => {
+    if (cart.length === 0 || !orderType) return
+
+    setPlaceOrderError("")
 
     const orderItems: OrderItem[] = cart.map((item) => ({
       id: `${item.id}-line`,
@@ -234,7 +238,33 @@ export default function OrdenarPage() {
     sessionStorage.removeItem("customerName")
     sessionStorage.removeItem("customerPhone")
 
-    void insertAvosOrderToSupabase(newOrder)
+    const inserted = await insertAvosOrderToSupabase(newOrder)
+    if (!inserted) {
+      setPlaceOrderError("No se pudo registrar el pedido. Intenta de nuevo.")
+      return
+    }
+
+    if (orderType === "takeout") {
+      setPlaceOrderLoading(true)
+      try {
+        const res = await fetch("/api/checkout/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: newOrder.id }),
+        })
+        const data = (await res.json()) as { url?: string; error?: string }
+        if (!res.ok || !data.url) {
+          setPlaceOrderError(data.error ?? "No se pudo iniciar el pago.")
+          setPlaceOrderLoading(false)
+          return
+        }
+        window.location.href = data.url
+      } catch {
+        setPlaceOrderError("Error de red. Intenta de nuevo.")
+        setPlaceOrderLoading(false)
+      }
+      return
+    }
 
     router.push(`/orden/${newOrder.numero}`)
   }
@@ -771,13 +801,28 @@ export default function OrdenarPage() {
                           </span>
                         </div>
 
+                        {placeOrderError ? (
+                          <p className="text-sm text-destructive mb-2" role="alert">
+                            {placeOrderError}
+                          </p>
+                        ) : null}
                         <Button
                           className="w-full"
                           size="lg"
-                          onClick={handlePlaceOrder}
+                          onClick={() => void handlePlaceOrder()}
+                          disabled={placeOrderLoading}
                         >
-                          Hacer Pedido
+                          {placeOrderLoading
+                            ? "Abriendo pago…"
+                            : orderType === "takeout"
+                              ? "Pagar y confirmar pedido"
+                              : "Hacer pedido"}
                         </Button>
+                        {orderType === "takeout" && !placeOrderLoading && (
+                          <p className="text-xs text-muted-foreground text-center mt-2">
+                            Para llevar: el pedido se confirma al completar el pago con tarjeta.
+                          </p>
+                        )}
                       </div>
                     </>
                   )}

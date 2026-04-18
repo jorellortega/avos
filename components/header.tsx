@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { StaffAuthLinks } from "@/components/staff-auth-links"
+import { AccountNavLinks } from "@/components/account-nav-links"
 import { useStaffOrdenesNavAccess } from "@/hooks/use-staff-ordenes-nav-access"
 
 export function Header() {
@@ -68,7 +68,7 @@ export function Header() {
             >
               Mi Orden
             </Link>
-            <StaffAuthLinks />
+            <AccountNavLinks />
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-1 text-foreground/80 hover:text-primary transition-colors font-medium">
                 Staff
@@ -171,7 +171,7 @@ export function Header() {
                 className="py-2"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <StaffAuthLinks />
+                <AccountNavLinks />
               </div>
               <div className="border-t border-border pt-4 mt-2">
                 <p className="text-sm text-muted-foreground mb-2">Staff</p>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import type Stripe from "stripe"
+import { fulfillAvosOrderFromStripeSession } from "@/lib/stripe-order-fulfillment"
 import { getStripe } from "@/lib/stripe"
 
 export const runtime = "nodejs"
@@ -49,7 +50,12 @@ export async function POST(request: Request) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session
       console.log("[stripe webhook] checkout.session.completed", session.id, session.amount_total)
-      // When you add a database: fulfill order from session.metadata, line items, etc.
+      try {
+        await fulfillAvosOrderFromStripeSession(session, stripe)
+      } catch (e) {
+        console.error("[stripe webhook] fulfillment", e)
+        return NextResponse.json({ error: "Fulfillment failed" }, { status: 500 })
+      }
       break
     }
     case "payment_intent.succeeded": {

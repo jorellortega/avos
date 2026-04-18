@@ -15,3 +15,8 @@ export interface StaffProfile {
 export function isStaffOrdersRole(role: AppRole | string | undefined | null): boolean {
   return role === "staff" || role === "manager" || role === "ceo"
 }
+
+/** Cliente con cuenta (Mi cuenta / pedidos) */
+export function isCustomerAppRole(role: AppRole | string | undefined | null): boolean {
+  return role === "user"
+}

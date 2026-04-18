@@ -9,6 +9,11 @@ import { createBrowserSupabase } from "@/lib/supabase/client"
 export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> {
   try {
     const supabase = createBrowserSupabase()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    const customerUserId = session?.user?.id ?? null
+
     const { error } = await supabase.rpc("insert_avos_order", {
       p_id: order.id,
       p_numero: order.numero,
@@ -18,6 +23,7 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
       p_mesa: order.mesa ?? null,
       p_nombre_cliente: order.nombreCliente ?? null,
       p_items: order.items,
+      p_customer_user_id: customerUserId,
     })
     if (error) {
       console.error("insertAvosOrderToSupabase", error.message)

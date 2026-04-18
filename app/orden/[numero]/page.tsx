@@ -57,6 +57,79 @@ const statusConfig: Record<OrderStatus, { label: string; color: string }> = {
   pagado: { label: "Pago recibido", color: "text-primary" },
 }
 
+/** After online payment: pago → cocina → listo (synced desde Supabase). */
+function PaidKitchenTrack({ status }: { status: string }) {
+  const s = status
+  const stepPayDone = true
+  const stepPrepDone = ["preparando", "listo", "entregado"].includes(s)
+  const stepReadyDone = ["listo", "entregado"].includes(s)
+  const prepCurrent = s === "pagado" || s === "preparando"
+  const readyCurrent = s === "listo"
+
+  const ring = "ring-4 ring-primary/20"
+  const steps = [
+    {
+      label: "Pago",
+      sub: "Recibido",
+      done: stepPayDone,
+      current: false,
+      Icon: Check,
+    },
+    {
+      label: "Preparando",
+      sub: s === "pagado" ? "En cola" : "",
+      done: stepPrepDone,
+      current: prepCurrent,
+      Icon: ChefHat,
+    },
+    {
+      label: "Listo",
+      sub: "Para recoger",
+      done: stepReadyDone,
+      current: readyCurrent,
+      Icon: Check,
+    },
+  ]
+
+  return (
+    <Card className="mb-6">
+      <CardContent className="pt-6">
+        <p className="text-xs text-muted-foreground text-center mb-4">Seguimiento del pedido</p>
+        <div className="flex items-start justify-between gap-1">
+          {steps.map((step) => {
+            const Icon = step.Icon
+            const isComplete = step.done
+            const isCurrent = step.current
+            return (
+              <div key={step.label} className="flex flex-col items-center flex-1 min-w-0">
+                <div
+                  className={`
+                    w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center mb-2
+                    ${isComplete ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}
+                    ${isCurrent ? ring : ""}
+                  `}
+                >
+                  <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
+                </div>
+                <span
+                  className={`text-[11px] sm:text-xs font-medium text-center leading-tight px-0.5 ${
+                    isComplete || isCurrent ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  {step.label}
+                </span>
+                {step.sub ? (
+                  <span className="text-[10px] text-muted-foreground text-center mt-0.5">{step.sub}</span>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function CustomerOrderPage({ params }: { params: Promise<{ numero: string }> }) {
   const resolvedParams = use(params)
   const orderNumber = parseInt(resolvedParams.numero)
@@ -69,7 +142,11 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [dbPaymentMethod, setDbPaymentMethod] = useState<string | null>(null)
   const [dbPaidAt, setDbPaidAt] = useState<string | null>(null)
+  /** Kitchen workflow from Supabase (preparando, listo, …) — may differ from local until poll. */
+  const [dbOrderStatus, setDbOrderStatus] = useState<string | null>(null)
   const [intentSubmittedLocal, setIntentSubmittedLocal] = useState(false)
+  const [payOnlineLoading, setPayOnlineLoading] = useState(false)
+  const [payOnlineError, setPayOnlineError] = useState("")
   const syncedPagadoRef = useRef(false)
   const proteinaImgs = useProteinaImagenes()
   const { catalog } = useMenuCatalogContext()
@@ -105,29 +182,34 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
       const snap = data as {
         paid_at?: string | null
         payment_method?: string | null
+        status?: string | null
       } | null
 
       if (!snap) return
 
       setDbPaymentMethod(snap.payment_method ?? null)
       setDbPaidAt(snap.paid_at ?? null)
+      const remoteStatus = snap.status?.trim() ?? null
+      setDbOrderStatus(remoteStatus)
 
       if (snap.paid_at && !syncedPagadoRef.current) {
         syncedPagadoRef.current = true
         updateOrder(order.id, { status: "pagado" })
       }
+
+      if (
+        remoteStatus &&
+        ["preparando", "listo", "entregado"].includes(remoteStatus) &&
+        order.status !== remoteStatus
+      ) {
+        updateOrder(order.id, { status: remoteStatus as OrderStatus })
+      }
     }
 
     void load()
-    const interval = setInterval(() => void load(), 10_000)
+    const interval = setInterval(() => void load(), 5000)
     return () => clearInterval(interval)
-  }, [order?.id, order?.numero, updateOrder])
-
-  useEffect(() => {
-    if (order?.tipo !== "pickup") return
-    if (!isPayDialogOpen) return
-    setPaymentMethod("tarjeta")
-  }, [order?.tipo, isPayDialogOpen])
+  }, [order?.id, order?.numero, order?.status, updateOrder])
 
   if (!order) {
     return (
@@ -164,8 +246,19 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
   const canPay =
     order.status !== "pagado" && !hasPaymentIntent
 
+  const workflow = (dbOrderStatus ?? order.status) as OrderStatus
+
   const badgeConfig = (() => {
     if (isPaid) {
+      if (workflow === "preparando") return statusConfig.preparando
+      if (workflow === "listo") return statusConfig.listo
+      if (workflow === "entregado") return statusConfig.entregado
+      if (workflow === "pagado") {
+        return {
+          label: "Pago recibido — esperando cocina",
+          color: "text-primary",
+        }
+      }
       return statusConfig.pagado
     }
     if (hasPaymentIntent) {
@@ -253,6 +346,30 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
     setPaymentComplete(true)
   }
 
+  const handlePayOnline = () => {
+    setPayOnlineError("")
+    setPayOnlineLoading(true)
+    void (async () => {
+      try {
+        const res = await fetch("/api/checkout/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: order.id }),
+        })
+        const data = (await res.json()) as { url?: string; error?: string }
+        if (!res.ok || !data.url) {
+          setPayOnlineError(data.error ?? "No se pudo iniciar el pago.")
+          setPayOnlineLoading(false)
+          return
+        }
+        window.location.href = data.url
+      } catch {
+        setPayOnlineError("Error de red. Intenta de nuevo.")
+        setPayOnlineLoading(false)
+      }
+    })()
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -302,8 +419,11 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
           </CardContent>
         </Card>
 
-        {/* Status Progress */}
-        {order.status !== "entregado" && order.status !== "pagado" && !dbPaidAt && (
+        {/* Status: sin pago aún → pasos clásicos; ya pagó → cocina desde Supabase */}
+        {isPaid && workflow !== "entregado" && (
+          <PaidKitchenTrack status={workflow} />
+        )}
+        {!isPaid && order.status !== "entregado" && (
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -311,21 +431,27 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                   const Icon = step.icon
                   const isComplete = currentStepIndex >= index
                   const isCurrent = currentStepIndex === index
-                  
+
                   return (
                     <div key={step.status} className="flex flex-col items-center flex-1">
-                      <div className={`
+                      <div
+                        className={`
                         w-12 h-12 rounded-full flex items-center justify-center mb-2
-                        ${isComplete ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
-                        ${isCurrent ? 'ring-4 ring-primary/20' : ''}
-                      `}>
+                        ${isComplete ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}
+                        ${isCurrent ? "ring-4 ring-primary/20" : ""}
+                      `}
+                      >
                         <Icon className="h-6 w-6" />
                       </div>
-                      <span className={`text-sm font-medium ${isComplete ? 'text-primary' : 'text-muted-foreground'}`}>
+                      <span
+                        className={`text-sm font-medium ${isComplete ? "text-primary" : "text-muted-foreground"}`}
+                      >
                         {step.label}
                       </span>
                       {index < statusSteps.length - 1 && (
-                        <div className={`absolute h-1 w-1/4 top-1/2 ${isComplete ? 'bg-primary' : 'bg-muted'}`} />
+                        <div
+                          className={`absolute h-1 w-1/4 top-1/2 ${isComplete ? "bg-primary" : "bg-muted"}`}
+                        />
                       )}
                     </div>
                   )
@@ -518,15 +644,39 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
             </Dialog>
           )}
 
-          {/* Pay Dialog */}
-          {canPay && (
+          {/* Para llevar: solo pago en línea (obligatorio). */}
+          {canPay && isPickup && (
+            <div className="w-full space-y-3">
+              <Button
+                className="w-full gap-2"
+                size="lg"
+                type="button"
+                onClick={handlePayOnline}
+                disabled={payOnlineLoading}
+              >
+                <CreditCard className="h-4 w-4" />
+                {payOnlineLoading
+                  ? "Abriendo pago seguro…"
+                  : `Pagar ahora — $${order.total.toFixed(2)}`}
+              </Button>
+              {payOnlineError ? (
+                <p className="text-sm text-destructive text-center" role="alert">
+                  {payOnlineError}
+                </p>
+              ) : null}
+              <p className="text-center text-xs text-muted-foreground px-1">
+                Para llevar el pedido solo se confirma con pago en línea (Stripe). No hay pago en caja al
+                recoger.
+              </p>
+            </div>
+          )}
+
+          {canPay && !isPickup && (
             <Dialog open={isPayDialogOpen} onOpenChange={setIsPayDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="w-full gap-2" size="lg">
+                <Button className="w-full gap-2" size="lg" type="button">
                   <CreditCard className="h-4 w-4" />
-                  {isPickup
-                    ? `Pago con tarjeta — $${order.total.toFixed(2)}`
-                    : `Indicar forma de pago — $${order.total.toFixed(2)}`}
+                  {`Indicar forma de pago — $${order.total.toFixed(2)}`}
                 </Button>
               </DialogTrigger>
               <DialogContent>
@@ -536,9 +686,7 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                   </DialogTitle>
                   {!paymentComplete && (
                     <DialogDescription>
-                      {isPickup
-                        ? "Para llevar: solo pago con tarjeta al recoger. Caja confirmará el cobro."
-                        : "El personal confirmará en caja cuando reciba el dinero."}
+                      El personal confirmará en caja cuando reciba el dinero.
                     </DialogDescription>
                   )}
                 </DialogHeader>
@@ -552,9 +700,7 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                       Pendiente de confirmación en caja
                     </h3>
                     <p className="text-muted-foreground mb-4 text-sm px-2">
-                      {isPickup
-                        ? "Quedó registrado pago con tarjeta. Caja lo confirmará al recoger."
-                        : "Registramos tu forma de pago. Caja marcará como pagado cuando reciba el efectivo o la tarjeta."}
+                      Registramos tu forma de pago. Caja marcará como pagado cuando reciba el efectivo o la tarjeta.
                     </p>
                     <Button onClick={() => setIsPayDialogOpen(false)}>
                       Cerrar
@@ -572,38 +718,32 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                         <div className="text-left">
                           <p className="font-medium">Tarjeta</p>
                           <p className="text-sm text-muted-foreground">
-                            {isPickup
-                              ? "Obligatorio para para llevar"
-                              : "Débito o crédito"}
+                            Débito o crédito
                           </p>
                         </div>
                       </Button>
-                      {!isPickup && (
-                        <Button
-                          variant={paymentMethod === "efectivo" ? "default" : "outline"}
-                          className="w-full justify-start gap-3 h-auto py-4"
-                          onClick={() => setPaymentMethod("efectivo")}
-                        >
-                          <span className="text-lg">$</span>
-                          <div className="text-left">
-                            <p className="font-medium">Efectivo</p>
-                            <p className="text-sm text-muted-foreground">
-                              Paga en mesa o al recoger
-                            </p>
-                          </div>
-                        </Button>
-                      )}
+                      <Button
+                        variant={paymentMethod === "efectivo" ? "default" : "outline"}
+                        className="w-full justify-start gap-3 h-auto py-4"
+                        onClick={() => setPaymentMethod("efectivo")}
+                      >
+                        <span className="text-lg">$</span>
+                        <div className="text-left">
+                          <p className="font-medium">Efectivo</p>
+                          <p className="text-sm text-muted-foreground">
+                            Paga en mesa o al recoger
+                          </p>
+                        </div>
+                      </Button>
                     </div>
                     <DialogFooter>
                       <Button
                         className="w-full"
                         size="lg"
-                        disabled={!paymentMethod && !isPickup}
+                        disabled={!paymentMethod}
                         onClick={handlePayment}
                       >
-                        {isPickup
-                          ? `Registrar pago con tarjeta — $${order.total.toFixed(2)}`
-                          : `Registrar forma de pago — $${order.total.toFixed(2)}`}
+                        {`Registrar forma de pago — $${order.total.toFixed(2)}`}
                       </Button>
                     </DialogFooter>
                   </>

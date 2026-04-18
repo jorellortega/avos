@@ -116,7 +116,7 @@ export default function ClientSignupPage() {
                 )}
               </Button>
               <Button variant="ghost" asChild type="button">
-                <Link href="/staff/login">¿Ya tienes cuenta? Entrar</Link>
+                <Link href="/login">¿Ya tienes cuenta? Entrar</Link>
               </Button>
             </CardFooter>
           </form>
