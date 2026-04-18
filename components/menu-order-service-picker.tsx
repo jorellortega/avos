@@ -87,7 +87,12 @@ export function MenuOrderServicePicker({
 
       {showTakeoutCardNotice && mode === "takeout" && (
         <p className="text-sm font-medium text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 rounded-lg px-3 py-2">
-          Para llevar: pago con tarjeta al recoger (no efectivo).
+          Para llevar: debes pagar en línea para confirmar el pedido (no efectivo al recoger).
+        </p>
+      )}
+      {mode === "dine-in" && (
+        <p className="text-sm text-muted-foreground border border-border rounded-lg px-3 py-2 bg-muted/30">
+          Para aquí: puedes pagar en línea o en caja (un toque; caja registra efectivo o tarjeta).
         </p>
       )}
     </div>

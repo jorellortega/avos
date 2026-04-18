@@ -329,9 +329,14 @@ export default function OrdenarPage() {
                 Toca una categoría: se abre aquí mismo para elegir proteína y
                 cantidad. Vuelve a tocar la misma para cerrar.
               </p>
-              {orderType !== "dine-in" && (
+              {orderType === "takeout" && (
                 <p className="mt-3 text-sm font-medium text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 rounded-lg px-3 py-2 max-w-2xl">
-                  Para llevar: pago con tarjeta al recoger (no efectivo).
+                  Para llevar: debes pagar en línea para confirmar el pedido (no efectivo al recoger).
+                </p>
+              )}
+              {orderType === "dine-in" && (
+                <p className="mt-3 text-sm text-muted-foreground border border-border rounded-lg px-3 py-2 max-w-2xl bg-muted/30">
+                  Para aquí: puedes pagar en línea o indicar pago en caja (un toque; caja registra el cobro).
                 </p>
               )}
             </div>

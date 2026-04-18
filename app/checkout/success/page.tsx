@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useCart } from "@/components/cart-provider"
-import { Check } from "lucide-react"
+import { Check, ClipboardPlus } from "lucide-react"
 import type { OrderStatusPayload } from "@/lib/checkout-order-status"
 
 function statusLabel(data: OrderStatusPayload): { title: string; detail: string; variant: "default" | "secondary" | "outline" } {
@@ -62,6 +62,7 @@ function statusLabel(data: OrderStatusPayload): { title: string; detail: string;
 function SuccessContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get("session_id")
+  const fromStaffPos = searchParams.get("from") === "staff"
   const { clearCart } = useCart()
   const [cleared, setCleared] = useState(false)
   const [orderStatus, setOrderStatus] = useState<OrderStatusPayload | null>(null)
@@ -139,13 +140,20 @@ function SuccessContent() {
           )}
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center flex-wrap mb-10">
+          {fromStaffPos && (
+            <Link href="/staff">
+              <Button size="lg">Volver a Crear orden</Button>
+            </Link>
+          )}
           {isOrderPay && (
             <Link href={`/orden/${numero}`}>
-              <Button size="lg">Ver pedido #{numero}</Button>
+              <Button size="lg" variant={fromStaffPos ? "outline" : "default"}>
+                Ver pedido #{numero}
+              </Button>
             </Link>
           )}
           <Link href="/menu">
-            <Button size="lg" variant={isOrderPay ? "outline" : "default"}>
+            <Button size="lg" variant="outline">
               Volver al menú
             </Button>
           </Link>
@@ -190,6 +198,20 @@ function SuccessContent() {
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {fromStaffPos && (
+        <div className="mt-10 pt-8 border-t border-border text-center">
+          <p className="text-sm text-muted-foreground mb-4">
+            ¿Siguiente cliente? Vuelve al panel para armar otra orden.
+          </p>
+          <Link href="/staff" className="inline-flex w-full max-w-md mx-auto">
+            <Button size="lg" className="w-full gap-2">
+              <ClipboardPlus className="h-5 w-5" aria-hidden />
+              Iniciar nueva orden
+            </Button>
+          </Link>
+        </div>
       )}
     </div>
   )

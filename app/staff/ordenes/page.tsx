@@ -122,8 +122,9 @@ export default async function StaffOrdenesPage() {
                 Órdenes y pagos
               </h1>
               <p className="text-muted-foreground mt-1">
-                El cliente puede indicar efectivo o tarjeta; aquí confirmas cuando
-                cobras. Los totales solo cuentan pagos confirmados.
+                En mesa el cliente puede marcar “pago en caja” o pagar en línea; tú
+                registras efectivo o tarjeta al cobrar. Los totales solo cuentan pagos
+                confirmados.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -178,9 +179,8 @@ export default async function StaffOrdenesPage() {
                 <CardHeader>
                   <CardTitle className="text-lg">Historial</CardTitle>
                   <CardDescription>
-                    Hasta 200 órdenes recientes. &quot;Pendiente&quot; = el cliente
-                    ya indicó forma de pago; usa Confirmar pago cuando recibas el
-                    dinero.
+                    Hasta 200 órdenes recientes. &quot;En caja&quot; = el cliente va a
+                    pagar en mostrador; elige efectivo o tarjeta al cobrar.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -233,6 +233,13 @@ export default async function StaffOrdenesPage() {
                                     Pagado
                                   </span>
                                 </div>
+                              ) : r.payment_method === "caja" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-amber-800 border-amber-300 bg-amber-50 dark:bg-amber-950/30"
+                                >
+                                  En caja (pendiente)
+                                </Badge>
                               ) : r.payment_method ? (
                                 <Badge
                                   variant="outline"

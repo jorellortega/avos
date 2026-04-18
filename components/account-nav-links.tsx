@@ -5,7 +5,7 @@ import { useAppUserRole } from "@/hooks/use-app-user-role"
 import { isStaffOrdersRole } from "@/lib/profile-types"
 
 /**
- * Header links: Entrar / Registrarse (invitado), Mi cuenta (cliente), Personal (staff+).
+ * Header links: Entrar / Registrarse (invitado), Mi cuenta (cliente), Panel personal /staff/dashboard (staff+).
  */
 export function AccountNavLinks() {
   const state = useAppUserRole()
@@ -33,7 +33,7 @@ export function AccountNavLinks() {
   if (isStaffOrdersRole(state.role)) {
     return (
       <Link href="/staff/dashboard" className={className}>
-        Personal
+        Panel personal
       </Link>
     )
   }

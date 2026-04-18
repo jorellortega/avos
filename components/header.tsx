@@ -8,7 +8,6 @@ import {
   ChevronDown,
   Users,
   ChefHat,
-  ClipboardList,
   Banknote,
   Tags,
 } from "lucide-react"
@@ -69,50 +68,42 @@ export function Header() {
               Mi Orden
             </Link>
             <AccountNavLinks />
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1 text-foreground/80 hover:text-primary transition-colors font-medium">
-                Staff
-                <ChevronDown className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href="/staff/dashboard" className="flex items-center gap-2 cursor-pointer">
-                    <ClipboardList className="h-4 w-4" />
-                    Panel personal
-                  </Link>
-                </DropdownMenuItem>
-                {staffOrdenesNav === true && (
-                  <>
-                    <DropdownMenuItem asChild>
-                      <Link href="/staff/ordenes" className="flex items-center gap-2 cursor-pointer">
-                        <Banknote className="h-4 w-4" />
-                        Órdenes y pagos
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/staff/menu-catalog" className="flex items-center gap-2 cursor-pointer">
-                        <Tags className="h-4 w-4" />
-                        Precios y disponibilidad
-                      </Link>
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/staff" className="flex items-center gap-2 cursor-pointer">
-                    <Users className="h-4 w-4" />
-                    Crear Orden
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/cocina" className="flex items-center gap-2 cursor-pointer">
-                    <ChefHat className="h-4 w-4" />
-                    Cocina
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {staffOrdenesNav === true && (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="flex items-center gap-1 text-foreground/80 hover:text-primary transition-colors font-medium">
+                  Staff
+                  <ChevronDown className="h-4 w-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href="/staff/ordenes" className="flex items-center gap-2 cursor-pointer">
+                      <Banknote className="h-4 w-4" />
+                      Órdenes y pagos
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/staff/menu-catalog" className="flex items-center gap-2 cursor-pointer">
+                      <Tags className="h-4 w-4" />
+                      Precios y disponibilidad
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/staff" className="flex items-center gap-2 cursor-pointer">
+                      <Users className="h-4 w-4" />
+                      Crear Orden
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/cocina" className="flex items-center gap-2 cursor-pointer">
+                      <ChefHat className="h-4 w-4" />
+                      Cocina
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </nav>
 
           {/* Cart & Mobile Menu */}
@@ -173,53 +164,43 @@ export function Header() {
               >
                 <AccountNavLinks />
               </div>
-              <div className="border-t border-border pt-4 mt-2">
-                <p className="text-sm text-muted-foreground mb-2">Staff</p>
-                <Link
-                  href="/staff/dashboard"
-                  className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  Panel personal
-                </Link>
-                {staffOrdenesNav === true && (
-                  <>
-                    <Link
-                      href="/staff/ordenes"
-                      className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Banknote className="h-4 w-4" />
-                      Órdenes y pagos
-                    </Link>
-                    <Link
-                      href="/staff/menu-catalog"
-                      className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Tags className="h-4 w-4" />
-                      Precios y disponibilidad
-                    </Link>
-                  </>
-                )}
-                <Link
-                  href="/staff"
-                  className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <Users className="h-4 w-4" />
-                  Crear Orden
-                </Link>
-                <Link
-                  href="/cocina"
-                  className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <ChefHat className="h-4 w-4" />
-                  Cocina
-                </Link>
-              </div>
+              {staffOrdenesNav === true && (
+                <div className="border-t border-border pt-4 mt-2">
+                  <p className="text-sm text-muted-foreground mb-2">Staff</p>
+                  <Link
+                    href="/staff/ordenes"
+                    className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Banknote className="h-4 w-4" />
+                    Órdenes y pagos
+                  </Link>
+                  <Link
+                    href="/staff/menu-catalog"
+                    className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Tags className="h-4 w-4" />
+                    Precios y disponibilidad
+                  </Link>
+                  <Link
+                    href="/staff"
+                    className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Users className="h-4 w-4" />
+                    Crear Orden
+                  </Link>
+                  <Link
+                    href="/cocina"
+                    className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <ChefHat className="h-4 w-4" />
+                    Cocina
+                  </Link>
+                </div>
+              )}
             </div>
           </nav>
         )}

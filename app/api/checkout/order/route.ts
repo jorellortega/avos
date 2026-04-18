@@ -6,6 +6,11 @@ export const runtime = "nodejs"
 
 type Body = {
   orderId?: string
+  /**
+   * `staff_pos`: cancel → /staff, success → checkout/success with ?from=staff (Crear orden en mostrador).
+   * Omit for flujo cliente (cancel → /orden/:n).
+   */
+  context?: string
 }
 
 type OrderItemRow = {
@@ -33,6 +38,7 @@ export async function POST(request: Request) {
   }
 
   const orderId = body.orderId?.trim()
+  const staffPos = body.context === "staff_pos"
   if (!orderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)) {
     return NextResponse.json({ error: "Orden inválida" }, { status: 400 })
   }
@@ -51,9 +57,9 @@ export async function POST(request: Request) {
   if (!row) {
     return NextResponse.json({ error: "Orden no encontrada" }, { status: 404 })
   }
-  if (row.order_type !== "pickup") {
+  if (row.order_type !== "pickup" && row.order_type !== "mesa") {
     return NextResponse.json(
-      { error: "Solo pedidos para llevar pueden pagarse en línea desde aquí." },
+      { error: "Solo pedidos para llevar o en mesa pueden pagarse en línea desde aquí." },
       { status: 400 },
     )
   }
@@ -117,12 +123,19 @@ export async function POST(request: Request) {
     )
   }
 
+  const successUrl = staffPos
+    ? `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}&from=staff`
+    : `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`
+  const cancelUrl = staffPos
+    ? `${origin}/staff`
+    : `${origin}/orden/${row.numero}`
+
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items,
-      success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/orden/${row.numero}`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
       metadata: {
         avos_order_id: row.id,
         avos_order_numero: String(row.numero),

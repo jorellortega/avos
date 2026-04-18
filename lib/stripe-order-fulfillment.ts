@@ -2,7 +2,7 @@ import type Stripe from "stripe"
 import { createServiceRoleClient } from "@/lib/supabase-server"
 
 /**
- * Marks a pickup order paid when Stripe Checkout completes (metadata.avos_order_id).
+ * Marks a pickup or dine-in (mesa) order paid when Stripe Checkout completes (metadata.avos_order_id).
  * Idempotent if paid_at already set. Verifies amount vs stored total.
  * Pass `stripe` so thin webhook payloads can retrieve the full session.
  */
@@ -46,8 +46,8 @@ export async function fulfillAvosOrderFromStripeSession(
   }
   if (row.paid_at) return
 
-  if (row.order_type !== "pickup") {
-    console.warn("[stripe fulfillment] skip non-pickup", orderId)
+  if (row.order_type !== "pickup" && row.order_type !== "mesa") {
+    console.warn("[stripe fulfillment] skip unsupported order_type", row.order_type, orderId)
     return
   }
   if (row.status !== "pendiente") {

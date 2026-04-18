@@ -12,7 +12,7 @@ import { staffConfirmAvosOrderPayment } from "@/lib/avos-orders-sync"
 
 type Props = {
   orderId: string
-  /** How the customer said they will pay (from app). Drives label + one-tap for card. */
+  /** Customer intent: caja | efectivo | tarjeta | null. Mesa "caja" = staff picks method at register. */
   intentMethod?: string | null
   /** mesa | pickup — pickup is card-only */
   orderType?: string | null

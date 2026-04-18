@@ -137,9 +137,8 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
   const [refreshKey, setRefreshKey] = useState(0)
   const [editItems, setEditItems] = useState<OrderItem[]>([])
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isPayDialogOpen, setIsPayDialogOpen] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | null>(null)
-  const [paymentComplete, setPaymentComplete] = useState(false)
+  const [payAtCajaLoading, setPayAtCajaLoading] = useState(false)
+  const [payAtCajaError, setPayAtCajaError] = useState("")
   const [dbPaymentMethod, setDbPaymentMethod] = useState<string | null>(null)
   const [dbPaidAt, setDbPaidAt] = useState<string | null>(null)
   /** Kitchen workflow from Supabase (preparando, listo, …) — may differ from local until poll. */
@@ -335,15 +334,17 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
     setIsEditDialogOpen(false)
   }
 
-  const handlePayment = () => {
-    const method: "efectivo" | "tarjeta" = isPickup
-      ? "tarjeta"
-      : paymentMethod!
-    if (!isPickup && !paymentMethod) return
-    void recordCustomerPaymentIntentToSupabase(order.id, method).then((ok) => {
-      if (ok) setIntentSubmittedLocal(true)
+  const handlePayAtCaja = () => {
+    setPayAtCajaError("")
+    setPayAtCajaLoading(true)
+    void recordCustomerPaymentIntentToSupabase(order.id, "caja").then((ok) => {
+      setPayAtCajaLoading(false)
+      if (ok) {
+        setIntentSubmittedLocal(true)
+      } else {
+        setPayAtCajaError("No se pudo registrar. Intenta de nuevo.")
+      }
     })
-    setPaymentComplete(true)
   }
 
   const handlePayOnline = () => {
@@ -672,84 +673,59 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
           )}
 
           {canPay && !isPickup && (
-            <Dialog open={isPayDialogOpen} onOpenChange={setIsPayDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="w-full gap-2" size="lg" type="button">
-                  <CreditCard className="h-4 w-4" />
-                  {`Indicar forma de pago — $${order.total.toFixed(2)}`}
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle style={{ fontFamily: 'var(--font-heading)' }}>
-                    {paymentComplete ? "Registro recibido" : "Método de pago"}
-                  </DialogTitle>
-                  {!paymentComplete && (
-                    <DialogDescription>
-                      El personal confirmará en caja cuando reciba el dinero.
-                    </DialogDescription>
-                  )}
-                </DialogHeader>
-
-                {paymentComplete ? (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-amber-100 dark:bg-amber-950/40 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <CreditCard className="h-8 w-8 text-amber-700 dark:text-amber-400" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2">
-                      Pendiente de confirmación en caja
-                    </h3>
-                    <p className="text-muted-foreground mb-4 text-sm px-2">
-                      Registramos tu forma de pago. Caja marcará como pagado cuando reciba el efectivo o la tarjeta.
-                    </p>
-                    <Button onClick={() => setIsPayDialogOpen(false)}>
-                      Cerrar
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-3 py-4">
-                      <Button
-                        variant={paymentMethod === "tarjeta" ? "default" : "outline"}
-                        className="w-full justify-start gap-3 h-auto py-4"
-                        onClick={() => setPaymentMethod("tarjeta")}
-                      >
-                        <CreditCard className="h-5 w-5" />
-                        <div className="text-left">
-                          <p className="font-medium">Tarjeta</p>
-                          <p className="text-sm text-muted-foreground">
-                            Débito o crédito
-                          </p>
-                        </div>
-                      </Button>
-                      <Button
-                        variant={paymentMethod === "efectivo" ? "default" : "outline"}
-                        className="w-full justify-start gap-3 h-auto py-4"
-                        onClick={() => setPaymentMethod("efectivo")}
-                      >
-                        <span className="text-lg">$</span>
-                        <div className="text-left">
-                          <p className="font-medium">Efectivo</p>
-                          <p className="text-sm text-muted-foreground">
-                            Paga en mesa o al recoger
-                          </p>
-                        </div>
-                      </Button>
-                    </div>
-                    <DialogFooter>
-                      <Button
-                        className="w-full"
-                        size="lg"
-                        disabled={!paymentMethod}
-                        onClick={handlePayment}
-                      >
-                        {`Registrar forma de pago — $${order.total.toFixed(2)}`}
-                      </Button>
-                    </DialogFooter>
-                  </>
-                )}
-              </DialogContent>
-            </Dialog>
+            <div className="w-full space-y-3">
+              <Button
+                className="w-full gap-2"
+                size="lg"
+                type="button"
+                onClick={handlePayOnline}
+                disabled={payOnlineLoading}
+              >
+                <CreditCard className="h-4 w-4" />
+                {payOnlineLoading
+                  ? "Abriendo pago seguro…"
+                  : `Pagar en línea — $${order.total.toFixed(2)}`}
+              </Button>
+              {payOnlineError ? (
+                <p className="text-sm text-destructive text-center" role="alert">
+                  {payOnlineError}
+                </p>
+              ) : null}
+              <p className="text-center text-xs text-muted-foreground px-1">
+                Para aquí puedes pagar en línea, o un solo clic en caja: el personal cobra y registra
+                efectivo o tarjeta.
+              </p>
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center" aria-hidden>
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-background px-2 text-muted-foreground">o</span>
+                </div>
+              </div>
+              <Button
+                className="w-full gap-2"
+                variant="outline"
+                size="lg"
+                type="button"
+                onClick={() => void handlePayAtCaja()}
+                disabled={payAtCajaLoading}
+              >
+                <CreditCard className="h-4 w-4" aria-hidden />
+                {payAtCajaLoading
+                  ? "Registrando…"
+                  : `Pagar en caja — $${order.total.toFixed(2)}`}
+              </Button>
+              {payAtCajaError ? (
+                <p className="text-sm text-destructive text-center" role="alert">
+                  {payAtCajaError}
+                </p>
+              ) : null}
+              <p className="text-center text-xs text-muted-foreground px-1">
+                Un solo toque: tu orden queda pendiente de cobro en caja. No elijas aquí efectivo ni
+                tarjeta.
+              </p>
+            </div>
           )}
 
           {hasPaymentIntent && !isPaid && (

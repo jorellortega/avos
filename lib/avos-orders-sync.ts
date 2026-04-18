@@ -6,6 +6,13 @@ import { createBrowserSupabase } from "@/lib/supabase/client"
 /**
  * Persists a new order to Supabase (for staff reporting). Safe to ignore failures (local order still works).
  */
+function isMissingInsertAvosOrderOverload(err: { message?: string; code?: string }): boolean {
+  const m = err.message ?? ""
+  return (
+    m.includes("Could not find the function") && m.includes("insert_avos_order")
+  )
+}
+
 export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> {
   try {
     const supabase = createBrowserSupabase()
@@ -14,7 +21,7 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
     } = await supabase.auth.getSession()
     const customerUserId = session?.user?.id ?? null
 
-    const { error } = await supabase.rpc("insert_avos_order", {
+    const basePayload = {
       p_id: order.id,
       p_numero: order.numero,
       p_total: order.total,
@@ -23,8 +30,22 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
       p_mesa: order.mesa ?? null,
       p_nombre_cliente: order.nombreCliente ?? null,
       p_items: order.items,
-      p_customer_user_id: customerUserId,
-    })
+    }
+
+    let payload: typeof basePayload & { p_customer_user_id?: string } = basePayload
+    if (customerUserId) {
+      payload = { ...basePayload, p_customer_user_id: customerUserId }
+    }
+
+    let { error } = await supabase.rpc("insert_avos_order", payload)
+
+    if (error && customerUserId && isMissingInsertAvosOrderOverload(error)) {
+      console.warn(
+        "[insertAvosOrderToSupabase] DB has old insert_avos_order (8 args). Retrying without customer_user_id. Apply migration 20250413900000_avos_orders_customer_user.sql on Supabase.",
+      )
+      ;({ error } = await supabase.rpc("insert_avos_order", basePayload))
+    }
+
     if (error) {
       console.error("insertAvosOrderToSupabase", error.message)
       return false
@@ -37,12 +58,13 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
 }
 
 /**
- * Customer chooses efectivo/tarjeta — caja must confirm later via staff.
+ * Mesa: customer taps "pagar en caja" once — records `caja`; staff picks efectivo/tarjeta.
+ * Pickup: legacy `tarjeta` intent only if ever used; normal flow is Stripe.
  * Does not mark the order as paid in the database.
  */
 export async function recordCustomerPaymentIntentToSupabase(
   orderId: string,
-  method: "efectivo" | "tarjeta",
+  method: "efectivo" | "tarjeta" | "caja",
 ): Promise<boolean> {
   try {
     const supabase = createBrowserSupabase()
