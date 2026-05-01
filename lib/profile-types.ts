@@ -20,3 +20,8 @@ export function isStaffOrdersRole(role: AppRole | string | undefined | null): bo
 export function isCustomerAppRole(role: AppRole | string | undefined | null): boolean {
   return role === "user"
 }
+
+/** Gestión de códigos QR / materiales (solo manager y CEO) */
+export function isManagerOrCeo(role: AppRole | string | undefined | null): boolean {
+  return role === "manager" || role === "ceo"
+}

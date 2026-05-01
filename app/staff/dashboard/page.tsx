@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { StaffSignOutButton } from "@/components/staff-sign-out-button"
 import { createServerSupabase } from "@/lib/supabase/server"
 import type { StaffProfile } from "@/lib/profile-types"
-import { isStaffOrdersRole } from "@/lib/profile-types"
+import { isManagerOrCeo, isStaffOrdersRole } from "@/lib/profile-types"
 
 function roleLabel(role: string) {
   switch (role) {
@@ -125,6 +125,11 @@ export default async function StaffDashboardPage() {
                         <Link href="/staff/menu-catalog">Precios y disponibilidad</Link>
                       </Button>
                     </>
+                  )}
+                  {isManagerOrCeo(profile.role) && (
+                    <Button asChild variant="secondary">
+                      <Link href="/barcodes">Códigos QR</Link>
+                    </Button>
                   )}
                   {profile.role === "ceo" && (
                     <>

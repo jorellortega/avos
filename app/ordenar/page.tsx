@@ -209,6 +209,7 @@ export default function OrdenarPage() {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+  const cartBebidasLines = cart.filter((c) => c.categoria === "Bebidas")
 
   const handlePlaceOrder = async () => {
     if (cart.length === 0 || !orderType) return
@@ -411,7 +412,11 @@ export default function OrdenarPage() {
                             </p>
                           </div>
                           <div className="p-4 space-y-4">
-                            {category.items.map((item) => (
+                            {category.items.map((item) => {
+                              const linesForCategory = cart.filter(
+                                (c) => c.categoria === category.name,
+                              )
+                              return (
                               <div key={item.name}>
                                 <div className="flex justify-between items-start mb-3">
                                   <div>
@@ -480,6 +485,45 @@ export default function OrdenarPage() {
                                   })}
                                 </div>
 
+                                {linesForCategory.length > 0 && (
+                                  <div
+                                    className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-3 space-y-2 mb-4"
+                                    role="status"
+                                    aria-live="polite"
+                                  >
+                                    <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                                      <ShoppingCart className="h-3.5 w-3.5" />
+                                      En tu carrito
+                                    </p>
+                                    <ul className="space-y-1.5">
+                                      {linesForCategory.map((line) => (
+                                        <li
+                                          key={line.id}
+                                          className="flex justify-between gap-2 text-sm"
+                                        >
+                                          <span className="min-w-0">
+                                            <span className="font-medium">
+                                              {line.protein
+                                                ? `${line.name} de ${line.protein}`
+                                                : line.name}
+                                            </span>
+                                            <span className="text-muted-foreground">
+                                              {" "}
+                                              ×{line.quantity}
+                                            </span>
+                                          </span>
+                                          <span className="text-muted-foreground tabular-nums shrink-0">
+                                            $
+                                            {(line.price * line.quantity).toFixed(
+                                              2,
+                                            )}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-3 border-t border-border">
                                   <div className="flex items-center gap-3">
                                     <span className="text-sm font-medium shrink-0">
@@ -542,7 +586,8 @@ export default function OrdenarPage() {
                                   </Button>
                                 </div>
                               </div>
-                            ))}
+                            )
+                            })}
                           </div>
                         </div>
                       )}
@@ -655,6 +700,41 @@ export default function OrdenarPage() {
                             )
                           })}
                         </div>
+
+                        {cartBebidasLines.length > 0 && (
+                          <div
+                            className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-3 space-y-2"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                              <ShoppingCart className="h-3.5 w-3.5" />
+                              En tu carrito
+                            </p>
+                            <ul className="space-y-1.5">
+                              {cartBebidasLines.map((line) => (
+                                <li
+                                  key={line.id}
+                                  className="flex justify-between gap-2 text-sm"
+                                >
+                                  <span className="min-w-0">
+                                    <span className="font-medium">
+                                      {line.name}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                      {" "}
+                                      ×{line.quantity}
+                                    </span>
+                                  </span>
+                                  <span className="text-muted-foreground tabular-nums shrink-0">
+                                    $
+                                    {(line.price * line.quantity).toFixed(2)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
 
                         {selectedBebida && (
                           <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-2 border-t border-border">
