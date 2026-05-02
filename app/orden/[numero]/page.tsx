@@ -8,7 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useOrders, OrderStatus, OrderItem } from "@/components/orders-provider"
-import { recordCustomerPaymentIntentToSupabase } from "@/lib/avos-orders-sync"
+import {
+  recordCustomerPaymentIntentToSupabase,
+  updateAvosOrderCartInSupabase,
+} from "@/lib/avos-orders-sync"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
@@ -151,6 +154,8 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
   const [intentSubmittedLocal, setIntentSubmittedLocal] = useState(false)
   const [payOnlineLoading, setPayOnlineLoading] = useState(false)
   const [payOnlineError, setPayOnlineError] = useState("")
+  const [editSaveLoading, setEditSaveLoading] = useState(false)
+  const [editSaveError, setEditSaveError] = useState("")
   const syncedPagadoRef = useRef(false)
   const proteinaImgs = useProteinaImagenes()
   const { catalog } = useMenuCatalogContext()
@@ -334,9 +339,21 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
   }
 
   const saveChanges = () => {
+    setEditSaveError("")
     const newTotal = editItems.reduce((sum, item) => sum + (item.precio * item.cantidad), 0)
-    updateOrder(order.id, { items: editItems, total: newTotal })
-    setIsEditDialogOpen(false)
+    void (async () => {
+      setEditSaveLoading(true)
+      const synced = await updateAvosOrderCartInSupabase(order.id, editItems, newTotal)
+      setEditSaveLoading(false)
+      if (!synced) {
+        setEditSaveError(
+          "No se pudo guardar en el servidor. Revisa la conexión o intenta de nuevo. Si falla, el pago podría no coincidir con lo que ves.",
+        )
+        return
+      }
+      updateOrder(order.id, { items: editItems, total: newTotal })
+      setIsEditDialogOpen(false)
+    })()
   }
 
   const handlePayAtCaja = () => {
@@ -357,6 +374,14 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
     setPayOnlineLoading(true)
     void (async () => {
       try {
+        const synced = await updateAvosOrderCartInSupabase(order.id, order.items, order.total)
+        if (!synced) {
+          setPayOnlineError(
+            "No se pudo sincronizar el pedido antes del pago. Intenta de nuevo o contacta al restaurante.",
+          )
+          setPayOnlineLoading(false)
+          return
+        }
         const res = await fetch("/api/checkout/order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -499,7 +524,13 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
         <div className="space-y-3">
           {/* Edit Order Dialog */}
           {canEdit && (
-            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <Dialog
+              open={isEditDialogOpen}
+              onOpenChange={(open) => {
+                setIsEditDialogOpen(open)
+                if (open) setEditSaveError("")
+              }}
+            >
               <DialogTrigger asChild>
                 <Button variant="outline" className="w-full gap-2" size="lg">
                   <Plus className="h-4 w-4" />
@@ -639,12 +670,17 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                         {formatMxn(editItems.reduce((sum, i) => sum + i.precio * i.cantidad, 0))}
                       </span>
                     </div>
-                    <Button 
-                      className="w-full" 
+                    {editSaveError ? (
+                      <p className="text-sm text-destructive" role="alert">
+                        {editSaveError}
+                      </p>
+                    ) : null}
+                    <Button
+                      className="w-full"
                       onClick={saveChanges}
-                      disabled={editItems.length === 0}
+                      disabled={editItems.length === 0 || editSaveLoading}
                     >
-                      Guardar Cambios
+                      {editSaveLoading ? "Guardando…" : "Guardar Cambios"}
                     </Button>
                   </div>
                 </DialogFooter>

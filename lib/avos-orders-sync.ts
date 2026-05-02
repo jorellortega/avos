@@ -1,6 +1,6 @@
 "use client"
 
-import type { Order } from "@/components/orders-provider"
+import type { Order, OrderItem } from "@/components/orders-provider"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 
 /**
@@ -11,6 +11,34 @@ function isMissingInsertAvosOrderOverload(err: { message?: string; code?: string
   return (
     m.includes("Could not find the function") && m.includes("insert_avos_order")
   )
+}
+
+/**
+ * Syncs cart lines + total to Supabase for a pending order (e.g. after "Modificar pedido"
+ * or right before online pay) so /api/checkout/order charges the same amounts as the UI.
+ * Requires migration `20260202120000_customer_update_avos_order_cart.sql` on Supabase.
+ */
+export async function updateAvosOrderCartInSupabase(
+  orderId: string,
+  items: OrderItem[],
+  total: number,
+): Promise<boolean> {
+  try {
+    const supabase = createBrowserSupabase()
+    const { error } = await supabase.rpc("customer_update_avos_order_cart", {
+      p_id: orderId,
+      p_items: items,
+      p_total: total,
+    })
+    if (error) {
+      console.error("updateAvosOrderCartInSupabase", error.message)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error("updateAvosOrderCartInSupabase", e)
+    return false
+  }
 }
 
 export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { menuPesosMxnToStripeUnitAmount } from "@/lib/mxn-stripe"
 import { getStripe, isStripeConfigured } from "@/lib/stripe"
 
 export const runtime = "nodejs"
@@ -67,10 +68,11 @@ export async function POST(request: Request) {
 
   const line_items = []
   for (const item of items) {
-    const unit_amount = Math.round(item.precio * 100)
-    if (!Number.isFinite(unit_amount) || unit_amount < 1) {
+    const conv = menuPesosMxnToStripeUnitAmount(Number(item.precio))
+    if (!conv.ok) {
       return NextResponse.json({ error: "Precio inválido" }, { status: 400 })
     }
+    const unit_amount = conv.stripeUnitAmount
     line_items.push({
       quantity: Math.max(1, Math.floor(item.cantidad)),
       price_data: {

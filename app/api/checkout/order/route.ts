@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { menuPesosMxnToStripeUnitAmount } from "@/lib/mxn-stripe"
 import { getStripe, isStripeConfigured } from "@/lib/stripe"
 import { createServiceRoleClient } from "@/lib/supabase-server"
 
@@ -94,10 +95,18 @@ export async function POST(request: Request) {
     const item = raw as OrderItemRow
     const nombre = typeof item.nombre === "string" ? item.nombre : "Artículo"
     const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1))
-    const unit_amount = Math.round(Number(item.precio) * 100)
-    if (!Number.isFinite(unit_amount) || unit_amount < 1) {
-      return NextResponse.json({ error: "Precio inválido en la orden" }, { status: 400 })
+    const conv = menuPesosMxnToStripeUnitAmount(Number(item.precio))
+    if (!conv.ok) {
+      console.error("[checkout/order] precio fuera de rango o inválido", conv.reason)
+      return NextResponse.json(
+        {
+          error:
+            "Hay un precio inválido en la orden. Contacta al restaurante o actualiza la página.",
+        },
+        { status: 400 },
+      )
     }
+    const unit_amount = conv.stripeUnitAmount
     line_items.push({
       quantity: cantidad,
       price_data: {
