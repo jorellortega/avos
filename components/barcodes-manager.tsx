@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import QRCode from "react-qr-code"
-import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronUp, Copy, Download, Plus, Trash2 } from "lucide-react"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 import { resolveBarcodeScanUrl } from "@/lib/resolve-barcode-scan-url"
 import type { SiteBarcodeRow } from "@/lib/site-barcodes-types"
@@ -36,6 +36,22 @@ function sortRows(list: SiteBarcodeRow[]): SiteBarcodeRow[] {
   })
 }
 
+/** PNG pixel width for print (sharp at ~300 DPI up to ~13 in / 34 cm). */
+const QR_PRINT_PX = 4096
+
+function slugForFilename(label: string): string {
+  const s = label
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 60)
+  return s || "codigo-qr"
+}
+
 export function BarcodesManager({
   baseUrl,
   initialRows,
@@ -47,6 +63,7 @@ export function BarcodesManager({
   const [rows, setRows] = useState<SiteBarcodeRow[]>(() => sortRows(initialRows))
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   useEffect(() => {
     setRows(sortRows(initialRows))
@@ -177,6 +194,33 @@ export function BarcodesManager({
     }
   }
 
+  const downloadQrPng = async (row: SiteBarcodeRow, resolved: string) => {
+    setDownloadingId(row.id)
+    setError(null)
+    try {
+      const QRCode = (await import("qrcode")).default
+      const dataUrl = await QRCode.toDataURL(resolved, {
+        width: QR_PRINT_PX,
+        margin: 3,
+        errorCorrectionLevel: "H",
+        type: "image/png",
+        color: { dark: "#000000", light: "#FFFFFF" },
+      })
+      const name = `avos-qr-${slugForFilename(row.label)}-${row.id.slice(0, 8)}.png`
+      const a = document.createElement("a")
+      a.href = dataUrl
+      a.download = name
+      a.rel = "noopener"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo generar el PNG.")
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {error ? (
@@ -202,6 +246,7 @@ export function BarcodesManager({
         {sortRows(rows).map((row, index, arr) => {
           const resolved = resolveBarcodeScanUrl(baseUrl, row.target_url)
           const disabled = busyId === row.id
+          const downloading = downloadingId === row.id
           return (
             <li key={row.id}>
               <Card className={!row.enabled ? "opacity-75 border-dashed" : ""}>
@@ -334,6 +379,20 @@ export function BarcodesManager({
                         </div>
                         <p className="text-xs text-muted-foreground text-center max-w-[220px]">
                           Escaneo → {row.label}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full max-w-[220px]"
+                          disabled={disabled || downloading}
+                          onClick={() => void downloadQrPng(row, resolved)}
+                        >
+                          <Download className="size-3.5 mr-1.5 shrink-0" aria-hidden />
+                          {downloading ? "Generando PNG…" : "Descargar PNG (impresión)"}
+                        </Button>
+                        <p className="text-[10px] text-muted-foreground text-center max-w-[240px] leading-snug">
+                          {QR_PRINT_PX}×{QR_PRINT_PX} px, corrección alta — listo para volantes y carteles.
                         </p>
                       </>
                     ) : (
