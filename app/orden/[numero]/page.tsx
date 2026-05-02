@@ -57,6 +57,11 @@ const statusConfig: Record<OrderStatus, { label: string; color: string }> = {
   pagado: { label: "Pago recibido", color: "text-primary" },
 }
 
+/** Precios en la app son MXN; el símbolo `$` solo confunde con USD. Stripe cobra en MXN (mismo monto). */
+function formatMxn(amount: number): string {
+  return `$${amount.toFixed(2)} MXN`
+}
+
 /** After online payment: pago → cocina → listo (synced desde Supabase). */
 function PaidKitchenTrack({ status }: { status: string }) {
   const s = status
@@ -475,16 +480,16 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                 <div key={idx} className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">{item.cantidad}x {item.nombre}</p>
-                    <p className="text-sm text-muted-foreground">${item.precio} c/u</p>
+                    <p className="text-sm text-muted-foreground">{formatMxn(item.precio)} c/u</p>
                   </div>
-                  <span className="font-semibold">${(item.precio * item.cantidad).toFixed(2)}</span>
+                  <span className="font-semibold">{formatMxn(item.precio * item.cantidad)}</span>
                 </div>
               ))}
             </div>
             <div className="border-t mt-4 pt-4">
               <div className="flex items-center justify-between text-lg font-bold">
                 <span>Total</span>
-                <span>${order.total.toFixed(2)}</span>
+                <span>{formatMxn(order.total)}</span>
               </div>
             </div>
           </CardContent>
@@ -521,7 +526,7 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                       <div key={item.id} className="flex items-center justify-between gap-2 bg-muted/50 rounded-lg p-2">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{item.nombre}</p>
-                          <p className="text-xs text-muted-foreground">${item.precio}</p>
+                          <p className="text-xs text-muted-foreground">{formatMxn(item.precio)}</p>
                         </div>
                         <div className="flex items-center gap-1">
                           <Button
@@ -630,7 +635,9 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                   <div className="w-full space-y-2">
                     <div className="flex justify-between font-bold">
                       <span>Nuevo Total:</span>
-                      <span>${editItems.reduce((sum, i) => sum + i.precio * i.cantidad, 0).toFixed(2)}</span>
+                      <span>
+                        {formatMxn(editItems.reduce((sum, i) => sum + i.precio * i.cantidad, 0))}
+                      </span>
                     </div>
                     <Button 
                       className="w-full" 
@@ -658,7 +665,7 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                 <CreditCard className="h-4 w-4" />
                 {payOnlineLoading
                   ? "Abriendo pago seguro…"
-                  : `Pagar ahora — $${order.total.toFixed(2)}`}
+                  : `Pagar ahora — ${formatMxn(order.total)}`}
               </Button>
               {payOnlineError ? (
                 <p className="text-sm text-destructive text-center" role="alert">
@@ -684,7 +691,7 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                 <CreditCard className="h-4 w-4" />
                 {payOnlineLoading
                   ? "Abriendo pago seguro…"
-                  : `Pagar en línea — $${order.total.toFixed(2)}`}
+                  : `Pagar en línea — ${formatMxn(order.total)}`}
               </Button>
               {payOnlineError ? (
                 <p className="text-sm text-destructive text-center" role="alert">
@@ -714,7 +721,7 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                 <CreditCard className="h-4 w-4" aria-hidden />
                 {payAtCajaLoading
                   ? "Registrando…"
-                  : `Pagar en caja — $${order.total.toFixed(2)}`}
+                  : `Pagar en caja — ${formatMxn(order.total)}`}
               </Button>
               {payAtCajaError ? (
                 <p className="text-sm text-destructive text-center" role="alert">
