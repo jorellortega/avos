@@ -33,6 +33,7 @@ import { useCategoriaImagenes } from "@/lib/use-categoria-imagenes"
 import { useOrders, type OrderItem } from "@/components/orders-provider"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import { insertAvosOrderToSupabase } from "@/lib/avos-orders-sync"
+import { logCheckoutClient } from "@/lib/checkout-debug-client"
 import { cn } from "@/lib/utils"
 
 interface CartItem {
@@ -248,12 +249,28 @@ export default function OrdenarPage() {
     if (orderType === "takeout") {
       setPlaceOrderLoading(true)
       try {
+        logCheckoutClient("ordenar:takeout:checkout_order", {
+          orderIdPrefix: newOrder.id.slice(0, 8),
+          numero: newOrder.numero,
+          total: newOrder.total,
+          lines: newOrder.items.map((i) => ({
+            nombre: i.nombre?.slice(0, 60),
+            cantidad: i.cantidad,
+            precio: i.precio,
+          })),
+        })
         const res = await fetch("/api/checkout/order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderId: newOrder.id }),
         })
         const data = (await res.json()) as { url?: string; error?: string }
+        logCheckoutClient("ordenar:takeout:api_response", {
+          ok: res.ok,
+          status: res.status,
+          hasUrl: Boolean(data.url),
+          error: data.error ?? null,
+        })
         if (!res.ok || !data.url) {
           setPlaceOrderError(data.error ?? "No se pudo iniciar el pago.")
           setPlaceOrderLoading(false)

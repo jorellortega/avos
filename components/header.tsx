@@ -10,6 +10,7 @@ import {
   ChefHat,
   Banknote,
   Tags,
+  Briefcase,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/components/cart-provider"
@@ -23,11 +24,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { AccountNavLinks } from "@/components/account-nav-links"
 import { useStaffOrdenesNavAccess } from "@/hooks/use-staff-ordenes-nav-access"
+import { useManagerOrCeoNavAccess } from "@/hooks/use-manager-or-ceo-nav-access"
 
 export function Header() {
   const { itemCount } = useCart()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const staffOrdenesNav = useStaffOrdenesNavAccess()
+  const managerOrCeoNav = useManagerOrCeoNavAccess()
 
   return (
     <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border">
@@ -67,6 +70,12 @@ export function Header() {
             >
               Mi Orden
             </Link>
+            <Link
+              href="/jobs"
+              className="text-foreground/80 hover:text-primary transition-colors font-medium"
+            >
+              Empleos
+            </Link>
             <AccountNavLinks />
             {staffOrdenesNav === true && (
               <DropdownMenu>
@@ -101,6 +110,14 @@ export function Header() {
                       Cocina
                     </Link>
                   </DropdownMenuItem>
+                  {managerOrCeoNav === true && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/jobs-edit" className="flex items-center gap-2 cursor-pointer">
+                        <Briefcase className="h-4 w-4" />
+                        Empleos (admin)
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -158,6 +175,13 @@ export function Header() {
               >
                 Mi Orden
               </Link>
+              <Link
+                href="/jobs"
+                className="text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Empleos
+              </Link>
               <div
                 className="py-2"
                 onClick={() => setMobileMenuOpen(false)}
@@ -199,6 +223,16 @@ export function Header() {
                     <ChefHat className="h-4 w-4" />
                     Cocina
                   </Link>
+                  {managerOrCeoNav === true && (
+                    <Link
+                      href="/jobs-edit"
+                      className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <Briefcase className="h-4 w-4" />
+                      Empleos (admin)
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

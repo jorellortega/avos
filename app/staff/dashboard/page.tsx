@@ -127,9 +127,14 @@ export default async function StaffDashboardPage() {
                     </>
                   )}
                   {isManagerOrCeo(profile.role) && (
-                    <Button asChild variant="secondary">
-                      <Link href="/barcodes">Códigos QR</Link>
-                    </Button>
+                    <>
+                      <Button asChild variant="secondary">
+                        <Link href="/barcodes">Códigos QR</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/jobs-edit">Empleos — vacantes y solicitudes</Link>
+                      </Button>
+                    </>
                   )}
                   {profile.role === "ceo" && (
                     <>

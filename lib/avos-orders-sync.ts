@@ -1,6 +1,7 @@
 "use client"
 
 import type { Order, OrderItem } from "@/components/orders-provider"
+import { logCheckoutClient } from "@/lib/checkout-debug-client"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 
 /**
@@ -23,6 +24,17 @@ export async function updateAvosOrderCartInSupabase(
   items: OrderItem[],
   total: number,
 ): Promise<boolean> {
+  logCheckoutClient("updateAvosOrderCartInSupabase:before", {
+    orderIdPrefix: orderId.slice(0, 8),
+    total,
+    lineCount: items.length,
+    lines: items.map((i) => ({
+      nombre: i.nombre?.slice(0, 60),
+      cantidad: i.cantidad,
+      precio: i.precio,
+      sub: (i.precio ?? 0) * (i.cantidad ?? 0),
+    })),
+  })
   try {
     const supabase = createBrowserSupabase()
     const { error } = await supabase.rpc("customer_update_avos_order_cart", {
@@ -31,12 +43,20 @@ export async function updateAvosOrderCartInSupabase(
       p_total: total,
     })
     if (error) {
-      console.error("updateAvosOrderCartInSupabase", error.message)
+      console.error("updateAvosOrderCartInSupabase", error.message, error)
+      logCheckoutClient("updateAvosOrderCartInSupabase:error", {
+        message: error.message,
+        code: error.code,
+      })
       return false
     }
+    logCheckoutClient("updateAvosOrderCartInSupabase:ok", { orderIdPrefix: orderId.slice(0, 8), total })
     return true
   } catch (e) {
     console.error("updateAvosOrderCartInSupabase", e)
+    logCheckoutClient("updateAvosOrderCartInSupabase:exception", {
+      message: e instanceof Error ? e.message : String(e),
+    })
     return false
   }
 }

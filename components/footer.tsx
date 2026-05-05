@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { MapPin, Phone, Clock } from "lucide-react"
 
 export function Footer() {
@@ -54,8 +55,16 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-primary-foreground/20 mt-8 pt-8 text-center text-sm text-primary-foreground/70">
-          <p>&copy; {new Date().getFullYear()} Avos Mexican Grill. Todos los derechos reservados.</p>
+        <div className="border-t border-primary-foreground/20 mt-8 pt-8 flex flex-col items-center gap-3 text-sm text-primary-foreground/70">
+          <p className="text-center">
+            &copy; {new Date().getFullYear()} Avos Mexican Grill. Todos los derechos reservados.
+          </p>
+          <Link
+            href="/jobs"
+            className="text-primary-foreground/90 hover:text-primary-foreground underline underline-offset-4 font-medium transition-colors"
+          >
+            Empleos — trabaja con nosotros
+          </Link>
         </div>
       </div>
     </footer>

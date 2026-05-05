@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server"
+import {
+  checkoutOrderSummary,
+  checkoutOrderVerbose,
+} from "@/lib/checkout-order-debug"
 import { menuPesosMxnToStripeUnitAmount } from "@/lib/mxn-stripe"
 import { getStripe, isStripeConfigured } from "@/lib/stripe"
 import { createServiceRoleClient } from "@/lib/supabase-server"
@@ -76,6 +80,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "La orden no tiene artículos" }, { status: 400 })
   }
 
+  checkoutOrderSummary({
+    phase: "loaded",
+    orderIdPrefix: orderId.slice(0, 8),
+    numero: row.numero,
+    orderType: row.order_type,
+    staffPos,
+    dbTotal: row.total,
+    dbTotalNum: Number(row.total),
+    itemRowCount: items.length,
+  })
+
   const origin =
     request.headers.get("origin") ??
     process.env.NEXT_PUBLIC_APP_URL ??
@@ -95,9 +110,17 @@ export async function POST(request: Request) {
     const item = raw as OrderItemRow
     const nombre = typeof item.nombre === "string" ? item.nombre : "Artículo"
     const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1))
-    const conv = menuPesosMxnToStripeUnitAmount(Number(item.precio))
+    const precioRaw = item.precio
+    const precioNum = Number(precioRaw)
+    const conv = menuPesosMxnToStripeUnitAmount(precioNum)
     if (!conv.ok) {
-      console.error("[checkout/order] precio fuera de rango o inválido", conv.reason)
+      console.error("[checkout/order] precio inválido", {
+        reason: conv.reason,
+        precioRaw,
+        precioNum,
+        nombre: nombre.slice(0, 80),
+        cantidad,
+      })
       return NextResponse.json(
         {
           error:
@@ -125,7 +148,21 @@ export async function POST(request: Request) {
     0,
   )
   if (Math.abs(sumCents - Math.round(expectedTotal * 100)) > 1) {
-    console.error("[checkout/order] total mismatch", { sumCents, expected: expectedTotal })
+    checkoutOrderVerbose("total_mismatch_lines", {
+      lines: line_items.map((li) => ({
+        qty: li.quantity,
+        unit_amount_cents: li.price_data.unit_amount,
+        name: li.price_data.product_data.name.slice(0, 60),
+      })),
+    })
+    console.error("[checkout/order] total mismatch", {
+      sumCents,
+      sumPesos: sumCents / 100,
+      expectedTotalPesos: expectedTotal,
+      expectedCents: Math.round(expectedTotal * 100),
+      numero: row.numero,
+      orderIdPrefix: orderId.slice(0, 8),
+    })
     return NextResponse.json(
       { error: "El total del pedido no coincide. Actualiza la página e intenta de nuevo." },
       { status: 409 },
@@ -138,6 +175,18 @@ export async function POST(request: Request) {
   const cancelUrl = staffPos
     ? `${origin}/staff`
     : `${origin}/orden/${row.numero}`
+
+  checkoutOrderVerbose("stripe_line_items", {
+    line_items: line_items.map((li) => ({
+      quantity: li.quantity,
+      unit_amount: li.price_data.unit_amount,
+      currency: li.price_data.currency,
+      name: li.price_data.product_data.name.slice(0, 80),
+    })),
+    sumCents,
+    sumPesosFromLines: sumCents / 100,
+    dbTotalPesos: expectedTotal,
+  })
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -157,8 +206,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No se pudo crear la sesión de pago" }, { status: 500 })
     }
 
+    checkoutOrderSummary({
+      phase: "stripe_session_created",
+      orderIdPrefix: orderId.slice(0, 8),
+      numero: row.numero,
+      stripeSessionId: session.id,
+      /** Stripe: smallest currency unit (MXN centavos). 4500 = 45.00 MXN */
+      stripeAmountTotalCents: session.amount_total,
+      stripeAmountTotalPesos:
+        session.amount_total != null ? session.amount_total / 100 : null,
+      currency: session.currency,
+      livemode: session.livemode,
+    })
+
     return NextResponse.json({ url: session.url })
   } catch (e) {
+    console.error("[checkout/order] stripe_error", {
+      orderIdPrefix: orderId.slice(0, 8),
+      numero: row.numero,
+      sumCents,
+      message: e instanceof Error ? e.message : String(e),
+    })
     console.error("[checkout/order]", e)
     return NextResponse.json(
       { error: "Error al iniciar el pago. Intenta de nuevo." },

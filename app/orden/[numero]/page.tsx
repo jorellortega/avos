@@ -12,6 +12,7 @@ import {
   recordCustomerPaymentIntentToSupabase,
   updateAvosOrderCartInSupabase,
 } from "@/lib/avos-orders-sync"
+import { logCheckoutClient } from "@/lib/checkout-debug-client"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
@@ -374,6 +375,12 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
     setPayOnlineLoading(true)
     void (async () => {
       try {
+        logCheckoutClient("orden:payOnline:before_sync", {
+          orderIdPrefix: order.id.slice(0, 8),
+          numero: order.numero,
+          localTotal: order.total,
+          lineCount: order.items.length,
+        })
         const synced = await updateAvosOrderCartInSupabase(order.id, order.items, order.total)
         if (!synced) {
           setPayOnlineError(
@@ -388,6 +395,12 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
           body: JSON.stringify({ orderId: order.id }),
         })
         const data = (await res.json()) as { url?: string; error?: string }
+        logCheckoutClient("orden:payOnline:api_response", {
+          ok: res.ok,
+          status: res.status,
+          hasUrl: Boolean(data.url),
+          error: data.error ?? null,
+        })
         if (!res.ok || !data.url) {
           setPayOnlineError(data.error ?? "No se pudo iniciar el pago.")
           setPayOnlineLoading(false)
