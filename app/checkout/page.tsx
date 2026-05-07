@@ -13,6 +13,7 @@ import { useCart } from "@/components/cart-provider"
 import { MenuOrderServicePicker } from "@/components/menu-order-service-picker"
 import { useMenuOrderService } from "@/hooks/use-menu-order-service"
 import { ArrowLeft, MapPin, CreditCard } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -21,6 +22,8 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutError, setCheckoutError] = useState("")
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [orderingEnabled, setOrderingEnabled] = useState(true)
+  const [orderingMessage, setOrderingMessage] = useState("")
 
   const [formData, setFormData] = useState({
     nombre: "",
@@ -31,6 +34,26 @@ export default function CheckoutPage() {
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/ordering-status")
+        const data = (await res.json()) as { enabled?: boolean; message?: string }
+        setOrderingEnabled(Boolean(data.enabled ?? true))
+        setOrderingMessage(String(data.message ?? ""))
+        if (data.enabled === false) {
+          setCheckoutError(
+            String(data.message ?? "").trim() ||
+              "En este momento no estamos aceptando pedidos en línea. Intenta más tarde.",
+          )
+        }
+      } catch {
+        setOrderingEnabled(true)
+        setOrderingMessage("")
+      }
+    })()
+  }, [])
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -63,6 +86,7 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!orderingEnabled) return
     if (!validateForm()) return
     if (!service.mode) return
 
@@ -161,6 +185,17 @@ export default function CheckoutPage() {
 
       <main className="flex-1 py-8 md:py-12">
         <div className="container mx-auto px-4">
+          {!orderingEnabled ? (
+            <div className="mb-6">
+              <Alert variant="destructive">
+                <AlertTitle>Pedidos en pausa</AlertTitle>
+                <AlertDescription>
+                  {orderingMessage?.trim() ||
+                    "En este momento no estamos aceptando pedidos en línea. Intenta más tarde."}
+                </AlertDescription>
+              </Alert>
+            </div>
+          ) : null}
           <Link 
             href="/carrito" 
             className="inline-flex items-center text-muted-foreground hover:text-primary mb-6 transition-colors"
@@ -326,7 +361,7 @@ export default function CheckoutPage() {
                   type="submit" 
                   size="lg" 
                   className="w-full"
-                  disabled={isProcessing || !service.isComplete}
+                  disabled={isProcessing || !service.isComplete || !orderingEnabled}
                 >
                   {isProcessing
                     ? "Abriendo pago seguro..."

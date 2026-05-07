@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { MapPin, Briefcase, DollarSign } from "lucide-react"
+import { MapPin, Briefcase, DollarSign, Clock } from "lucide-react"
 import { submitJobApplication } from "@/app/jobs/actions"
 import type { JobPostRow } from "@/lib/jobs-types"
 import { Button } from "@/components/ui/button"
@@ -46,10 +46,6 @@ function ApplyDialog({ job }: { job: JobPostRow }) {
     if (result.ok) {
       setSuccess(true)
       form.reset()
-      window.setTimeout(() => {
-        setOpen(false)
-        setSuccess(false)
-      }, 1600)
     } else {
       setError(result.error)
     }
@@ -62,53 +58,75 @@ function ApplyDialog({ job }: { job: JobPostRow }) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Solicitud — {job.title}</DialogTitle>
+          <DialogTitle>
+            {success ? "Solicitud enviada" : `Solicitud — ${job.title}`}
+          </DialogTitle>
           <DialogDescription>
-            Completa el formulario. No necesitas cuenta en el sitio.
+            {success
+              ? "Recibimos tu solicitud. Te contactaremos pronto."
+              : "Completa el formulario. No necesitas cuenta en el sitio."}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input type="hidden" name="job_post_id" value={job.id} />
-          <div className="space-y-2">
-            <Label htmlFor={`name-${job.id}`}>Nombre completo</Label>
-            <Input id={`name-${job.id}`} name="full_name" required autoComplete="name" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`email-${job.id}`}>Correo</Label>
-            <Input
-              id={`email-${job.id}`}
-              name="email"
-              type="email"
-              required
-              autoComplete="email"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`phone-${job.id}`}>Teléfono (opcional)</Label>
-            <Input id={`phone-${job.id}`} name="phone" type="tel" autoComplete="tel" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`msg-${job.id}`}>Mensaje / experiencia (opcional)</Label>
-            <Textarea id={`msg-${job.id}`} name="message" rows={4} />
-          </div>
-          {error ? (
-            <Alert variant="destructive">
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-          {success ? (
+        {success ? (
+          <div className="space-y-4">
             <Alert>
-              <AlertTitle>Listo</AlertTitle>
-              <AlertDescription>Gracias. Recibimos tu solicitud.</AlertDescription>
+              <AlertTitle>Gracias</AlertTitle>
+              <AlertDescription>
+                Tu solicitud fue enviada correctamente. Si tu perfil encaja con la vacante, te
+                contactaremos pronto.
+              </AlertDescription>
             </Alert>
-          ) : null}
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Enviando…" : "Enviar solicitud"}
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  setSuccess(false)
+                  setError(null)
+                }}
+              >
+                Cerrar
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <input type="hidden" name="job_post_id" value={job.id} />
+            <div className="space-y-2">
+              <Label htmlFor={`name-${job.id}`}>Nombre completo</Label>
+              <Input id={`name-${job.id}`} name="full_name" required autoComplete="name" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`email-${job.id}`}>Correo</Label>
+              <Input
+                id={`email-${job.id}`}
+                name="email"
+                type="email"
+                required
+                autoComplete="email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`phone-${job.id}`}>Teléfono (opcional)</Label>
+              <Input id={`phone-${job.id}`} name="phone" type="tel" autoComplete="tel" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`msg-${job.id}`}>Mensaje / experiencia (opcional)</Label>
+              <Textarea id={`msg-${job.id}`} name="message" rows={4} />
+            </div>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            <DialogFooter>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Enviando…" : "Enviar solicitud"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -165,6 +183,12 @@ export function JobsPublicSection({
                 <span className="inline-flex items-center gap-1 font-medium text-foreground/90">
                   <DollarSign className="h-3.5 w-3.5" />
                   {job.pay.trim()}
+                </span>
+              ) : null}
+              {job.hours?.trim() ? (
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  {job.hours.trim()}
                 </span>
               ) : null}
               {job.location ? (

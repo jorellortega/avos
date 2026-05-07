@@ -13,6 +13,8 @@ export interface JobPostRow {
   employment_type: string
   /** Shown on listings, e.g. hourly rate or "Según experiencia". */
   pay: string
+  /** Shown on listings, e.g. 20-30 hrs/semana. */
+  hours: string
   is_active: boolean
   sort_order: number
   created_at: string

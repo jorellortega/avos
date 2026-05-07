@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { menuPesosMxnToStripeUnitAmount } from "@/lib/mxn-stripe"
 import { getStripe, isStripeConfigured } from "@/lib/stripe"
+import { createServiceRoleClient } from "@/lib/supabase-server"
 
 export const runtime = "nodejs"
 
@@ -23,6 +24,27 @@ type CheckoutBody = {
 }
 
 export async function POST(request: Request) {
+  try {
+    const supabase = createServiceRoleClient()
+    const { data } = await supabase
+      .from("ordering_settings")
+      .select("ordering_enabled, closed_message")
+      .eq("id", 1)
+      .maybeSingle()
+    if (data && data.ordering_enabled === false) {
+      return NextResponse.json(
+        {
+          error:
+            data.closed_message?.trim() ||
+            "En este momento no estamos aceptando pedidos en línea. Intenta más tarde.",
+        },
+        { status: 503 },
+      )
+    }
+  } catch {
+    // If settings lookup fails, don't block ordering.
+  }
+
   if (!isStripeConfigured()) {
     return NextResponse.json(
       {

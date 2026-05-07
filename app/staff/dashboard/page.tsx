@@ -132,6 +132,9 @@ export default async function StaffDashboardPage() {
                         <Link href="/barcodes">Códigos QR</Link>
                       </Button>
                       <Button asChild variant="secondary">
+                        <Link href="/staff/ordering">Pedidos en línea (on/off)</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
                         <Link href="/jobs-edit">Empleos — vacantes y solicitudes</Link>
                       </Button>
                     </>

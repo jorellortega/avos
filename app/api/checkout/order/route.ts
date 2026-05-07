@@ -49,6 +49,27 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServiceRoleClient()
+  if (!staffPos) {
+    try {
+      const { data } = await supabase
+        .from("ordering_settings")
+        .select("ordering_enabled, closed_message")
+        .eq("id", 1)
+        .maybeSingle()
+      if (data && data.ordering_enabled === false) {
+        return NextResponse.json(
+          {
+            error:
+              data.closed_message?.trim() ||
+              "En este momento no estamos aceptando pedidos en línea. Intenta más tarde.",
+          },
+          { status: 503 },
+        )
+      }
+    } catch {
+      // If settings lookup fails, don't block checkout.
+    }
+  }
   const { data: row, error } = await supabase
     .from("avos_orders")
     .select("id,numero,total,status,order_type,paid_at,items,nombre_cliente")

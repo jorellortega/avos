@@ -15,7 +15,7 @@ export default async function JobsPage() {
   const { data: rows, error } = await supabase
     .from("job_posts")
     .select(
-      "id, title, description, location, employment_type, pay, is_active, sort_order, created_at, updated_at",
+      "id, title, description, location, employment_type, pay, hours, is_active, sort_order, created_at, updated_at",
     )
     .eq("is_active", true)
     .order("sort_order", { ascending: true })

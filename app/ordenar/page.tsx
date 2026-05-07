@@ -35,6 +35,7 @@ import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import { insertAvosOrderToSupabase } from "@/lib/avos-orders-sync"
 import { logCheckoutClient } from "@/lib/checkout-debug-client"
 import { cn } from "@/lib/utils"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface CartItem {
   id: string
@@ -74,7 +75,23 @@ export default function OrdenarPage() {
   const [bebidaPickerQty, setBebidaPickerQty] = useState(1)
   const [placeOrderLoading, setPlaceOrderLoading] = useState(false)
   const [placeOrderError, setPlaceOrderError] = useState("")
+  const [orderingEnabled, setOrderingEnabled] = useState(true)
+  const [orderingMessage, setOrderingMessage] = useState("")
   const expandPanelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/ordering-status")
+        const data = (await res.json()) as { enabled?: boolean; message?: string }
+        setOrderingEnabled(Boolean(data.enabled ?? true))
+        setOrderingMessage(String(data.message ?? ""))
+      } catch {
+        setOrderingEnabled(true)
+        setOrderingMessage("")
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     const type = sessionStorage.getItem("orderType") as "dine-in" | "takeout" | null
@@ -214,6 +231,13 @@ export default function OrdenarPage() {
 
   const handlePlaceOrder = async () => {
     if (cart.length === 0 || !orderType) return
+    if (!orderingEnabled) {
+      setPlaceOrderError(
+        orderingMessage?.trim() ||
+          "En este momento no estamos aceptando pedidos en línea. Intenta más tarde.",
+      )
+      return
+    }
 
     setPlaceOrderError("")
 
@@ -242,7 +266,10 @@ export default function OrdenarPage() {
 
     const inserted = await insertAvosOrderToSupabase(newOrder)
     if (!inserted) {
-      setPlaceOrderError("No se pudo registrar el pedido. Intenta de nuevo.")
+      setPlaceOrderError(
+        orderingMessage?.trim() ||
+          "En este momento no estamos aceptando pedidos en línea. Intenta más tarde.",
+      )
       return
     }
 
@@ -307,6 +334,17 @@ export default function OrdenarPage() {
       <Header />
 
       <main className="flex-1 container mx-auto px-4 py-6">
+        {!orderingEnabled ? (
+          <div className="mb-4">
+            <Alert variant="destructive">
+              <AlertTitle>Pedidos en pausa</AlertTitle>
+              <AlertDescription>
+                {orderingMessage?.trim() ||
+                  "En este momento no estamos aceptando pedidos en línea. Intenta más tarde."}
+              </AlertDescription>
+            </Alert>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between mb-6">
           <Link
             href={orderType === "dine-in" ? "/comer-aqui" : "/para-llevar"}
@@ -912,7 +950,7 @@ export default function OrdenarPage() {
                           className="w-full"
                           size="lg"
                           onClick={() => void handlePlaceOrder()}
-                          disabled={placeOrderLoading}
+                          disabled={placeOrderLoading || !orderingEnabled}
                         >
                           {placeOrderLoading
                             ? "Abriendo pago…"

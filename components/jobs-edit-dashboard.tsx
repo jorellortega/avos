@@ -69,6 +69,7 @@ function emptyPost(): Partial<JobPostRow> {
     location: "",
     employment_type: "Tiempo completo",
     pay: "",
+    hours: "",
     is_active: true,
     sort_order: 0,
   }
@@ -218,6 +219,7 @@ export function JobsEditDashboard() {
                         · {post.employment_type}
                         {post.location ? ` · ${post.location}` : ""}
                         {post.pay?.trim() ? ` · ${post.pay.trim()}` : ""}
+                        {post.hours?.trim() ? ` · ${post.hours.trim()}` : ""}
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -391,6 +393,7 @@ function PostFormDialog({
     const location = String(fd.get("location") ?? "").trim()
     const employment_type = String(fd.get("employment_type") ?? "").trim() || "Tiempo completo"
     const pay = String(fd.get("pay") ?? "").trim()
+    const hours = String(fd.get("hours") ?? "").trim()
     const sort_order = Number(fd.get("sort_order") ?? 0) || 0
     const is_active = isActive
 
@@ -407,6 +410,7 @@ function PostFormDialog({
         location,
         employment_type,
         pay,
+        hours,
         is_active,
         sort_order,
       })
@@ -424,6 +428,7 @@ function PostFormDialog({
           location,
           employment_type,
           pay,
+          hours,
           is_active,
           sort_order,
         })
@@ -501,6 +506,17 @@ function PostFormDialog({
             <p className="text-xs text-muted-foreground">
               Opcional. Se muestra en la página pública de empleos.
             </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`jf-hours-${fieldId}`}>Horas</Label>
+            <Input
+              id={`jf-hours-${fieldId}`}
+              name="hours"
+              placeholder="Ej. 20–30 hrs/semana, turnos, medio tiempo"
+              defaultValue={String(defaults.hours ?? "")}
+              key={`${mode}-${post?.id}-hours`}
+            />
+            <p className="text-xs text-muted-foreground">Opcional. Se muestra en la página pública.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">

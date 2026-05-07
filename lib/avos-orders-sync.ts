@@ -95,6 +95,9 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
     }
 
     if (error) {
+      if (error.message?.toLowerCase().includes("ordering_disabled")) {
+        return false
+      }
       console.error("insertAvosOrderToSupabase", error.message)
       return false
     }
