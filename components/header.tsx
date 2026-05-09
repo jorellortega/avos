@@ -70,12 +70,6 @@ export function Header() {
             >
               Mi Orden
             </Link>
-            <Link
-              href="/jobs"
-              className="text-foreground/80 hover:text-primary transition-colors font-medium"
-            >
-              Empleos
-            </Link>
             <AccountNavLinks />
             {staffOrdenesNav === true && (
               <DropdownMenu>
@@ -174,13 +168,6 @@ export function Header() {
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Mi Orden
-              </Link>
-              <Link
-                href="/jobs"
-                className="text-foreground/80 hover:text-primary transition-colors font-medium py-2"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Empleos
               </Link>
               <div
                 className="py-2"
