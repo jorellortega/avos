@@ -9,6 +9,7 @@ const applicationSchema = z.object({
   full_name: z.string().trim().min(1).max(200),
   email: z.string().trim().email().max(320),
   phone: z.string().trim().max(40).optional().default(""),
+  city: z.string().trim().min(1).max(120),
   message: z.string().trim().max(8000).optional().default(""),
 })
 
@@ -23,6 +24,7 @@ export async function submitJobApplication(
     full_name: formData.get("full_name"),
     email: formData.get("email"),
     phone: formData.get("phone") ?? "",
+    city: formData.get("city"),
     message: formData.get("message") ?? "",
   })
 
@@ -36,6 +38,7 @@ export async function submitJobApplication(
     full_name: parsed.data.full_name,
     email: parsed.data.email,
     phone: parsed.data.phone,
+    city: parsed.data.city,
     message: parsed.data.message,
   })
 

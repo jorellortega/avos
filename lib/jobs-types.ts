@@ -27,6 +27,8 @@ export interface JobApplicationRow {
   full_name: string
   email: string
   phone: string
+  /** City or town only (not street address). */
+  city: string
   message: string
   status: JobApplicationStatus
   created_at: string

@@ -98,7 +98,9 @@ export function JobsEditDashboard() {
   const refreshApplications = useCallback(async () => {
     const { data, error } = await supabase
       .from("job_applications")
-      .select("id, job_post_id, full_name, email, phone, message, status, created_at, job_posts(title)")
+      .select(
+        "id, job_post_id, full_name, email, phone, city, message, status, created_at, job_posts(title)",
+      )
       .order("created_at", { ascending: false })
     if (error) {
       setLoadError(error.message)
@@ -144,6 +146,17 @@ export function JobsEditDashboard() {
   async function updateApplicationStatus(id: string, status: JobApplicationStatus) {
     setBusyId(id)
     const { error } = await supabase.from("job_applications").update({ status }).eq("id", id)
+    setBusyId(null)
+    if (error) {
+      setLoadError(error.message)
+      return
+    }
+    void refreshApplications()
+  }
+
+  async function deleteApplication(id: string) {
+    setBusyId(id)
+    const { error } = await supabase.from("job_applications").delete().eq("id", id)
     setBusyId(null)
     if (error) {
       setLoadError(error.message)
@@ -295,8 +308,10 @@ export function JobsEditDashboard() {
                     <TableHead>Nombre</TableHead>
                     <TableHead>Correo</TableHead>
                     <TableHead>Teléfono</TableHead>
+                    <TableHead>Ciudad</TableHead>
                     <TableHead className="max-w-[200px]">Mensaje</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead className="w-[1%] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -315,6 +330,7 @@ export function JobsEditDashboard() {
                         </a>
                       </TableCell>
                       <TableCell className="text-sm">{app.phone || "—"}</TableCell>
+                      <TableCell className="text-sm">{app.city?.trim() || "—"}</TableCell>
                       <TableCell className="max-w-[220px] text-sm align-top">
                         {app.message ? (
                           <span className="line-clamp-4 whitespace-pre-wrap" title={app.message}>
@@ -343,6 +359,35 @@ export function JobsEditDashboard() {
                             ))}
                           </SelectContent>
                         </Select>
+                      </TableCell>
+                      <TableCell className="text-right align-middle">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={busyId === app.id}
+                            >
+                              Eliminar
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Eliminar solicitud?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Se borrará la solicitud de {app.full_name}. Esta acción no se puede
+                                deshacer.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => void deleteApplication(app.id)}>
+                                Eliminar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </TableCell>
                     </TableRow>
                   ))}

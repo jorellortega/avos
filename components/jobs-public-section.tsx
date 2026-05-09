@@ -111,6 +111,20 @@ function ApplyDialog({ job }: { job: JobPostRow }) {
               <Input id={`phone-${job.id}`} name="phone" type="tel" autoComplete="tel" />
             </div>
             <div className="space-y-2">
+              <Label htmlFor={`city-${job.id}`}>Ciudad</Label>
+              <Input
+                id={`city-${job.id}`}
+                name="city"
+                required
+                maxLength={120}
+                placeholder="Ej. Guadalajara"
+                autoComplete="address-level2"
+              />
+              <p className="text-xs text-muted-foreground">
+                Solo ciudad o municipio, no dirección completa.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor={`msg-${job.id}`}>Mensaje / experiencia (opcional)</Label>
               <Textarea id={`msg-${job.id}`} name="message" rows={4} />
             </div>

@@ -48,9 +48,14 @@ export function Footer() {
             <h3 className="font-semibold text-lg mb-4" style={{ fontFamily: 'var(--font-heading)' }}>
               Horario
             </h3>
-            <div className="flex items-center gap-3 text-sm">
-              <Clock className="h-5 w-5 flex-shrink-0" />
-              <span>6am to 8pm</span>
+            <div className="flex items-start gap-3 text-sm">
+              <Clock className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1.5 leading-snug">
+                <p>7:30am to 8:30pm</p>
+                <p className="text-primary-foreground/90">
+                  Closed: Thursdays and Tuesdays
+                </p>
+              </div>
             </div>
           </div>
         </div>
