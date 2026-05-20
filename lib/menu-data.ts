@@ -76,10 +76,89 @@ export function getCategoriaById(id: string): CategoriaMenu | undefined {
 }
 
 /** Flat tabs data for `/ordenar` (one configurable item per category) */
+export type CategoriaPlatillo = {
+  id: string
+  nombre: string
+  descripcion: string
+  precioBase: number
+  /** false = precio fijo, sin selector de proteína */
+  tieneProteinas?: boolean
+}
+
+/** Multiple menu items within one category (e.g. burrito styles). */
+export const platillosPorCategoria: Partial<
+  Record<string, readonly CategoriaPlatillo[]>
+> = {
+  burritos: [
+    {
+      id: "burrito",
+      nombre: "Burrito",
+      descripcion: "Arroz, frijoles, cebolla asada, aguacate, salsa de aguacate",
+      precioBase: 95,
+    },
+    {
+      id: "california-burrito",
+      nombre: "California Burrito",
+      descripcion:
+        "Carne, papas, queso, guacamole y salsa de aguacate",
+      precioBase: 95,
+      tieneProteinas: false,
+    },
+    {
+      id: "breakfast-burrito",
+      nombre: "Breakfast Burrito",
+      descripcion: "Huevos, papas, queso, frijoles y salsa",
+      precioBase: 95,
+      tieneProteinas: false,
+    },
+  ],
+  platillos: [
+    {
+      id: "platillo",
+      nombre: "Platillo",
+      descripcion:
+        "Arroz, frijoles, cebolla asada, rebanadas de aguacate + salsa de aguacate, tortillas",
+      precioBase: 120,
+    },
+    {
+      id: "menudo",
+      nombre: "Menudo",
+      descripcion: "Sopa tradicional de pancita de res",
+      precioBase: 120,
+      tieneProteinas: false,
+    },
+    {
+      id: "pozole",
+      nombre: "Pozole",
+      descripcion: "Sopa de maíz con carne, lechuga, rábano y orégano",
+      precioBase: 120,
+      tieneProteinas: false,
+    },
+  ],
+}
+
+export function getPlatillosForCategoria(
+  categoria: CategoriaMenu,
+): CategoriaPlatillo[] {
+  const custom = platillosPorCategoria[categoria.id]
+  if (custom && custom.length > 0) return [...custom]
+  return [
+    {
+      id: categoria.id,
+      nombre: categoria.nombre,
+      descripcion: categoria.descripcion,
+      precioBase: categoria.precioBase,
+      tieneProteinas: categoria.tieneProteinas,
+    },
+  ]
+}
+
 export type OrdenarMenuItem = {
+  id: string
   name: string
   basePrice: number
   shrimpExtra?: number
+  tieneProteinas: boolean
   proteins: readonly Proteina[]
 }
 
@@ -94,14 +173,14 @@ export const menuCategories: OrdenarMenuCategory[] = categorias.map((c) => ({
   id: c.id,
   name: c.nombre,
   description: c.descripcion,
-  items: [
-    {
-      name: c.nombre,
-      basePrice: c.precioBase,
-      shrimpExtra: 20,
-      proteins: proteinas,
-    },
-  ],
+  items: getPlatillosForCategoria(c).map((p) => ({
+    id: p.id,
+    name: p.nombre,
+    basePrice: p.precioBase,
+    shrimpExtra: 20,
+    tieneProteinas: p.tieneProteinas !== false,
+    proteins: p.tieneProteinas === false ? [] : proteinas,
+  })),
 }))
 
 export type BebidaTamano = "chico" | "grande"

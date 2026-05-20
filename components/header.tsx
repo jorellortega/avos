@@ -11,6 +11,8 @@ import {
   Banknote,
   Tags,
   Briefcase,
+  Calendar,
+  Package,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/components/cart-provider"
@@ -105,12 +107,26 @@ export function Header() {
                     </Link>
                   </DropdownMenuItem>
                   {managerOrCeoNav === true && (
-                    <DropdownMenuItem asChild>
-                      <Link href="/jobs-edit" className="flex items-center gap-2 cursor-pointer">
-                        <Briefcase className="h-4 w-4" />
-                        Empleos (admin)
-                      </Link>
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/jobs-edit" className="flex items-center gap-2 cursor-pointer">
+                          <Briefcase className="h-4 w-4" />
+                          Empleos (admin)
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/horario-edit" className="flex items-center gap-2 cursor-pointer">
+                          <Calendar className="h-4 w-4" />
+                          Horario empleados
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/inventario-edit" className="flex items-center gap-2 cursor-pointer">
+                          <Package className="h-4 w-4" />
+                          Inventario
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -211,14 +227,32 @@ export function Header() {
                     Cocina
                   </Link>
                   {managerOrCeoNav === true && (
-                    <Link
-                      href="/jobs-edit"
-                      className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Briefcase className="h-4 w-4" />
-                      Empleos (admin)
-                    </Link>
+                    <>
+                      <Link
+                        href="/jobs-edit"
+                        className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Briefcase className="h-4 w-4" />
+                        Empleos (admin)
+                      </Link>
+                      <Link
+                        href="/horario-edit"
+                        className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Calendar className="h-4 w-4" />
+                        Horario empleados
+                      </Link>
+                      <Link
+                        href="/inventario-edit"
+                        className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Package className="h-4 w-4" />
+                        Inventario
+                      </Link>
+                    </>
                   )}
                 </div>
               )}

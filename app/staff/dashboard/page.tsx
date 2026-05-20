@@ -137,6 +137,12 @@ export default async function StaffDashboardPage() {
                       <Button asChild variant="secondary">
                         <Link href="/jobs-edit">Empleos — vacantes y solicitudes</Link>
                       </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/horario-edit">Horario de empleados</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/inventario-edit">Inventario</Link>
+                      </Button>
                     </>
                   )}
                   {profile.role === "ceo" && (

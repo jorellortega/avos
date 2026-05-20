@@ -16,6 +16,8 @@ import {
 interface MenuItemCardProps {
   /** e.g. tacos, burritos — for pricing / availability */
   categoriaId: string
+  /** Specific platillo id when category has multiple items (e.g. california-burrito) */
+  platilloId?: string
   categoria: string
   nombre: string
   descripcion: string
@@ -28,6 +30,7 @@ interface MenuItemCardProps {
 
 export function MenuItemCard({
   categoriaId,
+  platilloId,
   categoria,
   nombre,
   descripcion,
@@ -42,49 +45,55 @@ export function MenuItemCard({
   const [cantidad, setCantidad] = useState(1)
   const [showSuccess, setShowSuccess] = useState(false)
 
+  const pid = platilloId ?? categoriaId
   const categoriaOculta = catalog?.isCategoriaHidden(categoriaId) ?? false
+  const platilloOculto = catalog?.isPlatilloHidden(categoriaId, pid) ?? false
   const categoriaFuera = catalog?.isCategoriaOut(categoriaId) ?? false
+  const platilloFuera = catalog?.isPlatilloOut(categoriaId, pid) ?? false
 
   const proteinasEnMenu = proteinas.filter(
-    (p) => !catalog?.isProteinaHidden(categoriaId, p),
+    (p) => !catalog?.isProteinaHidden(categoriaId, p, pid),
   )
 
   const proteinasDisponibles = proteinasEnMenu.filter(
-    (p) => !catalog?.isProteinaOut(categoriaId, p),
+    (p) => !catalog?.isProteinaOut(categoriaId, p, pid),
   )
 
   useEffect(() => {
     if (!catalog || !tieneProteinas) return
     const enMenu = proteinas.filter(
-      (p) => !catalog.isProteinaHidden(categoriaId, p),
+      (p) => !catalog.isProteinaHidden(categoriaId, p, pid),
     )
     const pickable = enMenu.filter(
-      (p) => !catalog.isProteinaOut(categoriaId, p),
+      (p) => !catalog.isProteinaOut(categoriaId, p, pid),
     )
     if (pickable.length === 0) return
     if (
-      catalog.isProteinaHidden(categoriaId, selectedProteina) ||
-      catalog.isProteinaOut(categoriaId, selectedProteina)
+      catalog.isProteinaHidden(categoriaId, selectedProteina, pid) ||
+      catalog.isProteinaOut(categoriaId, selectedProteina, pid)
     ) {
       setSelectedProteina(pickable[0])
     }
-  }, [catalog, tieneProteinas, selectedProteina, categoriaId])
+  }, [catalog, tieneProteinas, selectedProteina, categoriaId, pid])
 
-  if (categoriaOculta) return null
+  if (categoriaOculta || platilloOculto) return null
 
   const precio = tieneProteinas
-    ? catalog?.getPrecioConProteina(categoriaId, selectedProteina) ??
+    ? catalog?.getPrecioConProteina(categoriaId, selectedProteina, pid) ??
       (selectedProteina === "Camarón" ? precioBase + 20 : precioBase)
-    : catalog?.getCategoriaPrecioBase(categoriaId) ?? precioBase
+    : catalog?.getPlatilloPrecio(categoriaId, pid) ?? precioBase
 
   const precioProteina = (p: Proteina) =>
-    catalog?.getPrecioConProteina(categoriaId, p) ??
+    catalog?.getPrecioConProteina(categoriaId, p, pid) ??
     (p === "Camarón" ? precioBase + 20 : precioBase)
 
   const handleAddToCart = () => {
-    if (categoriaFuera) return
+    if (categoriaFuera || platilloFuera) return
     if (tieneProteinas && proteinasDisponibles.length === 0) return
-    if (tieneProteinas && catalog?.isProteinaOut(categoriaId, selectedProteina))
+    if (
+      tieneProteinas &&
+      catalog?.isProteinaOut(categoriaId, selectedProteina, pid)
+    )
       return
 
     const itemId = tieneProteinas
@@ -107,7 +116,7 @@ export function MenuItemCard({
     setTimeout(() => setShowSuccess(false), 2000)
   }
 
-  if (categoriaFuera) {
+  if (categoriaFuera || platilloFuera) {
     return (
       <Card className="overflow-hidden border-destructive/30 bg-muted/40">
         <CardContent className="p-5">
@@ -160,7 +169,8 @@ export function MenuItemCard({
                 <div className="grid grid-cols-2 gap-2">
                   {proteinasEnMenu.map((proteina) => {
                     const agotada =
-                      catalog?.isProteinaOut(categoriaId, proteina) ?? false
+                      catalog?.isProteinaOut(categoriaId, proteina, pid) ??
+                      false
                     const isSel = selectedProteina === proteina
                     return (
                       <button

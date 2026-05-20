@@ -2,6 +2,7 @@ import {
   bebidas,
   categorias,
   getBebidaPrecioDefault,
+  getPlatillosForCategoria,
   proteinas,
   type BebidaTamano,
   type Proteina,
@@ -43,6 +44,29 @@ export type MenuCatalogJson = {
   /** Hidden only on specific categories (e.g. no Camarón on Tacos) */
   hiddenProteinasPorCategoria: HiddenProteinasPorCategoria
   hiddenBebidas: string[]
+  /** Whole platillo agotado (key: catalogPlatilloKey) */
+  outPlatillos: string[]
+  /** Whole platillo hidden from menu */
+  hiddenPlatillos: string[]
+}
+
+/** Catalog scope for a menu item (category or specific platillo like california-burrito). */
+export function catalogPlatilloKey(
+  categoriaId: string,
+  platilloId: string,
+): string {
+  if (platilloId === categoriaId) return categoriaId
+  return `${categoriaId}:${platilloId}`
+}
+
+/** Lookup order: platillo-specific key, then legacy category key. */
+export function catalogLookupKeys(
+  categoriaId: string,
+  platilloId?: string,
+): string[] {
+  if (!platilloId || platilloId === categoriaId) return [categoriaId]
+  const key = catalogPlatilloKey(categoriaId, platilloId)
+  return key === categoriaId ? [categoriaId] : [key, categoriaId]
 }
 
 export function defaultMenuCatalogJson(): MenuCatalogJson {
@@ -59,6 +83,8 @@ export function defaultMenuCatalogJson(): MenuCatalogJson {
     hiddenProteinas: [],
     hiddenProteinasPorCategoria: {},
     hiddenBebidas: [],
+    outPlatillos: [],
+    hiddenPlatillos: [],
   }
 }
 
@@ -152,6 +178,8 @@ export function parseMenuCatalogJson(raw: string | null | undefined): MenuCatalo
         o.hiddenProteinasPorCategoria,
       ),
       hiddenBebidas: asStringArray(o.hiddenBebidas),
+      outPlatillos: asStringArray(o.outPlatillos),
+      hiddenPlatillos: asStringArray(o.hiddenPlatillos),
     }
   } catch {
     return defaultMenuCatalogJson()
@@ -165,14 +193,29 @@ export function serializeMenuCatalogJson(j: MenuCatalogJson): string {
 export type MenuCatalogHelpers = {
   json: MenuCatalogJson
   getCategoriaPrecioBase: (categoriaId: string) => number
-  getPrecioConProteina: (categoriaId: string, proteina: Proteina) => number
+  getPlatilloPrecio: (categoriaId: string, platilloId: string) => number
+  getPrecioConProteina: (
+    categoriaId: string,
+    proteina: Proteina,
+    platilloId?: string,
+  ) => number
   getBebidaPrecio: (bebidaId: string, tamano: BebidaTamano) => number
   getCamarónExtra: () => number
   isCategoriaOut: (categoriaId: string) => boolean
-  isProteinaOut: (categoriaId: string, p: Proteina | string) => boolean
+  isPlatilloOut: (categoriaId: string, platilloId: string) => boolean
+  isProteinaOut: (
+    categoriaId: string,
+    p: Proteina | string,
+    platilloId?: string,
+  ) => boolean
   isBebidaOut: (bebidaId: string) => boolean
   isCategoriaHidden: (categoriaId: string) => boolean
-  isProteinaHidden: (categoriaId: string, p: Proteina | string) => boolean
+  isPlatilloHidden: (categoriaId: string, platilloId: string) => boolean
+  isProteinaHidden: (
+    categoriaId: string,
+    p: Proteina | string,
+    platilloId?: string,
+  ) => boolean
   isBebidaHidden: (bebidaId: string) => boolean
 }
 
@@ -184,7 +227,9 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     if (list?.length) outProtByCat.set(catId, new Set(list))
   }
   const outBeb = new Set(json.outBebidas)
+  const outPlat = new Set(json.outPlatillos)
   const hiddenCat = new Set(json.hiddenCategorias)
+  const hiddenPlat = new Set(json.hiddenPlatillos)
   const hiddenProt = new Set(json.hiddenProteinas)
   const hiddenProtByCat = new Map<string, Set<string>>()
   for (const [catId, list] of Object.entries(json.hiddenProteinasPorCategoria)) {
@@ -197,6 +242,19 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     if (typeof o === "number" && Number.isFinite(o)) return o
     const c = categorias.find((c) => c.id === categoriaId)
     return c?.precioBase ?? 0
+  }
+
+  const getPlatilloPrecio = (categoriaId: string, platilloId: string) => {
+    for (const key of catalogLookupKeys(categoriaId, platilloId)) {
+      const o = json.categoriaPrecios[key]
+      if (typeof o === "number" && Number.isFinite(o)) return o
+    }
+    const c = categorias.find((x) => x.id === categoriaId)
+    if (c) {
+      const p = getPlatillosForCategoria(c).find((x) => x.id === platilloId)
+      if (p) return p.precioBase
+    }
+    return getCategoriaPrecioBase(categoriaId)
   }
 
   const getBebidaPrecio = (bebidaId: string, tamano: BebidaTamano) => {
@@ -215,21 +273,63 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
 
   const isCategoriaOut = (categoriaId: string) => outCat.has(categoriaId)
 
-  const isProteinaOut = (categoriaId: string, p: Proteina | string) =>
-    outProt.has(p) || (outProtByCat.get(categoriaId)?.has(p) ?? false)
+  const isPlatilloOut = (categoriaId: string, platilloId: string) => {
+    if (isCategoriaOut(categoriaId)) return true
+    for (const key of catalogLookupKeys(categoriaId, platilloId)) {
+      if (outPlat.has(key)) return true
+    }
+    return false
+  }
+
+  const isProteinaOut = (
+    categoriaId: string,
+    p: Proteina | string,
+    platilloId?: string,
+  ) => {
+    if (outProt.has(p)) return true
+    for (const key of catalogLookupKeys(categoriaId, platilloId)) {
+      if (outProtByCat.get(key)?.has(p)) return true
+    }
+    return false
+  }
 
   const isBebidaOut = (bebidaId: string) => outBeb.has(bebidaId)
 
   const isCategoriaHidden = (categoriaId: string) => hiddenCat.has(categoriaId)
 
-  const isProteinaHidden = (categoriaId: string, p: Proteina | string) =>
-    hiddenProt.has(p) || (hiddenProtByCat.get(categoriaId)?.has(p) ?? false)
+  const isPlatilloHidden = (categoriaId: string, platilloId: string) => {
+    if (isCategoriaHidden(categoriaId)) return true
+    for (const key of catalogLookupKeys(categoriaId, platilloId)) {
+      if (hiddenPlat.has(key)) return true
+    }
+    return false
+  }
+
+  const isProteinaHidden = (
+    categoriaId: string,
+    p: Proteina | string,
+    platilloId?: string,
+  ) => {
+    if (hiddenProt.has(p)) return true
+    for (const key of catalogLookupKeys(categoriaId, platilloId)) {
+      if (hiddenProtByCat.get(key)?.has(p)) return true
+    }
+    return false
+  }
 
   const isBebidaHidden = (bebidaId: string) => hiddenBeb.has(bebidaId)
 
-  const getPrecioConProteina = (categoriaId: string, proteina: Proteina) => {
-    const specific = json.proteinaPreciosPorCategoria[categoriaId]?.[proteina]
-    if (typeof specific === "number" && Number.isFinite(specific)) return specific
+  const getPrecioConProteina = (
+    categoriaId: string,
+    proteina: Proteina,
+    platilloId?: string,
+  ) => {
+    for (const key of catalogLookupKeys(categoriaId, platilloId)) {
+      const specific = json.proteinaPreciosPorCategoria[key]?.[proteina]
+      if (typeof specific === "number" && Number.isFinite(specific)) {
+        return specific
+      }
+    }
     const base = getCategoriaPrecioBase(categoriaId)
     return precioItemConProteina(base, proteina, getCamarónExtra())
   }
@@ -237,13 +337,16 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
   return {
     json,
     getCategoriaPrecioBase,
+    getPlatilloPrecio,
     getPrecioConProteina,
     getBebidaPrecio,
     getCamarónExtra,
     isCategoriaOut,
+    isPlatilloOut,
     isProteinaOut,
     isBebidaOut,
     isCategoriaHidden,
+    isPlatilloHidden,
     isProteinaHidden,
     isBebidaHidden,
   }

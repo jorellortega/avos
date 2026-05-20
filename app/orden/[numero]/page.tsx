@@ -21,6 +21,7 @@ import {
   bebidas,
   bebidaTamanoLabels,
   getBebidaPrecioDefault,
+  getPlatillosForCategoria,
   proteinas,
   type BebidaTamano,
   type Proteina,
@@ -284,26 +285,45 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
 
   const isPickup = order.tipo === "pickup"
 
-  const addItemToEdit = (categoria: typeof categorias[number], proteina: Proteina) => {
-    const precio =
-      catalog?.getPrecioConProteina(categoria.id, proteina) ??
-      (proteina === "Camarón" ? categoria.precioBase + 20 : categoria.precioBase)
-    const itemId = `${categoria.id}-${proteina}`
-    const existingItem = editItems.find(i => i.id === itemId)
-    
+  const addItemToEdit = (
+    categoria: (typeof categorias)[number],
+    proteina?: Proteina,
+    platillo?: { id: string; nombre: string; precioBase: number },
+  ) => {
+    const platilloNombre = platillo?.nombre ?? categoria.nombre
+    const platilloId = platillo?.id ?? categoria.id
+    const precio = proteina
+      ? catalog?.getPrecioConProteina(categoria.id, proteina, platillo?.id) ??
+        (proteina === "Camarón"
+          ? (platillo?.precioBase ?? categoria.precioBase) + 20
+          : platillo?.precioBase ?? categoria.precioBase)
+      : platillo
+        ? catalog?.getPlatilloPrecio(categoria.id, platillo.id) ??
+          platillo.precioBase
+        : categoria.precioBase
+    const itemId = `${categoria.id}-${platilloId}-${proteina ?? "default"}`
+    const existingItem = editItems.find((i) => i.id === itemId)
+
     if (existingItem) {
-      setEditItems(prev => prev.map(item => 
-        item.id === itemId ? { ...item, cantidad: item.cantidad + 1 } : item
-      ))
+      setEditItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, cantidad: item.cantidad + 1 } : item,
+        ),
+      )
     } else {
-      setEditItems(prev => [...prev, {
-        id: itemId,
-        categoria: categoria.id,
-        nombre: `${categoria.nombre} de ${proteina}`,
-        proteina,
-        cantidad: 1,
-        precio
-      }])
+      setEditItems((prev) => [
+        ...prev,
+        {
+          id: itemId,
+          categoria: categoria.id,
+          nombre: proteina
+            ? `${platilloNombre} de ${proteina}`
+            : platilloNombre,
+          proteina,
+          cantidad: 1,
+          precio,
+        },
+      ])
     }
   }
 
@@ -622,25 +642,37 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                         !catalog?.isCategoriaOut(cat.id) &&
                         !catalog?.isCategoriaHidden(cat.id),
                     )
-                    .map(cat => (
-                    <div key={cat.id}>
-                      <p className="text-sm font-medium mb-2">{cat.nombre}</p>
+                    .map((cat) => (
+                    <div key={cat.id} className="space-y-4">
+                      {getPlatillosForCategoria(cat)
+                        .filter(
+                          (platillo) =>
+                            !catalog?.isPlatilloHidden(cat.id, platillo.id),
+                        )
+                        .map((platillo) => (
+                        <div key={platillo.id}>
+                          <p className="text-sm font-medium mb-2">
+                            {platillo.nombre}
+                          </p>
+                      {platillo.tieneProteinas !== false ? (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {proteinas
                           .filter(
-                            (prot) => !catalog?.isProteinaHidden(cat.id, prot),
+                            (prot) =>
+                              !catalog?.isProteinaHidden(cat.id, prot, platillo.id),
                           )
                           .map((prot) => {
                           const agotada =
-                            catalog?.isProteinaOut(cat.id, prot) ?? false
+                            catalog?.isProteinaOut(cat.id, prot, platillo.id) ??
+                            false
                           return (
                           <button
-                            key={prot}
+                            key={`${platillo.id}-${prot}`}
                             type="button"
                             disabled={agotada}
                             onClick={() => {
                               if (agotada) return
-                              addItemToEdit(cat, prot)
+                              addItemToEdit(cat, prot, platillo)
                             }}
                             className={`rounded-lg border border-border bg-card overflow-hidden text-left ${
                               agotada
@@ -664,6 +696,19 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                           )
                         })}
                       </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => addItemToEdit(cat, undefined, platillo)}
+                          className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/50"
+                        >
+                          Agregar · $
+                          {catalog?.getPlatilloPrecio(cat.id, platillo.id) ??
+                            platillo.precioBase}
+                        </button>
+                      )}
+                        </div>
+                      ))}
                     </div>
                   ))}
                   {!catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) &&

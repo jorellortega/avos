@@ -36,6 +36,7 @@ import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { useCategoriaImagenes } from "@/lib/use-categoria-imagenes"
 import { useOrders, type OrderItem } from "@/components/orders-provider"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
+import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
 import { insertAvosOrderToSupabase } from "@/lib/avos-orders-sync"
 import { logCheckoutClient } from "@/lib/checkout-debug-client"
 import { cn } from "@/lib/utils"
@@ -57,6 +58,77 @@ const categoriaEmoji: Record<string, string> = {
   quesadillas: "🧀",
   platillos: "🍽️",
   bebidas: "🥤",
+}
+
+
+function OrdenarFixedPlatilloRow({
+  item,
+  categoryId,
+  categoryName,
+  catalog,
+  onAdd,
+}: {
+  item: OrdenarMenuItem
+  categoryId: string
+  categoryName: string
+  catalog: MenuCatalogHelpers | null
+  onAdd: (
+    item: OrdenarMenuItem,
+    categoria: string,
+    qty: number,
+    categoryId: string,
+  ) => void
+}) {
+  const [qty, setQty] = useState(1)
+  const agotado = catalog?.isPlatilloOut(categoryId, item.id) ?? false
+  const price = catalog?.getPlatilloPrecio(categoryId, item.id) ?? item.basePrice
+
+  return (
+    <>
+      {agotado && (
+        <p className="text-sm text-destructive font-medium mb-3">Agotado</p>
+      )}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-1">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium shrink-0">Cantidad</span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-9 w-9"
+              disabled={qty <= 1 || agotado}
+              onClick={() => setQty((q) => Math.max(1, q - 1))}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="w-8 text-center tabular-nums font-medium">{qty}</span>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-9 w-9"
+              disabled={agotado}
+              onClick={() => setQty((q) => q + 1)}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <Button
+          type="button"
+          className="sm:ml-auto w-full sm:w-auto"
+          disabled={agotado}
+          onClick={() => {
+            onAdd(item, categoryName, qty, categoryId)
+            setQty(1)
+          }}
+        >
+          Agregar al carrito
+        </Button>
+      </div>
+    </>
+  )
 }
 
 export default function OrdenarPage() {
@@ -152,12 +224,14 @@ export default function OrdenarPage() {
       qty: number,
       categoryId: string,
     ) => {
-      const itemId = `${item.name}-${protein || "none"}`
+      const itemId = `${item.id}-${protein || "none"}`
       setCart((prev) => {
         const existingItem = prev.find((i) => i.id === itemId)
         let price: number
         if (catalog && protein) {
-          price = catalog.getPrecioConProteina(categoryId, protein)
+          price = catalog.getPrecioConProteina(categoryId, protein, item.id)
+        } else if (catalog && !item.tieneProteinas) {
+          price = catalog.getPlatilloPrecio(categoryId, item.id)
         } else if (catalog) {
           price = catalog.getCategoriaPrecioBase(categoryId)
         } else {
@@ -468,6 +542,20 @@ export default function OrdenarPage() {
                         <h3 className="font-semibold text-foreground text-sm md:text-base">
                           {category.name}
                         </h3>
+                        {category.items.length > 1 && (
+                          <p className="text-[11px] text-muted-foreground mt-1 leading-tight px-1">
+                            {category.items
+                              .filter(
+                                (item) =>
+                                  !catalog?.isPlatilloHidden(
+                                    category.id,
+                                    item.id,
+                                  ),
+                              )
+                              .map((item) => item.name)
+                              .join(" · ")}
+                          </p>
+                        )}
                       </button>
 
                       {active && (
@@ -482,29 +570,94 @@ export default function OrdenarPage() {
                             </p>
                           </div>
                           <div className="p-4 space-y-4">
-                            {category.items.map((item) => {
-                              const linesForCategory = cart.filter(
-                                (c) => c.categoria === category.name,
+                            {category.items
+                              .filter(
+                                (item) =>
+                                  !catalog?.isPlatilloHidden(
+                                    category.id,
+                                    item.id,
+                                  ),
                               )
+                              .map((item) => {
+                              const linesForItem = cart.filter(
+                                (c) =>
+                                  c.categoria === category.name &&
+                                  c.id.startsWith(`${item.id}-`),
+                              )
+                              const fixedPrice = catalog
+                                ? catalog.getPlatilloPrecio(category.id, item.id)
+                                : item.basePrice
                               return (
-                              <div key={item.name}>
+                              <div key={item.id}>
                                 <div className="flex justify-between items-start mb-3">
                                   <div>
                                     <h4 className="font-semibold">
                                       {item.name}
                                     </h4>
                                     <p className="text-sm text-muted-foreground">
-                                      {catalog
-                                        ? "Precio según proteína"
-                                        : `$${displayBase} MXN${
-                                            item.shrimpExtra != null
-                                              ? ` (Camarón +$${displayShrimp})`
-                                              : ""
-                                          }`}
+                                      {item.tieneProteinas
+                                        ? catalog
+                                          ? "Precio según proteína"
+                                          : `$${displayBase} MXN${
+                                              item.shrimpExtra != null
+                                                ? ` (Camarón +$${displayShrimp})`
+                                                : ""
+                                            }`
+                                        : `$${fixedPrice} MXN`}
                                     </p>
                                   </div>
                                 </div>
 
+                                {!item.tieneProteinas ? (
+                                  <>
+                                    {linesForItem.length > 0 && (
+                                      <div
+                                        className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-3 space-y-2 mb-4"
+                                        role="status"
+                                        aria-live="polite"
+                                      >
+                                        <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                                          <ShoppingCart className="h-3.5 w-3.5" />
+                                          En tu carrito
+                                        </p>
+                                        <ul className="space-y-1.5">
+                                          {linesForItem.map((line) => (
+                                            <li
+                                              key={line.id}
+                                              className="flex justify-between gap-2 text-sm"
+                                            >
+                                              <span className="min-w-0">
+                                                <span className="font-medium">
+                                                  {line.name}
+                                                </span>
+                                                <span className="text-muted-foreground">
+                                                  {" "}
+                                                  ×{line.quantity}
+                                                </span>
+                                              </span>
+                                              <span className="text-muted-foreground tabular-nums shrink-0">
+                                                $
+                                                {(
+                                                  line.price * line.quantity
+                                                ).toFixed(2)}
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    <OrdenarFixedPlatilloRow
+                                      item={item}
+                                      categoryId={category.id}
+                                      categoryName={category.name}
+                                      catalog={catalog}
+                                      onAdd={(it, cat, qty, catId) =>
+                                        addToCart(it, cat, undefined, qty, catId)
+                                      }
+                                    />
+                                  </>
+                                ) : (
+                                  <>
                                 <p className="text-sm font-medium mb-2">
                                   Proteína
                                 </p>
@@ -515,6 +668,7 @@ export default function OrdenarPage() {
                                         !catalog?.isProteinaHidden(
                                           category.id,
                                           protein,
+                                          item.id,
                                         ),
                                     )
                                     .map((protein) => {
@@ -523,11 +677,13 @@ export default function OrdenarPage() {
                                       catalog?.isProteinaOut(
                                         category.id,
                                         protein,
+                                        item.id,
                                       ) ?? false
                                     const proteinPrice = catalog
                                       ? catalog.getPrecioConProteina(
                                           category.id,
                                           protein,
+                                          item.id,
                                         )
                                       : item.basePrice +
                                         (protein === "Camarón"
@@ -581,7 +737,7 @@ export default function OrdenarPage() {
                                   })}
                                 </div>
 
-                                {linesForCategory.length > 0 && (
+                                {linesForItem.length > 0 && (
                                   <div
                                     className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-3 space-y-2 mb-4"
                                     role="status"
@@ -592,7 +748,7 @@ export default function OrdenarPage() {
                                       En tu carrito
                                     </p>
                                     <ul className="space-y-1.5">
-                                      {linesForCategory.map((line) => (
+                                      {linesForItem.map((line) => (
                                         <li
                                           key={line.id}
                                           className="flex justify-between gap-2 text-sm"
@@ -610,9 +766,9 @@ export default function OrdenarPage() {
                                           </span>
                                           <span className="text-muted-foreground tabular-nums shrink-0">
                                             $
-                                            {(line.price * line.quantity).toFixed(
-                                              2,
-                                            )}
+                                            {(
+                                              line.price * line.quantity
+                                            ).toFixed(2)}
                                           </span>
                                         </li>
                                       ))}
@@ -664,6 +820,7 @@ export default function OrdenarPage() {
                                       (catalog?.isProteinaOut(
                                         category.id,
                                         selectedProtein,
+                                        item.id,
                                       ) ??
                                         false)
                                     }
@@ -673,6 +830,7 @@ export default function OrdenarPage() {
                                         catalog?.isProteinaOut(
                                           category.id,
                                           selectedProtein,
+                                          item.id,
                                         )
                                       )
                                         return
@@ -689,6 +847,8 @@ export default function OrdenarPage() {
                                     Agregar al carrito
                                   </Button>
                                 </div>
+                                  </>
+                                )}
                               </div>
                             )
                             })}

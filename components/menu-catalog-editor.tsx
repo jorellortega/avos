@@ -22,12 +22,14 @@ import {
   bebidas,
   bebidaTamanoLabels,
   categorias,
+  getPlatillosForCategoria,
   proteinas,
   type BebidaTamano,
   type Proteina,
 } from "@/lib/menu-data"
 import {
   MENU_CATALOG_KEY,
+  catalogPlatilloKey,
   type MenuCatalogJson,
   serializeMenuCatalogJson,
 } from "@/lib/menu-catalog-shared"
@@ -66,6 +68,8 @@ function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
     hiddenProteinas: [...j.hiddenProteinas],
     hiddenProteinasPorCategoria,
     hiddenBebidas: [...j.hiddenBebidas],
+    outPlatillos: [...j.outPlatillos],
+    hiddenPlatillos: [...j.hiddenPlatillos],
   }
 }
 
@@ -82,28 +86,24 @@ export function MenuCatalogEditor({ initial }: Props) {
     null,
   )
 
-  const isProteinaHiddenEnCategoria = (
-    categoriaId: string,
-    proteina: Proteina,
-  ) =>
+  const isProteinaHiddenForKey = (catalogKey: string, proteina: Proteina) =>
     state.hiddenProteinas.includes(proteina) ||
-    (state.hiddenProteinasPorCategoria[categoriaId]?.includes(proteina) ??
-      false)
+    (state.hiddenProteinasPorCategoria[catalogKey]?.includes(proteina) ?? false)
 
-  const toggleProteinaHiddenEnCategoria = (
-    categoriaId: string,
+  const toggleProteinaHiddenForKey = (
+    catalogKey: string,
     proteina: Proteina,
     checked: boolean,
   ) => {
     setState((s) => {
       const next = cloneJson(s)
-      const list = new Set(next.hiddenProteinasPorCategoria[categoriaId] ?? [])
+      const list = new Set(next.hiddenProteinasPorCategoria[catalogKey] ?? [])
       if (checked) list.add(proteina)
       else list.delete(proteina)
       if (list.size === 0) {
-        delete next.hiddenProteinasPorCategoria[categoriaId]
+        delete next.hiddenProteinasPorCategoria[catalogKey]
       } else {
-        next.hiddenProteinasPorCategoria[categoriaId] = Array.from(
+        next.hiddenProteinasPorCategoria[catalogKey] = Array.from(
           list,
         ) as Proteina[]
       }
@@ -111,49 +111,47 @@ export function MenuCatalogEditor({ initial }: Props) {
     })
   }
 
-  const isProteinaOutEnCategoria = (categoriaId: string, proteina: Proteina) =>
+  const isProteinaOutForKey = (catalogKey: string, proteina: Proteina) =>
     state.outProteinas.includes(proteina) ||
-    (state.outProteinasPorCategoria[categoriaId]?.includes(proteina) ?? false)
+    (state.outProteinasPorCategoria[catalogKey]?.includes(proteina) ?? false)
 
-  const toggleProteinaOutEnCategoria = (
-    categoriaId: string,
+  const toggleProteinaOutForKey = (
+    catalogKey: string,
     proteina: Proteina,
     checked: boolean,
   ) => {
     setState((s) => {
       const next = cloneJson(s)
-      const list = new Set(next.outProteinasPorCategoria[categoriaId] ?? [])
+      const list = new Set(next.outProteinasPorCategoria[catalogKey] ?? [])
       if (checked) list.add(proteina)
       else list.delete(proteina)
       if (list.size === 0) {
-        delete next.outProteinasPorCategoria[categoriaId]
+        delete next.outProteinasPorCategoria[catalogKey]
       } else {
-        next.outProteinasPorCategoria[categoriaId] = Array.from(
-          list,
-        ) as Proteina[]
+        next.outProteinasPorCategoria[catalogKey] = Array.from(list) as Proteina[]
       }
       return next
     })
   }
 
   const setProteinaPrecio = (
-    categoriaId: string,
+    catalogKey: string,
     proteina: Proteina,
     val: string,
   ) => {
     const n = parseFloat(val)
     setState((s) => {
       const next = cloneJson(s)
-      const cat = { ...(next.proteinaPreciosPorCategoria[categoriaId] ?? {}) }
+      const cat = { ...(next.proteinaPreciosPorCategoria[catalogKey] ?? {}) }
       if (val === "" || !Number.isFinite(n)) {
         delete cat[proteina]
       } else {
         cat[proteina] = n
       }
       if (Object.keys(cat).length === 0) {
-        delete next.proteinaPreciosPorCategoria[categoriaId]
+        delete next.proteinaPreciosPorCategoria[catalogKey]
       } else {
-        next.proteinaPreciosPorCategoria[categoriaId] = cat
+        next.proteinaPreciosPorCategoria[catalogKey] = cat
       }
       return next
     })
@@ -187,9 +185,11 @@ export function MenuCatalogEditor({ initial }: Props) {
       | "outCategorias"
       | "outProteinas"
       | "outBebidas"
+      | "outPlatillos"
       | "hiddenCategorias"
       | "hiddenProteinas"
-      | "hiddenBebidas",
+      | "hiddenBebidas"
+      | "hiddenPlatillos",
     id: string,
     checked: boolean,
   ) => {
@@ -248,18 +248,44 @@ export function MenuCatalogEditor({ initial }: Props) {
     return typeof e === "number" && Number.isFinite(e) ? e : 20
   }
 
-  const proteinaPrecioInput = (categoriaId: string, proteina: Proteina) => {
-    const v = state.proteinaPreciosPorCategoria[categoriaId]?.[proteina]
+  const proteinaPrecioInput = (catalogKey: string, proteina: Proteina) => {
+    const v = state.proteinaPreciosPorCategoria[catalogKey]?.[proteina]
     return v !== undefined ? String(v) : ""
+  }
+
+  const platilloBasePrice = (categoriaId: string, platilloId: string) => {
+    const cat = categorias.find((x) => x.id === categoriaId)
+    if (!cat) return 0
+    const p = getPlatillosForCategoria(cat).find((x) => x.id === platilloId)
+    return p?.precioBase ?? cat.precioBase
   }
 
   const proteinaPrecioPlaceholder = (
     categoriaId: string,
+    platilloId: string,
     proteina: Proteina,
   ) => {
-    const base = categoriaBase(categoriaId)
+    const base = platilloBasePrice(categoriaId, platilloId)
     if (proteina === "Camarón") return String(base + camarónExtraEffective())
     return String(base)
+  }
+
+  const platilloPrecioInput = (catalogKey: string) => {
+    const v = state.categoriaPrecios[catalogKey]
+    return v !== undefined ? String(v) : ""
+  }
+
+  const setPlatilloPrecio = (catalogKey: string, val: string) => {
+    const n = parseFloat(val)
+    setState((s) => {
+      const next = cloneJson(s)
+      if (val === "" || !Number.isFinite(n)) {
+        delete next.categoriaPrecios[catalogKey]
+      } else {
+        next.categoriaPrecios[catalogKey] = n
+      }
+      return next
+    })
   }
 
   return (
@@ -338,107 +364,146 @@ export function MenuCatalogEditor({ initial }: Props) {
               </div>
 
               {c.tieneProteinas ? (
-                <div className="space-y-3 w-full">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Precio por proteína (MXN)
-                  </p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
-                    {proteinas.map((p) => (
+                <div className="space-y-6 w-full">
+                  {getPlatillosForCategoria(c).map((platillo) => {
+                    const catalogKey = catalogPlatilloKey(c.id, platillo.id)
+                    return (
                       <div
-                        key={p}
-                        className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2 min-w-0"
+                        key={platillo.id}
+                        className="space-y-3 border-t border-border/60 pt-4 first:border-0 first:pt-0"
                       >
-                        <Label
-                          htmlFor={`precio-${c.id}-${p}`}
-                          className="text-xs"
-                        >
-                          {p}
-                        </Label>
-                        <Input
-                          id={`precio-${c.id}-${p}`}
-                          type="number"
-                          min={0}
-                          step={1}
-                          className="w-full"
-                          placeholder={proteinaPrecioPlaceholder(c.id, p)}
-                          value={proteinaPrecioInput(c.id, p)}
-                          onChange={(e) =>
-                            setProteinaPrecio(c.id, p, e.target.value)
-                          }
-                        />
-                        <div className="flex flex-col gap-1.5">
-                          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                            <Checkbox
-                              checked={isProteinaOutEnCategoria(c.id, p)}
-                              disabled={state.outProteinas.includes(p)}
-                              onCheckedChange={(ch) =>
-                                toggleProteinaOutEnCategoria(
-                                  c.id,
-                                  p,
-                                  ch === true,
-                                )
-                              }
-                            />
-                            Agotado
-                          </label>
-                          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                            <Checkbox
-                              checked={isProteinaHiddenEnCategoria(c.id, p)}
-                              disabled={state.hiddenProteinas.includes(p)}
-                              onCheckedChange={(ch) =>
-                                toggleProteinaHiddenEnCategoria(
-                                  c.id,
-                                  p,
-                                  ch === true,
-                                )
-                              }
-                            />
-                            Oculto
-                          </label>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <p className="font-medium text-sm">{platillo.nombre}</p>
+                          <div className="flex flex-wrap gap-3">
+                            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                              <Checkbox
+                                checked={state.outPlatillos.includes(catalogKey)}
+                                onCheckedChange={(ch) =>
+                                  toggleList("outPlatillos", catalogKey, ch === true)
+                                }
+                              />
+                              Agotado
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                              <Checkbox
+                                checked={state.hiddenPlatillos.includes(catalogKey)}
+                                onCheckedChange={(ch) =>
+                                  toggleList("hiddenPlatillos", catalogKey, ch === true)
+                                }
+                              />
+                              Oculto del menú
+                            </label>
+                          </div>
                         </div>
-                        {(state.outProteinas.includes(p) ||
-                          state.hiddenProteinas.includes(p)) && (
-                          <p className="text-[10px] text-muted-foreground leading-tight space-y-0.5">
-                            <span className="block">
-                              {state.outProteinas.includes(p) &&
-                              state.hiddenProteinas.includes(p)
-                                ? "Agotada y oculta en todos los platillos."
-                                : state.outProteinas.includes(p)
-                                  ? "Agotada en todos los platillos."
-                                  : "Oculta en todos los platillos."}
-                            </span>
-                            <span className="block">
-                              {state.outProteinas.includes(p) && (
-                                <button
-                                  type="button"
-                                  className="text-primary underline underline-offset-2 hover:no-underline"
-                                  onClick={() =>
-                                    toggleList("outProteinas", p, false)
-                                  }
+                        {platillo.tieneProteinas === false ? (
+                          <div className="space-y-2 max-w-xs">
+                            <Label htmlFor={`plat-precio-${catalogKey}`}>
+                              Precio (MXN)
+                            </Label>
+                            <Input
+                              id={`plat-precio-${catalogKey}`}
+                              type="number"
+                              min={0}
+                              step={1}
+                              placeholder={String(platillo.precioBase)}
+                              value={platilloPrecioInput(catalogKey)}
+                              onChange={(e) =>
+                                setPlatilloPrecio(catalogKey, e.target.value)
+                              }
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Precio por proteína (MXN)
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+                              {proteinas.map((p) => (
+                                <div
+                                  key={p}
+                                  className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2 min-w-0"
                                 >
-                                  Quitar agotado global
-                                </button>
-                              )}
-                              {state.outProteinas.includes(p) &&
-                                state.hiddenProteinas.includes(p) &&
-                                " · "}
-                              {state.hiddenProteinas.includes(p) && (
-                                <button
-                                  type="button"
-                                  className="text-primary underline underline-offset-2 hover:no-underline"
-                                  onClick={() =>
-                                    toggleList("hiddenProteinas", p, false)
-                                  }
-                                >
-                                  Quitar oculto global
-                                </button>
-                              )}
-                            </span>
-                          </p>
+                                  <Label htmlFor={`precio-${catalogKey}-${p}`} className="text-xs">
+                                    {p}
+                                  </Label>
+                                  <Input
+                                    id={`precio-${catalogKey}-${p}`}
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    className="w-full"
+                                    placeholder={proteinaPrecioPlaceholder(c.id, platillo.id, p)}
+                                    value={proteinaPrecioInput(catalogKey, p)}
+                                    onChange={(e) =>
+                                      setProteinaPrecio(catalogKey, p, e.target.value)
+                                    }
+                                  />
+                                  <div className="flex flex-col gap-1.5">
+                                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                      <Checkbox
+                                        checked={isProteinaOutForKey(catalogKey, p)}
+                                        disabled={state.outProteinas.includes(p)}
+                                        onCheckedChange={(ch) =>
+                                          toggleProteinaOutForKey(catalogKey, p, ch === true)
+                                        }
+                                      />
+                                      Agotado
+                                    </label>
+                                    <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                      <Checkbox
+                                        checked={isProteinaHiddenForKey(catalogKey, p)}
+                                        disabled={state.hiddenProteinas.includes(p)}
+                                        onCheckedChange={(ch) =>
+                                          toggleProteinaHiddenForKey(catalogKey, p, ch === true)
+                                        }
+                                      />
+                                      Oculto
+                                    </label>
+                                  </div>
+                                  {(state.outProteinas.includes(p) ||
+                                    state.hiddenProteinas.includes(p)) && (
+                                    <p className="text-[10px] text-muted-foreground leading-tight space-y-0.5">
+                                      <span className="block">
+                                        {state.outProteinas.includes(p) &&
+                                        state.hiddenProteinas.includes(p)
+                                          ? "Agotada y oculta en todos los platillos."
+                                          : state.outProteinas.includes(p)
+                                            ? "Agotada en todos los platillos."
+                                            : "Oculta en todos los platillos."}
+                                      </span>
+                                      <span className="block">
+                                        {state.outProteinas.includes(p) && (
+                                          <button
+                                            type="button"
+                                            className="text-primary underline underline-offset-2 hover:no-underline"
+                                            onClick={() => toggleList("outProteinas", p, false)}
+                                          >
+                                            Quitar agotado global
+                                          </button>
+                                        )}
+                                        {state.outProteinas.includes(p) &&
+                                          state.hiddenProteinas.includes(p) &&
+                                          " · "}
+                                        {state.hiddenProteinas.includes(p) && (
+                                          <button
+                                            type="button"
+                                            className="text-primary underline underline-offset-2 hover:no-underline"
+                                            onClick={() => toggleList("hiddenProteinas", p, false)}
+                                          >
+                                            Quitar oculto global
+                                          </button>
+                                        )}
+                                      </span>
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </>
                         )}
                       </div>
-                    ))}
-                  </div>
+                    )
+                  })}
                 </div>
               ) : null}
               </div>

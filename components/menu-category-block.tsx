@@ -3,7 +3,11 @@
 import Link from "next/link"
 import { MenuItemCard } from "@/components/menu-item-card"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
-import type { Proteina } from "@/lib/menu-data"
+import {
+  getCategoriaById,
+  getPlatillosForCategoria,
+  type Proteina,
+} from "@/lib/menu-data"
 
 type Props = {
   categoriaId: string
@@ -27,6 +31,8 @@ export function MenuCategoryBlock({
   sectionIndex,
 }: Props) {
   const { catalog, loading } = useMenuCatalogContext()
+  const categoria = getCategoriaById(categoriaId)
+  const platillos = categoria ? getPlatillosForCategoria(categoria) : []
 
   if (!loading && catalog?.isCategoriaHidden(categoriaId)) {
     return null
@@ -55,16 +61,25 @@ export function MenuCategoryBlock({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <MenuItemCard
-          categoriaId={categoriaId}
-          categoria={categoriaNombre}
-          nombre={categoriaNombre}
-          descripcion={descripcion}
-          precioBase={precioBase}
-          tieneProteinas={tieneProteinas}
-          imagen={imagen}
-          proteinaImagenes={proteinaImagenes}
-        />
+        {platillos
+          .filter(
+            (platillo) =>
+              !catalog?.isPlatilloHidden(categoriaId, platillo.id),
+          )
+          .map((platillo) => (
+          <MenuItemCard
+            key={platillo.id}
+            categoriaId={categoriaId}
+            platilloId={platillo.id}
+            categoria={categoriaNombre}
+            nombre={platillo.nombre}
+            descripcion={platillo.descripcion}
+            precioBase={platillo.precioBase}
+            tieneProteinas={platillo.tieneProteinas !== false}
+            imagen={imagen}
+            proteinaImagenes={proteinaImagenes}
+          />
+        ))}
       </div>
     </div>
   )

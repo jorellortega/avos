@@ -16,6 +16,7 @@ import {
   categorias,
   bebidas,
   getBebidaPrecioDefault,
+  getPlatillosForCategoria,
   proteinas,
   Proteina,
   type BebidaTamano,
@@ -47,30 +48,48 @@ export default function StaffPage() {
   const [cardTerminalLoading, setCardTerminalLoading] = useState(false)
   const [paymentError, setPaymentError] = useState("")
 
-  const addItem = (categoria: typeof categorias[number], proteina?: Proteina) => {
+  const addItem = (
+    categoria: (typeof categorias)[number],
+    proteina?: Proteina,
+    platillo?: { id: string; nombre: string; precioBase: number },
+  ) => {
+    const platilloNombre = platillo?.nombre ?? categoria.nombre
+    const platilloId = platillo?.id ?? categoria.id
     const precio = proteina
-      ? catalog?.getPrecioConProteina(categoria.id, proteina) ??
-        (proteina === "Camarón" ? categoria.precioBase + 20 : categoria.precioBase)
-      : catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
-    
-    const itemId = `${categoria.id}-${proteina || "default"}`
-    const existingItem = currentItems.find(i => i.id === itemId)
-    
+      ? catalog?.getPrecioConProteina(categoria.id, proteina, platillo?.id) ??
+        (proteina === "Camarón"
+          ? (platillo?.precioBase ?? categoria.precioBase) + 20
+          : platillo?.precioBase ?? categoria.precioBase)
+      : platillo
+        ? catalog?.getPlatilloPrecio(categoria.id, platillo.id) ??
+          platillo.precioBase
+        : catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
+
+    const itemId = `${categoria.id}-${platilloId}-${proteina || "default"}`
+    const existingItem = currentItems.find((i) => i.id === itemId)
+
     if (existingItem) {
-      setCurrentItems(prev => prev.map(item => 
-        item.id === itemId 
-          ? { ...item, cantidad: item.cantidad + 1 }
-          : item
-      ))
+      setCurrentItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? { ...item, cantidad: item.cantidad + 1 }
+            : item,
+        ),
+      )
     } else {
-      setCurrentItems(prev => [...prev, {
-        id: itemId,
-        categoria: categoria.id,
-        nombre: proteina ? `${categoria.nombre} de ${proteina}` : categoria.nombre,
-        proteina,
-        cantidad: 1,
-        precio
-      }])
+      setCurrentItems((prev) => [
+        ...prev,
+        {
+          id: itemId,
+          categoria: categoria.id,
+          nombre: proteina
+            ? `${platilloNombre} de ${proteina}`
+            : platilloNombre,
+          proteina,
+          cantidad: 1,
+          precio,
+        },
+      ])
     }
   }
 
@@ -358,46 +377,74 @@ export default function StaffPage() {
 
                   {categorias.map(categoria => (
                     <TabsContent key={categoria.id} value={categoria.id}>
-                      <div className="space-y-4">
-                        <p className="text-sm text-muted-foreground">{categoria.descripcion}</p>
-                        {categoria.tieneProteinas && (
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {proteinas.map(proteina => {
-                              const precio =
-                                catalog?.getPrecioConProteina(
-                                  categoria.id,
-                                  proteina,
-                                ) ??
-                                (proteina === "Camarón"
-                                  ? categoria.precioBase + 20
-                                  : categoria.precioBase)
-                              return (
-                                <Button
-                                  key={proteina}
-                                  variant="outline"
-                                  className="h-auto p-0 flex-col gap-0 overflow-hidden"
-                                  onClick={() => addItem(categoria, proteina)}
-                                >
-                                  <span className="relative block w-full aspect-[4/3] bg-muted">
-                                    <Image
-                                      src={proteinaImgs[proteina]}
-                                      alt=""
-                                      fill
-                                      className="object-cover"
-                                      sizes="140px"
-                                    />
-                                  </span>
-                                  <span className="font-semibold py-2 px-1 text-center">
-                                    {proteina}
-                                  </span>
-                                  <span className="text-sm text-muted-foreground pb-3">
-                                    ${precio}
-                                  </span>
-                                </Button>
-                              )
-                            })}
+                      <div className="space-y-6">
+                        {getPlatillosForCategoria(categoria)
+                          .filter(
+                            (platillo) =>
+                              !catalog?.isPlatilloHidden(categoria.id, platillo.id) &&
+                              !catalog?.isPlatilloOut(categoria.id, platillo.id),
+                          )
+                          .map((platillo) => (
+                          <div key={platillo.id} className="space-y-3">
+                            <div>
+                              <p className="font-medium">{platillo.nombre}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {platillo.descripcion}
+                              </p>
+                            </div>
+                            {platillo.tieneProteinas !== false ? (
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {proteinas.map((proteina) => {
+                                  const precio =
+                                    catalog?.getPrecioConProteina(
+                                      categoria.id,
+                                      proteina,
+                                      platillo.id,
+                                    ) ??
+                                    (proteina === "Camarón"
+                                      ? platillo.precioBase + 20
+                                      : platillo.precioBase)
+                                  return (
+                                    <Button
+                                      key={`${platillo.id}-${proteina}`}
+                                      variant="outline"
+                                      className="h-auto p-0 flex-col gap-0 overflow-hidden"
+                                      onClick={() =>
+                                        addItem(categoria, proteina, platillo)
+                                      }
+                                    >
+                                      <span className="relative block w-full aspect-[4/3] bg-muted">
+                                        <Image
+                                          src={proteinaImgs[proteina]}
+                                          alt=""
+                                          fill
+                                          className="object-cover"
+                                          sizes="140px"
+                                        />
+                                      </span>
+                                      <span className="font-semibold py-2 px-1 text-center">
+                                        {proteina}
+                                      </span>
+                                      <span className="text-sm text-muted-foreground pb-3">
+                                        ${precio}
+                                      </span>
+                                    </Button>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                onClick={() => addItem(categoria, undefined, platillo)}
+                              >
+                                Agregar · $
+                                {catalog?.getPlatilloPrecio(categoria.id, platillo.id) ??
+                                  platillo.precioBase}
+                              </Button>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     </TabsContent>
                   ))}

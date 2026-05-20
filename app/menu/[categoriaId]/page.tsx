@@ -4,11 +4,14 @@ import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { MenuItemCard } from "@/components/menu-item-card"
+import { MenuCategoriaPlatillosGrid } from "@/components/menu-categoria-platillos-grid"
 import { MenuCategoryCartBar } from "@/components/menu-category-cart-bar"
 import { MenuCategoriaGuard } from "@/components/menu-categoria-guard"
 import { MenuCategoryLinks } from "@/components/menu-category-links"
-import { categorias, getCategoriaById } from "@/lib/menu-data"
+import {
+  categorias,
+  getCategoriaById,
+} from "@/lib/menu-data"
 import { getSiteMedia } from "@/lib/get-site-media"
 
 export const revalidate = 30
@@ -79,18 +82,15 @@ export default async function CategoriaMenuPage({ params }: Props) {
         </section>
 
         <section className="py-10 md:py-14">
-          <div className="container mx-auto px-4 max-w-lg">
-            <MenuItemCard
-              categoriaId={categoria.id}
-              categoria={categoria.nombre}
-              nombre={categoria.nombre}
-              descripcion={categoria.descripcion}
-              precioBase={categoria.precioBase}
-              tieneProteinas={categoria.tieneProteinas}
+          <div className="container mx-auto px-4 max-w-5xl">
+            <MenuCategoriaPlatillosGrid
+              categoria={categoria}
               imagen={heroImagen}
               proteinaImagenes={media.proteinaImagenes}
             />
-            <MenuCategoryCartBar />
+            <div className="mt-8 max-w-lg mx-auto">
+              <MenuCategoryCartBar />
+            </div>
           </div>
 
           <MenuCategoryLinks excludeId={categoria.id} />
