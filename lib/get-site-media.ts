@@ -1,5 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server"
 import { homeHeroSlides, type HeroSlide } from "@/lib/home-hero-slides"
+import { ensureUniqueHeroSlides } from "@/lib/hero-slide-utils"
 import { bebidas, type Proteina } from "@/lib/menu-data"
 import {
   SITE_MEDIA_KEYS,
@@ -29,9 +30,11 @@ function parseHeroSlides(raw: string | null | undefined): HeroSlide[] {
         })
       }
     }
-    return out.length > 0 ? out : [...homeHeroSlides]
+    return ensureUniqueHeroSlides(
+      out.length > 0 ? out : [...homeHeroSlides],
+    )
   } catch {
-    return [...homeHeroSlides]
+    return ensureUniqueHeroSlides([...homeHeroSlides])
   }
 }
 

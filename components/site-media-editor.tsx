@@ -17,6 +17,10 @@ import {
 } from "@/components/ui/card"
 import type { HeroSlide } from "@/lib/home-hero-slides"
 import {
+  ensureUniqueHeroSlides,
+  newHeroSlideId,
+} from "@/lib/hero-slide-utils"
+import {
   BEBIDAS_CATEGORIA_ID,
   bebidas,
   categorias,
@@ -62,9 +66,11 @@ function parseSlidesFromDb(raw: string | undefined): HeroSlide[] {
         })
       }
     }
-    return out.length ? out : defaultSiteMedia().heroSlides
+    return ensureUniqueHeroSlides(
+      out.length ? out : defaultSiteMedia().heroSlides,
+    )
   } catch {
-    return defaultSiteMedia().heroSlides
+    return ensureUniqueHeroSlides(defaultSiteMedia().heroSlides)
   }
 }
 
@@ -89,8 +95,10 @@ export function SiteMediaEditor({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveOk, setSaveOk] = useState(false)
 
-  const [slides, setSlides] = useState<HeroSlide[]>(
-    () => initialMedia?.heroSlides ?? defaultSiteMedia().heroSlides,
+  const [slides, setSlides] = useState<HeroSlide[]>(() =>
+    ensureUniqueHeroSlides(
+      initialMedia?.heroSlides ?? defaultSiteMedia().heroSlides,
+    ),
   )
   const [menuBanner, setMenuBanner] = useState(
     () => initialMedia?.menuBannerUrl ?? defaultSiteMedia().menuBannerUrl,
@@ -313,7 +321,7 @@ export function SiteMediaEditor({
       const rows = [
         {
           setting_key: SITE_MEDIA_KEYS.heroSlides,
-          setting_value: JSON.stringify(slides),
+          setting_value: JSON.stringify(ensureUniqueHeroSlides(slides)),
           description: "Homepage hero carousel JSON: [{id,src,alt}, ...]",
         },
         {
@@ -376,7 +384,7 @@ export function SiteMediaEditor({
       return [
         ...prev,
         {
-          id: `slide-${n}`,
+          id: newHeroSlideId(),
           src: "/placeholder.jpg",
           alt: `Imagen ${n}`,
         },
@@ -495,7 +503,7 @@ export function SiteMediaEditor({
             <CardContent className="space-y-6">
               {slides.map((slide, index) => (
                 <div
-                  key={slide.id}
+                  key={`${slide.id}-${index}`}
                   className="flex gap-3 items-start border-b border-border pb-4 last:border-0 last:pb-0"
                 >
                   <MediaUrlThumb src={slide.src} alt={slide.alt || `Slide ${index + 1}`} />

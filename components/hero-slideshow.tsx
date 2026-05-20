@@ -54,8 +54,11 @@ export function HeroSlideshow({ slides: slidesProp }: HeroSlideshowProps) {
         className="w-full h-full"
       >
         <CarouselContent className="-ml-0 h-full">
-          {slides.map((slide) => (
-            <CarouselItem key={slide.id} className="pl-0 basis-full">
+          {slides.map((slide, index) => (
+            <CarouselItem
+              key={`${slide.id}-${index}`}
+              className="pl-0 basis-full"
+            >
               <div className="relative aspect-square w-full">
                 <Image
                   src={slide.src}
@@ -101,7 +104,7 @@ export function HeroSlideshow({ slides: slidesProp }: HeroSlideshowProps) {
       >
         {slides.map((slide, index) => (
           <button
-            key={slide.id}
+            key={`${slide.id}-${index}`}
             type="button"
             role="tab"
             aria-selected={current === index}
