@@ -33,13 +33,13 @@ export function Footer() {
                 <MapPin className="h-5 w-5 flex-shrink-0 mt-0.5" />
                 <span>Pastor Ortiz Michoacan</span>
               </div>
-              <div
-                className="flex items-center gap-3"
-                aria-label="Teléfono"
-                title="Teléfono"
+              <a
+                href="tel:+524431156204"
+                className="flex items-center gap-3 hover:underline underline-offset-2"
               >
                 <Phone className="h-5 w-5 flex-shrink-0" />
-              </div>
+                <span>(443) 115-6204</span>
+              </a>
             </div>
           </div>
 
@@ -51,7 +51,7 @@ export function Footer() {
             <div className="flex items-start gap-3 text-sm">
               <Clock className="h-5 w-5 flex-shrink-0 mt-0.5" />
               <div className="space-y-1.5 leading-snug">
-                <p>7:30am to 8:30pm</p>
+                <p>9:30am to 9:30pm</p>
                 <p className="text-primary-foreground/90">
                   Closed: Thursdays and Tuesdays
                 </p>
