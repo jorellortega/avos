@@ -21,13 +21,17 @@ import {
 import {
   BEBIDAS_CATEGORIA_ID,
   bebidasOrdenar,
+  bebidaTamanoLabels,
   categorias,
   imagenCategoriaBebidas,
   menuCategories,
   type BebidaOrdenar,
+  type BebidaTamano,
   type OrdenarMenuItem,
   type Proteina,
 } from "@/lib/menu-data"
+import { BebidaThumb } from "@/components/bebida-thumb"
+import { useBebidaImagenes } from "@/lib/use-bebida-imagenes"
 import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { useCategoriaImagenes } from "@/lib/use-categoria-imagenes"
 import { useOrders, type OrderItem } from "@/components/orders-provider"
@@ -60,6 +64,7 @@ export default function OrdenarPage() {
   const { addOrder } = useOrders()
   const { catalog } = useMenuCatalogContext()
   const proteinaImgs = useProteinaImagenes()
+  const bebidaImgs = useBebidaImagenes()
   const categoriaImgs = useCategoriaImagenes()
   const [orderType, setOrderType] = useState<"dine-in" | "takeout" | null>(null)
   const [tableNumber, setTableNumber] = useState("")
@@ -72,6 +77,8 @@ export default function OrdenarPage() {
   const [selectedProtein, setSelectedProtein] = useState<Proteina | null>(null)
   const [pickerQty, setPickerQty] = useState(1)
   const [selectedBebidaId, setSelectedBebidaId] = useState<string | null>(null)
+  const [selectedBebidaTamano, setSelectedBebidaTamano] =
+    useState<BebidaTamano>("chico")
   const [bebidaPickerQty, setBebidaPickerQty] = useState(1)
   const [placeOrderLoading, setPlaceOrderLoading] = useState(false)
   const [placeOrderError, setPlaceOrderError] = useState("")
@@ -114,12 +121,14 @@ export default function OrdenarPage() {
     setSelectedProtein(null)
     setPickerQty(1)
     setSelectedBebidaId(null)
+    setSelectedBebidaTamano("chico")
     setBebidaPickerQty(1)
   }, [selectedCategoryId])
 
   useEffect(() => {
     if (
-      catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) &&
+      (catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) ||
+        catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID)) &&
       selectedCategoryId === BEBIDAS_CATEGORIA_ID
     ) {
       setSelectedCategoryId(null)
@@ -147,11 +156,10 @@ export default function OrdenarPage() {
       setCart((prev) => {
         const existingItem = prev.find((i) => i.id === itemId)
         let price: number
-        if (catalog) {
-          const base = catalog.getCategoriaPrecioBase(categoryId)
-          const extra = catalog.getCamarónExtra()
-          price = base
-          if (protein === "Camarón") price += extra
+        if (catalog && protein) {
+          price = catalog.getPrecioConProteina(categoryId, protein)
+        } else if (catalog) {
+          price = catalog.getCategoriaPrecioBase(categoryId)
         } else {
           price = item.basePrice
           if (protein === "Camarón" && item.shrimpExtra) {
@@ -180,11 +188,14 @@ export default function OrdenarPage() {
   )
 
   const addBebidaToCart = useCallback(
-    (bebida: BebidaOrdenar, qty = 1) => {
-      const itemId = `bebida-${bebida.name}`
+    (bebida: BebidaOrdenar, tamano: BebidaTamano, qty = 1) => {
+      const itemId = `bebida-${bebida.id}-${tamano}`
       const unitPrice = catalog
-        ? catalog.getBebidaPrecio(bebida.id)
-        : bebida.price
+        ? catalog.getBebidaPrecio(bebida.id, tamano)
+        : tamano === "chico"
+          ? bebida.priceChico
+          : bebida.priceGrande
+      const displayName = `${bebida.name} (${bebidaTamanoLabels[tamano]})`
       setCart((prev) => {
         const existingItem = prev.find((i) => i.id === itemId)
         if (existingItem) {
@@ -196,7 +207,7 @@ export default function OrdenarPage() {
           ...prev,
           {
             id: itemId,
-            name: bebida.name,
+            name: displayName,
             categoria: "Bebidas",
             price: unitPrice,
             quantity: qty,
@@ -406,7 +417,11 @@ export default function OrdenarPage() {
               </h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 md:gap-6">
                 {menuCategories
-                  .filter((c) => !catalog?.isCategoriaOut(c.id))
+                  .filter(
+                    (c) =>
+                      !catalog?.isCategoriaOut(c.id) &&
+                      !catalog?.isCategoriaHidden(c.id),
+                  )
                   .map((category) => {
                   const catMeta = categorias.find((c) => c.id === category.id)
                   const thumb =
@@ -479,12 +494,13 @@ export default function OrdenarPage() {
                                       {item.name}
                                     </h4>
                                     <p className="text-sm text-muted-foreground">
-                                      ${displayBase} MXN
-                                      {item.shrimpExtra != null && (
-                                        <span className="text-xs ml-2">
-                                          (Camarón +${displayShrimp})
-                                        </span>
-                                      )}
+                                      {catalog
+                                        ? "Precio según proteína"
+                                        : `$${displayBase} MXN${
+                                            item.shrimpExtra != null
+                                              ? ` (Camarón +$${displayShrimp})`
+                                              : ""
+                                          }`}
                                     </p>
                                   </div>
                                 </div>
@@ -493,10 +509,30 @@ export default function OrdenarPage() {
                                   Proteína
                                 </p>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                                  {item.proteins.map((protein) => {
+                                  {item.proteins
+                                    .filter(
+                                      (protein) =>
+                                        !catalog?.isProteinaHidden(
+                                          category.id,
+                                          protein,
+                                        ),
+                                    )
+                                    .map((protein) => {
                                     const isSel = selectedProtein === protein
                                     const agotada =
-                                      catalog?.isProteinaOut(protein) ?? false
+                                      catalog?.isProteinaOut(
+                                        category.id,
+                                        protein,
+                                      ) ?? false
+                                    const proteinPrice = catalog
+                                      ? catalog.getPrecioConProteina(
+                                          category.id,
+                                          protein,
+                                        )
+                                      : item.basePrice +
+                                        (protein === "Camarón"
+                                          ? (item.shrimpExtra ?? 20)
+                                          : 0)
                                     return (
                                       <button
                                         key={protein}
@@ -527,8 +563,13 @@ export default function OrdenarPage() {
                                             draggable={false}
                                           />
                                         </span>
-                                        <span className="flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium">
+                                        <span className="flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-xs font-medium">
                                           {protein}
+                                          {!agotada && (
+                                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                                              ${proteinPrice}
+                                            </span>
+                                          )}
                                           {agotada && (
                                             <span className="block text-[10px] text-destructive">
                                               Agotado
@@ -620,12 +661,20 @@ export default function OrdenarPage() {
                                     className="sm:ml-auto w-full sm:w-auto"
                                     disabled={
                                       !selectedProtein ||
-                                      (catalog?.isProteinaOut(selectedProtein) ??
+                                      (catalog?.isProteinaOut(
+                                        category.id,
+                                        selectedProtein,
+                                      ) ??
                                         false)
                                     }
                                     onClick={() => {
                                       if (!selectedProtein) return
-                                      if (catalog?.isProteinaOut(selectedProtein))
+                                      if (
+                                        catalog?.isProteinaOut(
+                                          category.id,
+                                          selectedProtein,
+                                        )
+                                      )
                                         return
                                       addToCart(
                                         item,
@@ -650,6 +699,7 @@ export default function OrdenarPage() {
                   )
                 })}
 
+                {!catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID) && (
                 <div className="contents">
                   {catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) ? (
                     <div className="rounded-2xl p-4 md:p-6 text-center border border-dashed border-border bg-muted/30 opacity-80">
@@ -702,7 +752,8 @@ export default function OrdenarPage() {
                   )}
 
                   {selectedCategoryId === BEBIDAS_CATEGORIA_ID &&
-                    !catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) && (
+                    !catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) &&
+                    !catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID) && (
                     <div
                       ref={expandPanelRef}
                       className="col-span-2 sm:col-span-3 rounded-xl border border-border bg-card text-card-foreground shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-200"
@@ -715,13 +766,20 @@ export default function OrdenarPage() {
                       </div>
                       <div className="p-4 space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {bebidasOrdenar.map((bebida) => {
+                          {bebidasOrdenar
+                            .filter(
+                              (bebida) => !catalog?.isBebidaHidden(bebida.id),
+                            )
+                            .map((bebida) => {
                             const active = selectedBebidaId === bebida.id
                             const agotada =
                               catalog?.isBebidaOut(bebida.id) ?? false
-                            const precio = catalog
-                              ? catalog.getBebidaPrecio(bebida.id)
-                              : bebida.price
+                            const precioChico = catalog
+                              ? catalog.getBebidaPrecio(bebida.id, "chico")
+                              : bebida.priceChico
+                            const precioGrande = catalog
+                              ? catalog.getBebidaPrecio(bebida.id, "grande")
+                              : bebida.priceGrande
                             return (
                               <button
                                 key={bebida.id}
@@ -730,10 +788,11 @@ export default function OrdenarPage() {
                                 onClick={() => {
                                   if (agotada) return
                                   setSelectedBebidaId(bebida.id)
+                                  setSelectedBebidaTamano("chico")
                                   setBebidaPickerQty(1)
                                 }}
                                 className={cn(
-                                  "rounded-xl border p-4 text-left transition-colors touch-manipulation",
+                                  "rounded-xl border p-4 text-left transition-colors touch-manipulation flex gap-3 items-start",
                                   agotada
                                     ? "opacity-50 cursor-not-allowed border-border bg-muted"
                                     : "cursor-pointer border-border bg-muted/30 hover:border-primary/50",
@@ -742,15 +801,21 @@ export default function OrdenarPage() {
                                     "border-primary ring-2 ring-primary/30 bg-accent/40",
                                 )}
                               >
+                                <BebidaThumb
+                                  src={bebidaImgs[bebida.id]}
+                                  alt={bebida.name}
+                                />
+                                <div className="min-w-0 flex-1">
                                 <h4 className="font-semibold">{bebida.name}</h4>
                                 <p className="text-sm text-muted-foreground">
-                                  ${precio} MXN
+                                  Chico ${precioChico} · Grande ${precioGrande}
                                   {agotada && (
                                     <span className="block text-xs text-destructive">
                                       Agotado
                                     </span>
                                   )}
                                 </p>
+                                </div>
                               </button>
                             )
                           })}
@@ -792,7 +857,45 @@ export default function OrdenarPage() {
                         )}
 
                         {selectedBebida && (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-2 border-t border-border">
+                          <div className="space-y-4 pt-2 border-t border-border">
+                            <div>
+                              <p className="text-sm font-medium mb-2">Tamaño</p>
+                              <div className="grid grid-cols-2 gap-2 max-w-xs">
+                                {(["chico", "grande"] as const).map((tam) => {
+                                  const p = catalog
+                                    ? catalog.getBebidaPrecio(
+                                        selectedBebida.id,
+                                        tam,
+                                      )
+                                    : tam === "chico"
+                                      ? selectedBebida.priceChico
+                                      : selectedBebida.priceGrande
+                                  return (
+                                    <button
+                                      key={tam}
+                                      type="button"
+                                      onClick={() =>
+                                        setSelectedBebidaTamano(tam)
+                                      }
+                                      className={cn(
+                                        "rounded-lg border px-3 py-2 text-sm transition-colors",
+                                        selectedBebidaTamano === tam
+                                          ? "border-primary bg-primary text-primary-foreground"
+                                          : "border-border bg-card hover:border-primary/50",
+                                      )}
+                                    >
+                                      <span className="block font-medium">
+                                        {bebidaTamanoLabels[tam]}
+                                      </span>
+                                      <span className="block text-xs opacity-90">
+                                        ${p}
+                                      </span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                             <div className="flex items-center gap-3">
                               <span className="text-sm font-medium shrink-0">
                                 Cantidad
@@ -844,6 +947,7 @@ export default function OrdenarPage() {
                                   return
                                 addBebidaToCart(
                                   selectedBebida,
+                                  selectedBebidaTamano,
                                   bebidaPickerQty,
                                 )
                               }}
@@ -851,11 +955,13 @@ export default function OrdenarPage() {
                               Agregar al carrito
                             </Button>
                           </div>
+                          </div>
                         )}
                       </div>
                     </div>
                   )}
                 </div>
+                )}
               </div>
 
               {!selectedCategoryId && (

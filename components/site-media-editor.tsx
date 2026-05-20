@@ -18,6 +18,7 @@ import {
 import type { HeroSlide } from "@/lib/home-hero-slides"
 import {
   BEBIDAS_CATEGORIA_ID,
+  bebidas,
   categorias,
   proteinas,
   type Proteina,
@@ -25,7 +26,9 @@ import {
 import {
   SITE_MEDIA_KEYS,
   defaultSiteMedia,
+  type SiteMedia,
 } from "@/lib/site-media-shared"
+import { MediaUrlThumb } from "@/components/media-url-thumb"
 import { StorageUploadButton } from "@/components/storage-upload-button"
 import { getBrowserSupabase, isCeoAccess } from "@/lib/supabase-browser"
 import type { User } from "@supabase/supabase-js"
@@ -68,30 +71,43 @@ function parseSlidesFromDb(raw: string | undefined): HeroSlide[] {
 type SiteMediaEditorProps = {
   /** Server already checked public.users.role = ceo; avoids waiting on client profile. */
   serverVerifiedCeo?: boolean
+  /** Preloaded from server so thumbnails show before client fetch. */
+  initialMedia?: SiteMedia
 }
 
 export function SiteMediaEditor({
   serverVerifiedCeo = false,
+  initialMedia,
 }: SiteMediaEditorProps) {
   const router = useRouter()
   const [configError, setConfigError] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<{ role: string } | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(() => !initialMedia)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveOk, setSaveOk] = useState(false)
 
-  const [slides, setSlides] = useState<HeroSlide[]>(defaultSiteMedia().heroSlides)
-  const [menuBanner, setMenuBanner] = useState(defaultSiteMedia().menuBannerUrl)
-  const [catUrls, setCatUrls] = useState<Record<string, string>>(() => {
-    const d = defaultSiteMedia().categoriaImagenes
-    return { ...d }
-  })
-  const [proteinaUrls, setProteinaUrls] = useState<
-    Record<Proteina, string>
-  >(() => ({ ...defaultSiteMedia().proteinaImagenes }))
+  const [slides, setSlides] = useState<HeroSlide[]>(
+    () => initialMedia?.heroSlides ?? defaultSiteMedia().heroSlides,
+  )
+  const [menuBanner, setMenuBanner] = useState(
+    () => initialMedia?.menuBannerUrl ?? defaultSiteMedia().menuBannerUrl,
+  )
+  const [catUrls, setCatUrls] = useState<Record<string, string>>(() => ({
+    ...defaultSiteMedia().categoriaImagenes,
+    ...initialMedia?.categoriaImagenes,
+  }))
+  const [proteinaUrls, setProteinaUrls] = useState<Record<Proteina, string>>(
+    () => ({
+      ...defaultSiteMedia().proteinaImagenes,
+      ...initialMedia?.proteinaImagenes,
+    }),
+  )
+  const [bebidaUrls, setBebidaUrls] = useState<Record<string, string>>(
+    () => ({ ...initialMedia?.bebidaImagenes }),
+  )
 
   const ceo = useMemo(() => {
     if (serverVerifiedCeo && user) return true
@@ -108,9 +124,9 @@ export function SiteMediaEditor({
     setProfile(data ?? null)
   }, [])
 
-  const loadMedia = useCallback(async () => {
-    if (!ceo) return
-    setLoading(true)
+  const loadMedia = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!serverVerifiedCeo && !ceo) return
+    if (!opts?.silent) setLoading(true)
     setSaveError(null)
     setSaveOk(false)
     const timeoutMs = 25_000
@@ -130,6 +146,7 @@ export function SiteMediaEditor({
           SITE_MEDIA_KEYS.menuBanner,
           SITE_MEDIA_KEYS.categoriaImagenes,
           SITE_MEDIA_KEYS.proteinaImagenes,
+          SITE_MEDIA_KEYS.bebidaImagenes,
         ])
       if (timedOut) return
       if (error) throw error
@@ -182,6 +199,23 @@ export function SiteMediaEditor({
       } else {
         setProteinaUrls({ ...baseProt })
       }
+
+      const bebRaw = map[SITE_MEDIA_KEYS.bebidaImagenes]
+      if (bebRaw?.trim()) {
+        try {
+          const parsed = JSON.parse(bebRaw) as Record<string, string>
+          const merged: Record<string, string> = {}
+          for (const b of bebidas) {
+            const v = parsed[b.id]
+            if (typeof v === "string" && v.trim()) merged[b.id] = v.trim()
+          }
+          setBebidaUrls(merged)
+        } catch {
+          setBebidaUrls({})
+        }
+      } else {
+        setBebidaUrls({})
+      }
     } catch (e) {
       console.error(e)
       if (!timedOut) setSaveError("No se pudieron cargar las imágenes.")
@@ -189,7 +223,7 @@ export function SiteMediaEditor({
       window.clearTimeout(timeoutId)
       if (!timedOut) setLoading(false)
     }
-  }, [ceo])
+  }, [ceo, serverVerifiedCeo])
 
   useEffect(() => {
     let cancelled = false
@@ -233,8 +267,10 @@ export function SiteMediaEditor({
   }, [loadProfile])
 
   useEffect(() => {
-    if (ceo) void loadMedia()
-  }, [ceo, loadMedia])
+    if (serverVerifiedCeo || ceo) {
+      void loadMedia({ silent: Boolean(initialMedia) })
+    }
+  }, [serverVerifiedCeo, ceo, loadMedia, initialMedia])
 
   const handleLogout = async () => {
     try {
@@ -268,6 +304,12 @@ export function SiteMediaEditor({
         if (u) proteinaPayload[p] = u
       }
 
+      const bebidaPayload: Record<string, string> = {}
+      for (const b of bebidas) {
+        const u = bebidaUrls[b.id]?.trim()
+        if (u) bebidaPayload[b.id] = u
+      }
+
       const rows = [
         {
           setting_key: SITE_MEDIA_KEYS.heroSlides,
@@ -290,6 +332,12 @@ export function SiteMediaEditor({
           setting_value: JSON.stringify(proteinaPayload),
           description:
             "JSON: Asada|Pollo|Pastor|Camarón -> image URL (selector de proteína)",
+        },
+        {
+          setting_key: SITE_MEDIA_KEYS.bebidaImagenes,
+          setting_value: JSON.stringify(bebidaPayload),
+          description:
+            "JSON: bebida id -> image URL (miniatura por agua / bebida)",
         },
       ]
 
@@ -417,11 +465,9 @@ export function SiteMediaEditor({
             Editar imágenes del sitio
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Puedes pegar URLs o subir imágenes al bucket de Storage{" "}
-            <code className="text-xs">files</code> (lectura pública; solo CEO
-            sube). También rutas locales como{" "}
-            <code className="text-xs">/foto.jpg</code> en{" "}
-            <code className="text-xs">public/</code>.
+            Sube imágenes desde tu computadora. La vista previa se actualiza al
+            subir. Pulsa <strong className="font-medium">Guardar</strong> para
+            publicar los cambios.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void handleLogout()}>
@@ -450,42 +496,37 @@ export function SiteMediaEditor({
               {slides.map((slide, index) => (
                 <div
                   key={slide.id}
-                  className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start border-b border-border pb-4 last:border-0 last:pb-0"
+                  className="flex gap-3 items-start border-b border-border pb-4 last:border-0 last:pb-0"
                 >
-                  <div className="space-y-2">
-                    <Label htmlFor={`slide-src-${index}`}>URL imagen {index + 1}</Label>
-                    <Input
-                      id={`slide-src-${index}`}
-                      value={slide.src}
-                      onChange={(e) => updateSlide(index, "src", e.target.value)}
-                      placeholder="https://..."
-                      autoComplete="off"
-                    />
+                  <MediaUrlThumb src={slide.src} alt={slide.alt || `Slide ${index + 1}`} />
+                  <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-end gap-3">
+                    <div className="flex-1 space-y-2">
+                      <Label htmlFor={`slide-alt-${index}`}>
+                        Imagen {index + 1} — texto alternativo
+                      </Label>
+                      <Input
+                        id={`slide-alt-${index}`}
+                        value={slide.alt}
+                        onChange={(e) => updateSlide(index, "alt", e.target.value)}
+                        placeholder="Descripción breve"
+                      />
+                    </div>
                     <StorageUploadButton
                       folderPath="site/hero"
                       onUploaded={(url) => updateSlide(index, "src", url)}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive shrink-0"
+                      disabled={slides.length <= 1}
+                      onClick={() => removeSlide(index)}
+                      aria-label="Quitar imagen"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor={`slide-alt-${index}`}>Texto alternativo</Label>
-                    <Input
-                      id={`slide-alt-${index}`}
-                      value={slide.alt}
-                      onChange={(e) => updateSlide(index, "alt", e.target.value)}
-                      placeholder="Descripción breve"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive shrink-0 sm:mt-8"
-                    disabled={slides.length <= 1}
-                    onClick={() => removeSlide(index)}
-                    aria-label="Quitar imagen"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
                 </div>
               ))}
               <Button
@@ -510,24 +551,17 @@ export function SiteMediaEditor({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
-                <Label htmlFor="menu-banner">URL</Label>
-                <Input
-                  id="menu-banner"
-                  value={menuBanner}
-                  onChange={(e) => {
-                    setMenuBanner(e.target.value)
-                    setSaveOk(false)
-                  }}
-                  placeholder="https://..."
-                />
-                <StorageUploadButton
-                  folderPath="site/menu-banner"
-                  onUploaded={(url) => {
-                    setMenuBanner(url)
-                    setSaveOk(false)
-                  }}
-                />
+              <div className="flex gap-3 items-start">
+                <MediaUrlThumb src={menuBanner} alt="Banner del menú" />
+                <div className="min-w-0 flex-1">
+                  <StorageUploadButton
+                    folderPath="site/menu-banner"
+                    onUploaded={(url) => {
+                      setMenuBanner(url)
+                      setSaveOk(false)
+                    }}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -544,54 +578,69 @@ export function SiteMediaEditor({
             </CardHeader>
             <CardContent className="space-y-4">
               {categorias.map((c) => (
-                <div key={c.id} className="space-y-2">
-                  <Label htmlFor={`cat-${c.id}`}>{c.nombre}</Label>
-                  <Input
-                    id={`cat-${c.id}`}
-                    value={catUrls[c.id] ?? ""}
-                    onChange={(e) => {
+                <div key={c.id} className="flex gap-3 items-start">
+                  <MediaUrlThumb src={catUrls[c.id]} alt={c.nombre} />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm font-medium">{c.nombre}</p>
+                    <StorageUploadButton
+                      folderPath={`site/categoria/${c.id}`}
+                      onUploaded={(url) => {
+                        setCatUrls((prev) => ({ ...prev, [c.id]: url }))
+                        setSaveOk(false)
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+              <div className="flex gap-3 items-start">
+                <MediaUrlThumb
+                  src={catUrls[BEBIDAS_CATEGORIA_ID]}
+                  alt="Bebidas"
+                />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-sm font-medium">Bebidas</p>
+                  <StorageUploadButton
+                    folderPath={`site/categoria/${BEBIDAS_CATEGORIA_ID}`}
+                    onUploaded={(url) => {
                       setCatUrls((prev) => ({
                         ...prev,
-                        [c.id]: e.target.value,
+                        [BEBIDAS_CATEGORIA_ID]: url,
                       }))
-                      setSaveOk(false)
-                    }}
-                    placeholder="https://..."
-                  />
-                  <StorageUploadButton
-                    folderPath={`site/categoria/${c.id}`}
-                    onUploaded={(url) => {
-                      setCatUrls((prev) => ({ ...prev, [c.id]: url }))
                       setSaveOk(false)
                     }}
                   />
                 </div>
-              ))}
-              <div className="space-y-2">
-                <Label htmlFor={`cat-${BEBIDAS_CATEGORIA_ID}`}>Bebidas</Label>
-                <Input
-                  id={`cat-${BEBIDAS_CATEGORIA_ID}`}
-                  value={catUrls[BEBIDAS_CATEGORIA_ID] ?? ""}
-                  onChange={(e) => {
-                    setCatUrls((prev) => ({
-                      ...prev,
-                      [BEBIDAS_CATEGORIA_ID]: e.target.value,
-                    }))
-                    setSaveOk(false)
-                  }}
-                  placeholder="https://..."
-                />
-                <StorageUploadButton
-                  folderPath={`site/categoria/${BEBIDAS_CATEGORIA_ID}`}
-                  onUploaded={(url) => {
-                    setCatUrls((prev) => ({
-                      ...prev,
-                      [BEBIDAS_CATEGORIA_ID]: url,
-                    }))
-                    setSaveOk(false)
-                  }}
-                />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Bebidas — miniatura por sabor</CardTitle>
+              <CardDescription>
+                Una imagen por agua (Jamaica, Piña, etc.). Se muestra como miniatura
+                en menú, ordenar y panel staff.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {bebidas.map((b) => (
+                  <div key={b.id} className="flex gap-3 items-start">
+                    <MediaUrlThumb src={bebidaUrls[b.id]} alt={b.nombre} />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <p className="text-sm font-medium">{b.nombre}</p>
+                      <StorageUploadButton
+                        folderPath={`site/bebida/${b.id}`}
+                        onUploaded={(uploaded) => {
+                          setBebidaUrls((prev) => ({
+                            ...prev,
+                            [b.id]: uploaded,
+                          }))
+                          setSaveOk(false)
+                        }}
+                      />
+                    </div>
+                  </div>
+              ))}
             </CardContent>
           </Card>
 
@@ -604,27 +653,18 @@ export function SiteMediaEditor({
             </CardHeader>
             <CardContent className="space-y-4">
               {proteinas.map((p) => (
-                <div key={p} className="space-y-2">
-                  <Label htmlFor={`prot-${p}`}>{p}</Label>
-                  <Input
-                    id={`prot-${p}`}
-                    value={proteinaUrls[p] ?? ""}
-                    onChange={(e) => {
-                      setProteinaUrls((prev) => ({
-                        ...prev,
-                        [p]: e.target.value,
-                      }))
-                      setSaveOk(false)
-                    }}
-                    placeholder="https://..."
-                  />
-                  <StorageUploadButton
-                    folderPath={`site/proteina/${PROTEINA_SLUG[p]}`}
-                    onUploaded={(url) => {
-                      setProteinaUrls((prev) => ({ ...prev, [p]: url }))
-                      setSaveOk(false)
-                    }}
-                  />
+                <div key={p} className="flex gap-3 items-start">
+                  <MediaUrlThumb src={proteinaUrls[p]} alt={p} />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm font-medium">{p}</p>
+                    <StorageUploadButton
+                      folderPath={`site/proteina/${PROTEINA_SLUG[p]}`}
+                      onUploaded={(url) => {
+                        setProteinaUrls((prev) => ({ ...prev, [p]: url }))
+                        setSaveOk(false)
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
             </CardContent>

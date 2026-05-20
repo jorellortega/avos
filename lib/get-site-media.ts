@@ -1,6 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server"
 import { homeHeroSlides, type HeroSlide } from "@/lib/home-hero-slides"
-import type { Proteina } from "@/lib/menu-data"
+import { bebidas, type Proteina } from "@/lib/menu-data"
 import {
   SITE_MEDIA_KEYS,
   defaultSiteMedia,
@@ -71,6 +71,24 @@ function parseProteinaImagenes(
   }
 }
 
+function parseBebidaImagenes(
+  raw: string | null | undefined,
+): Record<string, string> {
+  if (!raw?.trim()) return {}
+  try {
+    const j = JSON.parse(raw) as unknown
+    if (!j || typeof j !== "object" || Array.isArray(j)) return {}
+    const out: Record<string, string> = {}
+    for (const b of bebidas) {
+      const v = (j as Record<string, unknown>)[b.id]
+      if (typeof v === "string" && v.trim()) out[b.id] = v.trim()
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
 /**
  * Loads public site imagery from Supabase (anon-readable rows). Falls back to file defaults.
  */
@@ -86,6 +104,7 @@ export async function getSiteMedia(): Promise<SiteMedia> {
         SITE_MEDIA_KEYS.menuBanner,
         SITE_MEDIA_KEYS.categoriaImagenes,
         SITE_MEDIA_KEYS.proteinaImagenes,
+        SITE_MEDIA_KEYS.bebidaImagenes,
       ])
 
     if (error || !data?.length) {
@@ -100,6 +119,7 @@ export async function getSiteMedia(): Promise<SiteMedia> {
     const bannerRaw = map[SITE_MEDIA_KEYS.menuBanner]?.trim()
     const catRaw = map[SITE_MEDIA_KEYS.categoriaImagenes]
     const protRaw = map[SITE_MEDIA_KEYS.proteinaImagenes]
+    const bebRaw = map[SITE_MEDIA_KEYS.bebidaImagenes]
 
     const heroSlides = parseHeroSlides(heroRaw)
     const menuBannerUrl =
@@ -117,7 +137,15 @@ export async function getSiteMedia(): Promise<SiteMedia> {
       proteinaImagenes[id as Proteina] = url
     }
 
-    return { heroSlides, menuBannerUrl, categoriaImagenes, proteinaImagenes }
+    const bebidaImagenes = parseBebidaImagenes(bebRaw)
+
+    return {
+      heroSlides,
+      menuBannerUrl,
+      categoriaImagenes,
+      proteinaImagenes,
+      bebidaImagenes,
+    }
   } catch {
     return fallback
   }

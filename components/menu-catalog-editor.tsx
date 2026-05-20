@@ -6,7 +6,9 @@ import { Loader2, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { BebidaThumb } from "@/components/bebida-thumb"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useBebidaImagenes } from "@/lib/use-bebida-imagenes"
 import {
   Card,
   CardContent,
@@ -18,8 +20,11 @@ import { createBrowserSupabase } from "@/lib/supabase/client"
 import {
   BEBIDAS_CATEGORIA_ID,
   bebidas,
+  bebidaTamanoLabels,
   categorias,
   proteinas,
+  type BebidaTamano,
+  type Proteina,
 } from "@/lib/menu-data"
 import {
   MENU_CATALOG_KEY,
@@ -29,13 +34,38 @@ import {
 import { useMenuCatalogContextOptional } from "@/components/menu-catalog-provider"
 
 function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
+  const proteinaPreciosPorCategoria: MenuCatalogJson["proteinaPreciosPorCategoria"] =
+    {}
+  for (const [catId, map] of Object.entries(j.proteinaPreciosPorCategoria)) {
+    if (map) proteinaPreciosPorCategoria[catId] = { ...map }
+  }
+  const hiddenProteinasPorCategoria: MenuCatalogJson["hiddenProteinasPorCategoria"] =
+    {}
+  for (const [catId, list] of Object.entries(j.hiddenProteinasPorCategoria)) {
+    if (list?.length) hiddenProteinasPorCategoria[catId] = [...list]
+  }
+  const outProteinasPorCategoria: MenuCatalogJson["outProteinasPorCategoria"] =
+    {}
+  for (const [catId, list] of Object.entries(j.outProteinasPorCategoria)) {
+    if (list?.length) outProteinasPorCategoria[catId] = [...list]
+  }
+  const bebidaPrecios: MenuCatalogJson["bebidaPrecios"] = {}
+  for (const [bebidaId, sizes] of Object.entries(j.bebidaPrecios)) {
+    if (sizes) bebidaPrecios[bebidaId] = { ...sizes }
+  }
   return {
     categoriaPrecios: { ...j.categoriaPrecios },
-    bebidaPrecios: { ...j.bebidaPrecios },
+    proteinaPreciosPorCategoria,
+    bebidaPrecios,
     camarónExtra: j.camarónExtra,
     outCategorias: [...j.outCategorias],
     outProteinas: [...j.outProteinas],
+    outProteinasPorCategoria,
     outBebidas: [...j.outBebidas],
+    hiddenCategorias: [...j.hiddenCategorias],
+    hiddenProteinas: [...j.hiddenProteinas],
+    hiddenProteinasPorCategoria,
+    hiddenBebidas: [...j.hiddenBebidas],
   }
 }
 
@@ -45,40 +75,121 @@ type Props = {
 
 export function MenuCatalogEditor({ initial }: Props) {
   const ctx = useMenuCatalogContextOptional()
+  const bebidaImgs = useBebidaImagenes()
   const [state, setState] = useState(() => cloneJson(initial))
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
     null,
   )
 
-  const setCategoriaPrecio = (id: string, val: string) => {
-    const n = parseFloat(val)
+  const isProteinaHiddenEnCategoria = (
+    categoriaId: string,
+    proteina: Proteina,
+  ) =>
+    state.hiddenProteinas.includes(proteina) ||
+    (state.hiddenProteinasPorCategoria[categoriaId]?.includes(proteina) ??
+      false)
+
+  const toggleProteinaHiddenEnCategoria = (
+    categoriaId: string,
+    proteina: Proteina,
+    checked: boolean,
+  ) => {
     setState((s) => {
       const next = cloneJson(s)
-      if (val === "" || !Number.isFinite(n)) {
-        delete next.categoriaPrecios[id]
+      const list = new Set(next.hiddenProteinasPorCategoria[categoriaId] ?? [])
+      if (checked) list.add(proteina)
+      else list.delete(proteina)
+      if (list.size === 0) {
+        delete next.hiddenProteinasPorCategoria[categoriaId]
       } else {
-        next.categoriaPrecios[id] = n
+        next.hiddenProteinasPorCategoria[categoriaId] = Array.from(
+          list,
+        ) as Proteina[]
       }
       return next
     })
   }
 
-  const setBebidaPrecio = (id: string, val: string) => {
+  const isProteinaOutEnCategoria = (categoriaId: string, proteina: Proteina) =>
+    state.outProteinas.includes(proteina) ||
+    (state.outProteinasPorCategoria[categoriaId]?.includes(proteina) ?? false)
+
+  const toggleProteinaOutEnCategoria = (
+    categoriaId: string,
+    proteina: Proteina,
+    checked: boolean,
+  ) => {
+    setState((s) => {
+      const next = cloneJson(s)
+      const list = new Set(next.outProteinasPorCategoria[categoriaId] ?? [])
+      if (checked) list.add(proteina)
+      else list.delete(proteina)
+      if (list.size === 0) {
+        delete next.outProteinasPorCategoria[categoriaId]
+      } else {
+        next.outProteinasPorCategoria[categoriaId] = Array.from(
+          list,
+        ) as Proteina[]
+      }
+      return next
+    })
+  }
+
+  const setProteinaPrecio = (
+    categoriaId: string,
+    proteina: Proteina,
+    val: string,
+  ) => {
     const n = parseFloat(val)
     setState((s) => {
       const next = cloneJson(s)
+      const cat = { ...(next.proteinaPreciosPorCategoria[categoriaId] ?? {}) }
       if (val === "" || !Number.isFinite(n)) {
+        delete cat[proteina]
+      } else {
+        cat[proteina] = n
+      }
+      if (Object.keys(cat).length === 0) {
+        delete next.proteinaPreciosPorCategoria[categoriaId]
+      } else {
+        next.proteinaPreciosPorCategoria[categoriaId] = cat
+      }
+      return next
+    })
+  }
+
+  const setBebidaPrecio = (
+    id: string,
+    tamano: BebidaTamano,
+    val: string,
+  ) => {
+    const n = parseFloat(val)
+    setState((s) => {
+      const next = cloneJson(s)
+      const sizes = { ...(next.bebidaPrecios[id] ?? {}) }
+      if (val === "" || !Number.isFinite(n)) {
+        delete sizes[tamano]
+      } else {
+        sizes[tamano] = n
+      }
+      if (Object.keys(sizes).length === 0) {
         delete next.bebidaPrecios[id]
       } else {
-        next.bebidaPrecios[id] = n
+        next.bebidaPrecios[id] = sizes
       }
       return next
     })
   }
 
   const toggleList = (
-    key: "outCategorias" | "outProteinas" | "outBebidas",
+    key:
+      | "outCategorias"
+      | "outProteinas"
+      | "outBebidas"
+      | "hiddenCategorias"
+      | "hiddenProteinas"
+      | "hiddenBebidas",
     id: string,
     checked: boolean,
   ) => {
@@ -118,20 +229,41 @@ export function MenuCatalogEditor({ initial }: Props) {
     }
   }, [state, ctx])
 
-  const categoriaPrecioInput = (id: string) => {
-    const v = state.categoriaPrecios[id]
-    const def = categorias.find((c) => c.id === id)?.precioBase
-    return v !== undefined ? String(v) : def !== undefined ? String(def) : ""
+  const bebidaPrecioInput = (id: string, tamano: BebidaTamano) => {
+    const v = state.bebidaPrecios[id]?.[tamano]
+    return v !== undefined ? String(v) : ""
   }
 
-  const bebidaPrecioInput = (id: string) => {
-    const v = state.bebidaPrecios[id]
-    const def = bebidas.find((b) => b.id === id)?.precio
-    return v !== undefined ? String(v) : def !== undefined ? String(def) : ""
+  const bebidaPrecioPlaceholder = (id: string, tamano: BebidaTamano) => {
+    const b = bebidas.find((beb) => beb.id === id)
+    if (!b) return ""
+    return String(tamano === "chico" ? b.precioChico : b.precioGrande)
+  }
+
+  const categoriaBase = (id: string) =>
+    categorias.find((c) => c.id === id)?.precioBase ?? 0
+
+  const camarónExtraEffective = () => {
+    const e = state.camarónExtra
+    return typeof e === "number" && Number.isFinite(e) ? e : 20
+  }
+
+  const proteinaPrecioInput = (categoriaId: string, proteina: Proteina) => {
+    const v = state.proteinaPreciosPorCategoria[categoriaId]?.[proteina]
+    return v !== undefined ? String(v) : ""
+  }
+
+  const proteinaPrecioPlaceholder = (
+    categoriaId: string,
+    proteina: Proteina,
+  ) => {
+    const base = categoriaBase(categoriaId)
+    if (proteina === "Camarón") return String(base + camarónExtraEffective())
+    return String(base)
   }
 
   return (
-    <div className="space-y-8 max-w-3xl mx-auto">
+    <div className="space-y-8 max-w-6xl mx-auto w-full px-1">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1
@@ -141,8 +273,9 @@ export function MenuCatalogEditor({ initial }: Props) {
             Precios y disponibilidad
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Los clientes no podrán ordenar lo que marques como agotado. Los
-            precios vacíos usan el valor del menú base.
+            <strong>Agotado</strong>: se ve pero no se puede ordenar.{" "}
+            <strong>Oculto</strong>: no aparece para clientes. Los precios
+            vacíos usan el menú base.
           </p>
         </div>
         <Button onClick={() => void save()} disabled={saving}>
@@ -168,46 +301,146 @@ export function MenuCatalogEditor({ initial }: Props) {
         <CardHeader>
           <CardTitle>Platillos por categoría</CardTitle>
           <CardDescription>
-            Precio base (antes de extra por Camarón) y categoría agotada.
+            Precio por proteína. Camarón suma el extra si no tiene precio
+            propio. &quot;Agotado&quot; y &quot;Oculto&quot; por proteína
+            aplican solo a ese platillo.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-8">
           {categorias.map((c) => (
             <div
               key={c.id}
-              className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-border pb-4 last:border-0 last:pb-0"
+              className="rounded-lg border border-border p-4 md:p-5"
             >
-              <div className="flex-1 min-w-0">
-                <p className="font-medium">{c.nombre}</p>
-                <p className="text-xs text-muted-foreground">
-                  Base en código: ${c.precioBase}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor={`precio-${c.id}`} className="text-xs">
-                    Precio (MXN)
-                  </Label>
-                  <Input
-                    id={`precio-${c.id}`}
-                    type="number"
-                    min={0}
-                    step={1}
-                    className="w-28"
-                    placeholder={String(c.precioBase)}
-                    value={categoriaPrecioInput(c.id)}
-                    onChange={(e) => setCategoriaPrecio(c.id, e.target.value)}
-                  />
+              <div className="grid grid-cols-1 lg:grid-cols-[11rem_minmax(0,1fr)] gap-6 items-start">
+              <div className="space-y-3">
+                <p className="font-medium text-base">{c.nombre}</p>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={state.outCategorias.includes(c.id)}
+                      onCheckedChange={(ch) =>
+                        toggleList("outCategorias", c.id, ch === true)
+                      }
+                    />
+                    Agotado
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={state.hiddenCategorias.includes(c.id)}
+                      onCheckedChange={(ch) =>
+                        toggleList("hiddenCategorias", c.id, ch === true)
+                      }
+                    />
+                    Oculto del menú
+                  </label>
                 </div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox
-                    checked={state.outCategorias.includes(c.id)}
-                    onCheckedChange={(ch) =>
-                      toggleList("outCategorias", c.id, ch === true)
-                    }
-                  />
-                  Agotado
-                </label>
+              </div>
+
+              {c.tieneProteinas ? (
+                <div className="space-y-3 w-full">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Precio por proteína (MXN)
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
+                    {proteinas.map((p) => (
+                      <div
+                        key={p}
+                        className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2 min-w-0"
+                      >
+                        <Label
+                          htmlFor={`precio-${c.id}-${p}`}
+                          className="text-xs"
+                        >
+                          {p}
+                        </Label>
+                        <Input
+                          id={`precio-${c.id}-${p}`}
+                          type="number"
+                          min={0}
+                          step={1}
+                          className="w-full"
+                          placeholder={proteinaPrecioPlaceholder(c.id, p)}
+                          value={proteinaPrecioInput(c.id, p)}
+                          onChange={(e) =>
+                            setProteinaPrecio(c.id, p, e.target.value)
+                          }
+                        />
+                        <div className="flex flex-col gap-1.5">
+                          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                            <Checkbox
+                              checked={isProteinaOutEnCategoria(c.id, p)}
+                              disabled={state.outProteinas.includes(p)}
+                              onCheckedChange={(ch) =>
+                                toggleProteinaOutEnCategoria(
+                                  c.id,
+                                  p,
+                                  ch === true,
+                                )
+                              }
+                            />
+                            Agotado
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                            <Checkbox
+                              checked={isProteinaHiddenEnCategoria(c.id, p)}
+                              disabled={state.hiddenProteinas.includes(p)}
+                              onCheckedChange={(ch) =>
+                                toggleProteinaHiddenEnCategoria(
+                                  c.id,
+                                  p,
+                                  ch === true,
+                                )
+                              }
+                            />
+                            Oculto
+                          </label>
+                        </div>
+                        {(state.outProteinas.includes(p) ||
+                          state.hiddenProteinas.includes(p)) && (
+                          <p className="text-[10px] text-muted-foreground leading-tight space-y-0.5">
+                            <span className="block">
+                              {state.outProteinas.includes(p) &&
+                              state.hiddenProteinas.includes(p)
+                                ? "Agotada y oculta en todos los platillos."
+                                : state.outProteinas.includes(p)
+                                  ? "Agotada en todos los platillos."
+                                  : "Oculta en todos los platillos."}
+                            </span>
+                            <span className="block">
+                              {state.outProteinas.includes(p) && (
+                                <button
+                                  type="button"
+                                  className="text-primary underline underline-offset-2 hover:no-underline"
+                                  onClick={() =>
+                                    toggleList("outProteinas", p, false)
+                                  }
+                                >
+                                  Quitar agotado global
+                                </button>
+                              )}
+                              {state.outProteinas.includes(p) &&
+                                state.hiddenProteinas.includes(p) &&
+                                " · "}
+                              {state.hiddenProteinas.includes(p) && (
+                                <button
+                                  type="button"
+                                  className="text-primary underline underline-offset-2 hover:no-underline"
+                                  onClick={() =>
+                                    toggleList("hiddenProteinas", p, false)
+                                  }
+                                >
+                                  Quitar oculto global
+                                </button>
+                              )}
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               </div>
             </div>
           ))}
@@ -248,24 +481,36 @@ export function MenuCatalogEditor({ initial }: Props) {
         <CardHeader>
           <CardTitle>Proteínas</CardTitle>
           <CardDescription>
-            Si una proteína está agotada, no podrán elegirla en el menú ni en
-            ordenar.
+            Agotada u oculta aquí: en todos los platillos. Para solo un
+            platillo, usa las casillas junto al precio arriba.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-4">
           {proteinas.map((p) => (
-            <label
+            <div
               key={p}
-              className="flex items-center gap-2 text-sm cursor-pointer border rounded-lg px-3 py-2"
+              className="flex flex-col gap-2 border rounded-lg px-3 py-2 text-sm"
             >
-              <Checkbox
-                checked={state.outProteinas.includes(p)}
-                onCheckedChange={(ch) =>
-                  toggleList("outProteinas", p, ch === true)
-                }
-              />
-              {p} agotada
-            </label>
+              <span className="font-medium">{p}</span>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={state.outProteinas.includes(p)}
+                  onCheckedChange={(ch) =>
+                    toggleList("outProteinas", p, ch === true)
+                  }
+                />
+                Agotada
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={state.hiddenProteinas.includes(p)}
+                  onCheckedChange={(ch) =>
+                    toggleList("hiddenProteinas", p, ch === true)
+                  }
+                />
+                Oculta del menú
+              </label>
+            </div>
           ))}
         </CardContent>
       </Card>
@@ -274,42 +519,68 @@ export function MenuCatalogEditor({ initial }: Props) {
         <CardHeader>
           <CardTitle>Bebidas (aguas)</CardTitle>
           <CardDescription>
-            Sección &quot;bebidas&quot; en el menú. Puedes agotar toda la
+            Precio chico y grande por sabor. Puedes agotar u ocultar toda la
             categoría desde platillos arriba o solo sabores aquí.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <label className="flex items-center gap-2 text-sm cursor-pointer border rounded-lg px-3 py-2 w-fit">
-            <Checkbox
-              checked={state.outCategorias.includes(BEBIDAS_CATEGORIA_ID)}
-              onCheckedChange={(ch) =>
-                toggleList("outCategorias", BEBIDAS_CATEGORIA_ID, ch === true)
-              }
-            />
-            Toda la categoría Bebidas agotada
-          </label>
+          <div className="flex flex-wrap gap-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer border rounded-lg px-3 py-2">
+              <Checkbox
+                checked={state.outCategorias.includes(BEBIDAS_CATEGORIA_ID)}
+                onCheckedChange={(ch) =>
+                  toggleList("outCategorias", BEBIDAS_CATEGORIA_ID, ch === true)
+                }
+              />
+              Toda la categoría Bebidas agotada
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer border rounded-lg px-3 py-2">
+              <Checkbox
+                checked={state.hiddenCategorias.includes(BEBIDAS_CATEGORIA_ID)}
+                onCheckedChange={(ch) =>
+                  toggleList(
+                    "hiddenCategorias",
+                    BEBIDAS_CATEGORIA_ID,
+                    ch === true,
+                  )
+                }
+              />
+              Toda la categoría Bebidas oculta
+            </label>
+          </div>
           {bebidas.map((b) => (
             <div
               key={b.id}
               className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-border pb-4 last:border-0"
             >
-              <div className="flex-1 font-medium">{b.nombre}</div>
+              <div className="flex flex-1 items-center gap-3 min-w-0">
+                <BebidaThumb
+                  src={bebidaImgs[b.id]}
+                  alt={b.nombre}
+                  className="h-10 w-10"
+                />
+                <span className="font-medium">{b.nombre}</span>
+              </div>
               <div className="flex flex-wrap items-center gap-4">
-                <div className="space-y-1">
-                  <Label className="text-xs" htmlFor={`beb-${b.id}`}>
-                    Precio
-                  </Label>
-                  <Input
-                    id={`beb-${b.id}`}
-                    type="number"
-                    min={0}
-                    step={1}
-                    className="w-28"
-                    placeholder={String(b.precio)}
-                    value={bebidaPrecioInput(b.id)}
-                    onChange={(e) => setBebidaPrecio(b.id, e.target.value)}
-                  />
-                </div>
+                {(["chico", "grande"] as const).map((tam) => (
+                  <div key={tam} className="space-y-1">
+                    <Label className="text-xs" htmlFor={`beb-${b.id}-${tam}`}>
+                      {bebidaTamanoLabels[tam]} (MXN)
+                    </Label>
+                    <Input
+                      id={`beb-${b.id}-${tam}`}
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="w-24"
+                      placeholder={bebidaPrecioPlaceholder(b.id, tam)}
+                      value={bebidaPrecioInput(b.id, tam)}
+                      onChange={(e) =>
+                        setBebidaPrecio(b.id, tam, e.target.value)
+                      }
+                    />
+                  </div>
+                ))}
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <Checkbox
                     checked={state.outBebidas.includes(b.id)}
@@ -318,6 +589,15 @@ export function MenuCatalogEditor({ initial }: Props) {
                     }
                   />
                   Agotado
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={state.hiddenBebidas.includes(b.id)}
+                    onCheckedChange={(ch) =>
+                      toggleList("hiddenBebidas", b.id, ch === true)
+                    }
+                  />
+                  Oculto del menú
                 </label>
               </div>
             </div>

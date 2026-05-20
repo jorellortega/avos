@@ -12,7 +12,6 @@ import {
   type Proteina,
   imagenProteinaPorId,
 } from "@/lib/menu-data"
-import { precioItemConProteina } from "@/lib/menu-catalog-shared"
 
 interface MenuItemCardProps {
   /** e.g. tacos, burritos — for pricing / availability */
@@ -43,31 +42,50 @@ export function MenuItemCard({
   const [cantidad, setCantidad] = useState(1)
   const [showSuccess, setShowSuccess] = useState(false)
 
-  const base =
-    catalog?.getCategoriaPrecioBase(categoriaId) ?? precioBase
-  const camarónExtra = catalog?.getCamarónExtra() ?? 20
+  const categoriaOculta = catalog?.isCategoriaHidden(categoriaId) ?? false
   const categoriaFuera = catalog?.isCategoriaOut(categoriaId) ?? false
 
-  const proteinasDisponibles = proteinas.filter(
-    (p) => !catalog?.isProteinaOut(p),
+  const proteinasEnMenu = proteinas.filter(
+    (p) => !catalog?.isProteinaHidden(categoriaId, p),
+  )
+
+  const proteinasDisponibles = proteinasEnMenu.filter(
+    (p) => !catalog?.isProteinaOut(categoriaId, p),
   )
 
   useEffect(() => {
     if (!catalog || !tieneProteinas) return
-    if (catalog.isProteinaOut(selectedProteina)) {
-      const first = proteinas.find((p) => !catalog.isProteinaOut(p))
-      if (first) setSelectedProteina(first)
+    const enMenu = proteinas.filter(
+      (p) => !catalog.isProteinaHidden(categoriaId, p),
+    )
+    const pickable = enMenu.filter(
+      (p) => !catalog.isProteinaOut(categoriaId, p),
+    )
+    if (pickable.length === 0) return
+    if (
+      catalog.isProteinaHidden(categoriaId, selectedProteina) ||
+      catalog.isProteinaOut(categoriaId, selectedProteina)
+    ) {
+      setSelectedProteina(pickable[0])
     }
-  }, [catalog, tieneProteinas, selectedProteina])
+  }, [catalog, tieneProteinas, selectedProteina, categoriaId])
+
+  if (categoriaOculta) return null
 
   const precio = tieneProteinas
-    ? precioItemConProteina(base, selectedProteina, camarónExtra)
-    : base
+    ? catalog?.getPrecioConProteina(categoriaId, selectedProteina) ??
+      (selectedProteina === "Camarón" ? precioBase + 20 : precioBase)
+    : catalog?.getCategoriaPrecioBase(categoriaId) ?? precioBase
+
+  const precioProteina = (p: Proteina) =>
+    catalog?.getPrecioConProteina(categoriaId, p) ??
+    (p === "Camarón" ? precioBase + 20 : precioBase)
 
   const handleAddToCart = () => {
     if (categoriaFuera) return
     if (tieneProteinas && proteinasDisponibles.length === 0) return
-    if (tieneProteinas && catalog?.isProteinaOut(selectedProteina)) return
+    if (tieneProteinas && catalog?.isProteinaOut(categoriaId, selectedProteina))
+      return
 
     const itemId = tieneProteinas
       ? `${categoria}-${selectedProteina}-${Date.now()}`
@@ -140,8 +158,9 @@ export function MenuItemCard({
                 </p>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {proteinas.map((proteina) => {
-                    const agotada = catalog?.isProteinaOut(proteina) ?? false
+                  {proteinasEnMenu.map((proteina) => {
+                    const agotada =
+                      catalog?.isProteinaOut(categoriaId, proteina) ?? false
                     const isSel = selectedProteina === proteina
                     return (
                       <button
@@ -174,13 +193,13 @@ export function MenuItemCard({
                           {agotada && (
                             <span className="block text-xs">Agotado</span>
                           )}
-                          {proteina === "Camarón" && !agotada && (
+                          {!agotada && (
                             <span
                               className={`block text-xs opacity-80 ${
                                 isSel ? "" : "text-muted-foreground"
                               }`}
                             >
-                              +${camarónExtra}
+                              ${precioProteina(proteina)}
                             </span>
                           )}
                         </span>

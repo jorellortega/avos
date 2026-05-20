@@ -11,6 +11,7 @@ export const SITE_MEDIA_KEYS = {
   menuBanner: "public_menu_banner",
   categoriaImagenes: "public_menu_categoria_imagenes",
   proteinaImagenes: "public_proteina_imagenes",
+  bebidaImagenes: "public_bebida_imagenes",
 } as const
 
 const DEFAULT_MENU_BANNER =
@@ -22,6 +23,8 @@ export type SiteMedia = {
   categoriaImagenes: Record<string, string>
   /** Asada, Pollo, Pastor, Camarón — used in protein pickers */
   proteinaImagenes: Record<Proteina, string>
+  /** jamaica, pina, … — optional per-drink thumbnails */
+  bebidaImagenes: Record<string, string>
 }
 
 export function defaultSiteMedia(): SiteMedia {
@@ -35,5 +38,6 @@ export function defaultSiteMedia(): SiteMedia {
     menuBannerUrl: DEFAULT_MENU_BANNER,
     categoriaImagenes,
     proteinaImagenes: { ...imagenProteinaPorId },
+    bebidaImagenes: {},
   }
 }

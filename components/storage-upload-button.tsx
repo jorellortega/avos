@@ -41,7 +41,7 @@ export function StorageUploadButton({ folderPath, onUploaded, disabled }: Props)
     } catch (e) {
       console.error(e)
       setErr(
-        e instanceof Error ? e.message : "No se pudo subir. ¿Políticas del bucket?",
+        e instanceof Error ? e.message : "No se pudo subir la imagen.",
       )
     } finally {
       setBusy(false)
@@ -71,7 +71,7 @@ export function StorageUploadButton({ folderPath, onUploaded, disabled }: Props)
         ) : (
           <Upload className="h-4 w-4" />
         )}
-        <span className="ml-2">Subir (bucket files)</span>
+        <span className="ml-2">Subir imagen</span>
       </Button>
       {err && (
         <p className="text-xs text-destructive max-w-md" role="alert">

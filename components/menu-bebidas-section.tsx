@@ -7,6 +7,10 @@ import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 export function MenuBebidasSection() {
   const { catalog } = useMenuCatalogContext()
 
+  if (catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID)) {
+    return null
+  }
+
   if (catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID)) {
     return (
       <div className="pt-8 border-t border-border" id="bebidas">
@@ -38,14 +42,11 @@ export function MenuBebidasSection() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {bebidas.map((bebida) => (
-          <BebidaCard
-            key={bebida.id}
-            id={bebida.id}
-            nombre={bebida.nombre}
-            precio={bebida.precio}
-          />
-        ))}
+        {bebidas
+          .filter((bebida) => !catalog?.isBebidaHidden(bebida.id))
+          .map((bebida) => (
+            <BebidaCard key={bebida.id} bebida={bebida} />
+          ))}
       </div>
     </div>
   )

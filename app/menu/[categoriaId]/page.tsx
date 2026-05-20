@@ -6,6 +6,8 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { MenuItemCard } from "@/components/menu-item-card"
 import { MenuCategoryCartBar } from "@/components/menu-category-cart-bar"
+import { MenuCategoriaGuard } from "@/components/menu-categoria-guard"
+import { MenuCategoryLinks } from "@/components/menu-category-links"
 import { categorias, getCategoriaById } from "@/lib/menu-data"
 import { getSiteMedia } from "@/lib/get-site-media"
 
@@ -46,6 +48,7 @@ export default async function CategoriaMenuPage({ params }: Props) {
     <div className="min-h-screen flex flex-col">
       <Header />
 
+      <MenuCategoriaGuard categoriaId={categoria.id}>
       <main className="flex-1">
         <section className="relative h-40 md:h-52 bg-primary/10">
           <Image
@@ -90,26 +93,10 @@ export default async function CategoriaMenuPage({ params }: Props) {
             <MenuCategoryCartBar />
           </div>
 
-          <div className="container mx-auto px-4 mt-12 max-w-2xl">
-            <p className="text-sm font-medium text-foreground mb-3 text-center">
-              Otras categorías
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {categorias
-                .filter((c) => c.id !== categoria.id)
-                .map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/menu/${c.id}`}
-                    className="px-3 py-1.5 rounded-full border border-border text-sm hover:bg-secondary transition-colors"
-                  >
-                    {c.nombre}
-                  </Link>
-                ))}
-            </div>
-          </div>
+          <MenuCategoryLinks excludeId={categoria.id} />
         </section>
       </main>
+      </MenuCategoriaGuard>
 
       <Footer />
     </div>

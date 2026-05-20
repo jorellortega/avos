@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { SiteMediaEditor } from "@/components/site-media-editor"
+import { getSiteMedia } from "@/lib/get-site-media"
 import { createServerSupabase } from "@/lib/supabase/server"
 
 export const metadata: Metadata = {
@@ -32,13 +33,15 @@ export default async function EditSitePage() {
     redirect("/staff/dashboard")
   }
 
+  const initialMedia = await getSiteMedia()
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
 
       <main className="flex-1 py-8 md:py-12">
         <div className="container mx-auto px-4">
-          <SiteMediaEditor serverVerifiedCeo />
+          <SiteMediaEditor serverVerifiedCeo initialMedia={initialMedia} />
           <p className="text-center text-xs text-muted-foreground mt-10">
             <Link href="/staff/dashboard" className="underline underline-offset-2">
               Volver al panel

@@ -35,7 +35,10 @@ export function HomeMenuGrid({ media }: Props) {
       {categorias.map((categoria) => {
         const thumb =
           media.categoriaImagenes[categoria.id] ?? categoria.imagen
+        const oculta = !loading && catalog?.isCategoriaHidden(categoria.id)
         const fuera = !loading && catalog?.isCategoriaOut(categoria.id)
+
+        if (oculta) return null
 
         if (fuera) {
           return (
@@ -94,7 +97,11 @@ export function HomeMenuGrid({ media }: Props) {
       {(() => {
         const thumb =
           media.categoriaImagenes[BEBIDAS_CATEGORIA_ID] ?? imagenCategoriaBebidas
+        const oculta =
+          !loading && catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID)
         const fuera = !loading && catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID)
+
+        if (oculta) return null
 
         if (fuera) {
           return (

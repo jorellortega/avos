@@ -104,19 +104,52 @@ export const menuCategories: OrdenarMenuCategory[] = categorias.map((c) => ({
   ],
 }))
 
+export type BebidaTamano = "chico" | "grande"
+
+export const bebidaTamanoLabels: Record<BebidaTamano, string> = {
+  chico: "Chico",
+  grande: "Grande",
+}
+
 export const bebidas = [
-  { id: "jamaica", nombre: "Agua de Jamaica", precio: 35 },
-  { id: "pina", nombre: "Agua de Piña", precio: 35 },
-  { id: "limon-pepino", nombre: "Agua de Limón & Pepino", precio: 35 },
-  { id: "mango", nombre: "Agua de Mango", precio: 35 },
+  { id: "jamaica", nombre: "Agua de Jamaica", precioChico: 25, precioGrande: 35 },
+  { id: "pina", nombre: "Agua de Piña", precioChico: 25, precioGrande: 35 },
+  {
+    id: "limon-pepino",
+    nombre: "Agua de Limón & Pepino",
+    precioChico: 25,
+    precioGrande: 35,
+  },
+  { id: "mango", nombre: "Agua de Mango", precioChico: 25, precioGrande: 35 },
+  { id: "alfalfa", nombre: "Agua de Alfalfa", precioChico: 25, precioGrande: 35 },
+  { id: "naranja", nombre: "Agua de Naranja", precioChico: 25, precioGrande: 35 },
+  { id: "horchata", nombre: "Horchata", precioChico: 25, precioGrande: 35 },
+  { id: "melon", nombre: "Agua de Melón", precioChico: 25, precioGrande: 35 },
+  { id: "sandia", nombre: "Agua de Sandía", precioChico: 25, precioGrande: 35 },
+  { id: "michelada", nombre: "Michelada", precioChico: 25, precioGrande: 35 },
 ] as const
 
-export type BebidaOrdenar = { id: string; name: string; price: number }
+export type BebidaMenu = (typeof bebidas)[number]
+
+export function getBebidaPrecioDefault(
+  bebida: BebidaMenu,
+  tamano: BebidaTamano,
+): number {
+  return tamano === "chico" ? bebida.precioChico : bebida.precioGrande
+}
+
+export type BebidaOrdenar = {
+  id: string
+  name: string
+  priceChico: number
+  priceGrande: number
+}
 
 export const bebidasOrdenar: BebidaOrdenar[] = bebidas.map((b) => ({
   id: b.id,
   name: b.nombre,
-  price: b.precio,
+  priceChico: b.precioChico,
+  priceGrande: b.precioGrande,
 }))
 
 export function getPrecioConProteina(precioBase: number, proteina: Proteina): number {

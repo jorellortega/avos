@@ -19,10 +19,12 @@ import {
   BEBIDAS_CATEGORIA_ID,
   categorias,
   bebidas,
+  bebidaTamanoLabels,
+  getBebidaPrecioDefault,
   proteinas,
+  type BebidaTamano,
   type Proteina,
 } from "@/lib/menu-data"
-import { precioItemConProteina } from "@/lib/menu-catalog-shared"
 import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import {
   Check,
@@ -283,10 +285,9 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
   const isPickup = order.tipo === "pickup"
 
   const addItemToEdit = (categoria: typeof categorias[number], proteina: Proteina) => {
-    const base =
-      catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
-    const extra = catalog?.getCamarónExtra() ?? 20
-    const precio = precioItemConProteina(base, proteina, extra)
+    const precio =
+      catalog?.getPrecioConProteina(categoria.id, proteina) ??
+      (proteina === "Camarón" ? categoria.precioBase + 20 : categoria.precioBase)
     const itemId = `${categoria.id}-${proteina}`
     const existingItem = editItems.find(i => i.id === itemId)
     
@@ -306,22 +307,30 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
     }
   }
 
-  const addBebidaToEdit = (bebida: typeof bebidas[number]) => {
-    const precioUnit = catalog?.getBebidaPrecio(bebida.id) ?? bebida.precio
-    const existingItem = editItems.find(i => i.id === bebida.id)
-    
+  const addBebidaToEdit = (bebida: (typeof bebidas)[number], tamano: BebidaTamano) => {
+    const itemId = `${bebida.id}-${tamano}`
+    const precioUnit =
+      catalog?.getBebidaPrecio(bebida.id, tamano) ??
+      getBebidaPrecioDefault(bebida, tamano)
+    const existingItem = editItems.find((i) => i.id === itemId)
+
     if (existingItem) {
-      setEditItems(prev => prev.map(item => 
-        item.id === bebida.id ? { ...item, cantidad: item.cantidad + 1 } : item
-      ))
+      setEditItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, cantidad: item.cantidad + 1 } : item,
+        ),
+      )
     } else {
-      setEditItems(prev => [...prev, {
-        id: bebida.id,
-        categoria: "bebidas",
-        nombre: bebida.nombre,
-        cantidad: 1,
-        precio: precioUnit
-      }])
+      setEditItems((prev) => [
+        ...prev,
+        {
+          id: itemId,
+          categoria: "bebidas",
+          nombre: `${bebida.nombre} (${bebidaTamanoLabels[tamano]})`,
+          cantidad: 1,
+          precio: precioUnit,
+        },
+      ])
     }
   }
 
@@ -608,13 +617,22 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                 <div className="space-y-4 border-t pt-4">
                   <p className="font-medium text-sm">Agregar productos:</p>
                   {categorias
-                    .filter((cat) => !catalog?.isCategoriaOut(cat.id))
+                    .filter(
+                      (cat) =>
+                        !catalog?.isCategoriaOut(cat.id) &&
+                        !catalog?.isCategoriaHidden(cat.id),
+                    )
                     .map(cat => (
                     <div key={cat.id}>
                       <p className="text-sm font-medium mb-2">{cat.nombre}</p>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {proteinas.map((prot) => {
-                          const agotada = catalog?.isProteinaOut(prot) ?? false
+                        {proteinas
+                          .filter(
+                            (prot) => !catalog?.isProteinaHidden(cat.id, prot),
+                          )
+                          .map((prot) => {
+                          const agotada =
+                            catalog?.isProteinaOut(cat.id, prot) ?? false
                           return (
                           <button
                             key={prot}
@@ -648,28 +666,40 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                       </div>
                     </div>
                   ))}
-                  {!catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) && (
+                  {!catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) &&
+                    !catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID) && (
                   <div>
                     <p className="text-sm font-medium mb-2">Bebidas</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {bebidas.map(beb => {
-                        const agotada = catalog?.isBebidaOut(beb.id) ?? false
-                        return (
-                        <Button
-                          key={beb.id}
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          disabled={agotada}
-                          onClick={() => {
-                            if (agotada) return
-                            addBebidaToEdit(beb)
-                          }}
-                        >
-                          {beb.nombre}
-                        </Button>
-                        )
-                      })}
+                    <div className="space-y-3">
+                      {bebidas
+                        .filter((beb) => !catalog?.isBebidaHidden(beb.id))
+                        .map((beb) => {
+                          const agotada = catalog?.isBebidaOut(beb.id) ?? false
+                          return (
+                            <div key={beb.id}>
+                              <p className="text-xs font-medium mb-1.5">
+                                {beb.nombre}
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {(["chico", "grande"] as const).map((tam) => (
+                                  <Button
+                                    key={tam}
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs h-auto py-2"
+                                    disabled={agotada}
+                                    onClick={() => {
+                                      if (agotada) return
+                                      addBebidaToEdit(beb, tam)
+                                    }}
+                                  >
+                                    {bebidaTamanoLabels[tam]}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
                     </div>
                   </div>
                   )}

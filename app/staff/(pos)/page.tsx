@@ -11,8 +11,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useOrders, OrderItem } from "@/components/orders-provider"
 import { insertAvosOrderToSupabase, staffConfirmAvosOrderPayment } from "@/lib/avos-orders-sync"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
-import { categorias, bebidas, proteinas, Proteina } from "@/lib/menu-data"
-import { precioItemConProteina } from "@/lib/menu-catalog-shared"
+import {
+  bebidaTamanoLabels,
+  categorias,
+  bebidas,
+  getBebidaPrecioDefault,
+  proteinas,
+  Proteina,
+  type BebidaTamano,
+} from "@/lib/menu-data"
+import { BebidaThumb } from "@/components/bebida-thumb"
+import { useBebidaImagenes } from "@/lib/use-bebida-imagenes"
 import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { Plus, Minus, Trash2, ChefHat, Users, ArrowLeft, QrCode, CreditCard, Banknote } from "lucide-react"
 
@@ -27,6 +36,7 @@ export default function StaffPage() {
   const { addOrder, getNextOrderNumber, orders, updateOrder } = useOrders()
   const { catalog } = useMenuCatalogContext()
   const proteinaImgs = useProteinaImagenes()
+  const bebidaImgs = useBebidaImagenes()
   const [currentItems, setCurrentItems] = useState<OrderItem[]>([])
   const [nombreCliente, setNombreCliente] = useState("")
   const [mesa, setMesa] = useState("")
@@ -38,12 +48,10 @@ export default function StaffPage() {
   const [paymentError, setPaymentError] = useState("")
 
   const addItem = (categoria: typeof categorias[number], proteina?: Proteina) => {
-    const base =
-      catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
-    const extra = catalog?.getCamarónExtra() ?? 20
     const precio = proteina
-      ? precioItemConProteina(base, proteina, extra)
-      : base
+      ? catalog?.getPrecioConProteina(categoria.id, proteina) ??
+        (proteina === "Camarón" ? categoria.precioBase + 20 : categoria.precioBase)
+      : catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
     
     const itemId = `${categoria.id}-${proteina || "default"}`
     const existingItem = currentItems.find(i => i.id === itemId)
@@ -66,24 +74,32 @@ export default function StaffPage() {
     }
   }
 
-  const addBebida = (bebida: typeof bebidas[number]) => {
-    const unit = catalog?.getBebidaPrecio(bebida.id) ?? bebida.precio
-    const existingItem = currentItems.find(i => i.id === bebida.id)
-    
+  const addBebida = (bebida: (typeof bebidas)[number], tamano: BebidaTamano) => {
+    const itemId = `${bebida.id}-${tamano}`
+    const unit =
+      catalog?.getBebidaPrecio(bebida.id, tamano) ??
+      getBebidaPrecioDefault(bebida, tamano)
+    const existingItem = currentItems.find((i) => i.id === itemId)
+
     if (existingItem) {
-      setCurrentItems(prev => prev.map(item => 
-        item.id === bebida.id 
-          ? { ...item, cantidad: item.cantidad + 1 }
-          : item
-      ))
+      setCurrentItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? { ...item, cantidad: item.cantidad + 1 }
+            : item,
+        ),
+      )
     } else {
-      setCurrentItems(prev => [...prev, {
-        id: bebida.id,
-        categoria: "bebidas",
-        nombre: bebida.nombre,
-        cantidad: 1,
-        precio: unit
-      }])
+      setCurrentItems((prev) => [
+        ...prev,
+        {
+          id: itemId,
+          categoria: "bebidas",
+          nombre: `${bebida.nombre} (${bebidaTamanoLabels[tamano]})`,
+          cantidad: 1,
+          precio: unit,
+        },
+      ])
     }
   }
 
@@ -347,15 +363,14 @@ export default function StaffPage() {
                         {categoria.tieneProteinas && (
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {proteinas.map(proteina => {
-                              const base =
-                                catalog?.getCategoriaPrecioBase(categoria.id) ??
-                                categoria.precioBase
-                              const extra = catalog?.getCamarónExtra() ?? 20
-                              const precio = precioItemConProteina(
-                                base,
-                                proteina,
-                                extra,
-                              )
+                              const precio =
+                                catalog?.getPrecioConProteina(
+                                  categoria.id,
+                                  proteina,
+                                ) ??
+                                (proteina === "Camarón"
+                                  ? categoria.precioBase + 20
+                                  : categoria.precioBase)
                               return (
                                 <Button
                                   key={proteina}
@@ -388,19 +403,37 @@ export default function StaffPage() {
                   ))}
 
                   <TabsContent value="bebidas">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {bebidas.map(bebida => (
-                        <Button
-                          key={bebida.id}
-                          variant="outline"
-                          className="h-auto py-4 flex-col gap-1"
-                          onClick={() => addBebida(bebida)}
-                        >
-                          <span className="font-semibold text-sm">{bebida.nombre}</span>
-                          <span className="text-sm text-muted-foreground">
-                            ${catalog?.getBebidaPrecio(bebida.id) ?? bebida.precio}
-                          </span>
-                        </Button>
+                    <div className="space-y-4">
+                      {bebidas.map((bebida) => (
+                        <div key={bebida.id} className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <BebidaThumb
+                              src={bebidaImgs[bebida.id]}
+                              alt={bebida.nombre}
+                              className="h-10 w-10"
+                            />
+                            <p className="text-sm font-medium">{bebida.nombre}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {(["chico", "grande"] as const).map((tam) => (
+                              <Button
+                                key={tam}
+                                variant="outline"
+                                className="h-auto py-3 flex-col gap-0.5"
+                                onClick={() => addBebida(bebida, tam)}
+                              >
+                                <span className="font-semibold text-sm">
+                                  {bebidaTamanoLabels[tam]}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  $
+                                  {catalog?.getBebidaPrecio(bebida.id, tam) ??
+                                    getBebidaPrecioDefault(bebida, tam)}
+                                </span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </TabsContent>
