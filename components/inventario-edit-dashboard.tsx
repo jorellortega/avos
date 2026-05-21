@@ -963,7 +963,7 @@ function StockTable({
         <col className="w-[6.5rem]" />
         <col className="w-[5.5rem]" />
         <col className="w-[6.5rem]" />
-        <col className="w-12" />
+        <col className="w-[4.5rem]" />
       </colgroup>
       <TableHeader>
         <TableRow>
@@ -989,24 +989,13 @@ function StockTable({
           items.map((item) => (
               <TableRow key={item.id}>
                 <TableCell className="pr-1">
-                  <div className="flex items-center gap-0.5">
-                    <InventoryItemThumb
-                      itemId={item.id}
-                      name={item.name}
-                      imageUrl={item.image_url}
-                      disabled={busyId === item.id}
-                      onImageUrl={(url) => void onImageUrl(item, url)}
-                    />
-                    <InventoryAiScanButton
-                      itemId={item.id}
-                      productName={item.name}
-                      compact
-                      disabled={busyId === item.id}
-                      onImageUrl={(url) => void onImageUrl(item, url)}
-                      onScanApplied={(patch) => onAiScan(item, patch)}
-                      onError={onScanError}
-                    />
-                  </div>
+                  <InventoryItemThumb
+                    itemId={item.id}
+                    name={item.name}
+                    imageUrl={item.image_url}
+                    disabled={busyId === item.id}
+                    onImageUrl={(url) => void onImageUrl(item, url)}
+                  />
                 </TableCell>
                 <TableCell className="pr-2">
                   <Input
@@ -1052,11 +1041,22 @@ function StockTable({
                   />
                 </TableCell>
                 <TableCell>
-                  <DeleteButton
-                    name={item.name}
-                    busy={busyId === item.id}
-                    onConfirm={() => void onDelete(item.id)}
-                  />
+                  <div className="flex items-center justify-end gap-0.5">
+                    <InventoryAiScanButton
+                      itemId={item.id}
+                      productName={item.name}
+                      compact
+                      disabled={busyId === item.id}
+                      onImageUrl={(url) => void onImageUrl(item, url)}
+                      onScanApplied={(patch) => onAiScan(item, patch)}
+                      onError={onScanError}
+                    />
+                    <DeleteButton
+                      name={item.name}
+                      busy={busyId === item.id}
+                      onConfirm={() => void onDelete(item.id)}
+                    />
+                  </div>
                 </TableCell>
               </TableRow>
             ))

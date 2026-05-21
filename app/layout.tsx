@@ -21,24 +21,6 @@ const openSans = Open_Sans({
 export const metadata: Metadata = {
   title: 'Avos Mexican Grill | Comida Mexicana Estilo California',
   description: 'Enfocado en la parrilla, abundante en aguacate. Tacos, burritos, quesadillas y más. Ordena para recoger.',
-  generator: 'v0.app',
-  icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
-  },
 }
 
 export default function RootLayout({
