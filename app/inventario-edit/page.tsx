@@ -68,7 +68,7 @@ export default async function InventarioEditPage() {
               Inventario
             </h1>
             <p className="text-muted-foreground mt-2">
-              Productos, cantidades y alertas de stock bajo.
+              Productos por categoría (tomates, especias, proteínas…).
             </p>
           </div>
 
