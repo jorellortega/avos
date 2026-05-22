@@ -39,14 +39,77 @@ type Props = {
   onError?: (message: string) => void
 }
 
+const MAX_IMAGE_DIM = 1280
+
 async function fileToBase64(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let binary = ""
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]!)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result !== "string") {
+        reject(new Error("No se pudo leer la imagen."))
+        return
+      }
+      const comma = result.indexOf(",")
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("No se pudo leer la imagen."))
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Downscale large photos so upload + base64 + vision stay reliable on mobile. */
+async function prepareImageFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file
+
+  let bitmap: ImageBitmap | null = null
+  try {
+    bitmap = await createImageBitmap(file)
+    const longest = Math.max(bitmap.width, bitmap.height)
+    if (longest <= MAX_IMAGE_DIM) return file
+
+    const scale = MAX_IMAGE_DIM / longest
+    const width = Math.round(bitmap.width * scale)
+    const height = Math.round(bitmap.height * scale)
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, width, height)
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.85)
+    })
+    if (!blob) return file
+
+    const base = file.name.replace(/\.[^.]+$/, "") || "capture"
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg" })
+  } catch {
+    return file
+  } finally {
+    bitmap?.close()
   }
-  return btoa(binary)
+}
+
+function canvasToJpegFile(
+  canvas: HTMLCanvasElement,
+  name: string,
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("No se pudo guardar la foto."))
+          return
+        }
+        resolve(new File([blob], name, { type: "image/jpeg" }))
+      },
+      "image/jpeg",
+      0.85,
+    )
+  })
 }
 
 function InventoryCameraDialog({
@@ -108,7 +171,17 @@ function InventoryCameraDialog({
         const video = videoRef.current
         if (video) {
           video.srcObject = stream
-          void video.play().then(() => setReady(true))
+          void video
+            .play()
+            .then(() => {
+              if (!cancelled) setReady(true)
+            })
+            .catch(() => {
+              onError?.(
+                "No se pudo iniciar la vista de cámara. Usa Subir foto.",
+              )
+              onOpenChange(false)
+            })
         }
       })
       .catch(() => {
@@ -127,32 +200,28 @@ function InventoryCameraDialog({
     }
   }, [open, onError, onOpenChange, stopStream])
 
-  function takePhoto() {
+  async function takePhoto() {
     const video = videoRef.current
     if (!video || !video.videoWidth) return
 
+    const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(video.videoWidth, video.videoHeight))
     const canvas = document.createElement("canvas")
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    canvas.width = Math.round(video.videoWidth * scale)
+    canvas.height = Math.round(video.videoHeight * scale)
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    ctx.drawImage(video, 0, 0)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) {
-          onError?.("No se pudo guardar la foto.")
-          return
-        }
-        const file = new File([blob], `capture-${Date.now()}.jpg`, {
-          type: "image/jpeg",
-        })
-        onCapture(file)
-        onOpenChange(false)
-      },
-      "image/jpeg",
-      0.9,
-    )
+    try {
+      const file = await canvasToJpegFile(
+        canvas,
+        `capture-${Date.now()}.jpg`,
+      )
+      onCapture(file)
+      onOpenChange(false)
+    } catch {
+      onError?.("No se pudo guardar la foto.")
+    }
   }
 
   return (
@@ -189,7 +258,7 @@ function InventoryCameraDialog({
           <Button
             type="button"
             disabled={!ready || starting}
-            onClick={takePhoto}
+            onClick={() => void takePhoto()}
           >
             <Camera className="size-4 mr-1" />
             Capturar
@@ -219,13 +288,15 @@ export function InventoryAiScanButton({
       onError?.("Elige una imagen.")
       return
     }
-    if (file.size > 8 * 1024 * 1024) {
-      onError?.("Máximo 8 MB.")
-      return
-    }
 
     setBusy(true)
     try {
+      const prepared = await prepareImageFile(file)
+      if (prepared.size > 8 * 1024 * 1024) {
+        onError?.("Máximo 8 MB. Acércate más o usa otra foto.")
+        return
+      }
+
       if (onImageUrl) {
         const { createBrowserSupabase } = await import("@/lib/supabase/client")
         const { uploadToFilesBucket } = await import("@/lib/supabase-storage")
@@ -233,18 +304,18 @@ export function InventoryAiScanButton({
         const folder = itemId
           ? `inventory/${itemId}`
           : `inventory/scan-${Date.now()}`
-        const url = await uploadToFilesBucket(client, file, folder)
+        const url = await uploadToFilesBucket(client, prepared, folder)
         await onImageUrl(url)
       }
 
-      const imageBase64 = await fileToBase64(file)
+      const imageBase64 = await fileToBase64(prepared)
       const res = await fetch("/api/inventory-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageBase64,
-          mimeType: file.type,
-          productName,
+          mimeType: prepared.type || "image/jpeg",
+          productName: productName?.trim() || "producto",
         }),
       })
       const data = (await res.json()) as {

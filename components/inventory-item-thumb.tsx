@@ -30,7 +30,7 @@ export function InventoryItemThumb({
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [imgError, setImgError] = useState(false)
-  const url = imageUrl.trim()
+  const url = (imageUrl ?? "").trim()
   const showImage = Boolean(url) && !imgError
   const isLg = size === "lg"
 

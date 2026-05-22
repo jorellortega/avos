@@ -13,6 +13,8 @@ import {
   Briefcase,
   Calendar,
   Package,
+  Truck,
+  ClipboardList,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/components/cart-provider"
@@ -106,6 +108,12 @@ export function Header() {
                       Cocina
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/preparados" className="flex items-center gap-2 cursor-pointer">
+                      <ClipboardList className="h-4 w-4" />
+                      Preparados
+                    </Link>
+                  </DropdownMenuItem>
                   {managerOrCeoNav === true && (
                     <>
                       <DropdownMenuItem asChild>
@@ -124,6 +132,12 @@ export function Header() {
                         <Link href="/inventario-edit" className="flex items-center gap-2 cursor-pointer">
                           <Package className="h-4 w-4" />
                           Inventario
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/proveedores" className="flex items-center gap-2 cursor-pointer">
+                          <Truck className="h-4 w-4" />
+                          Proveedores
                         </Link>
                       </DropdownMenuItem>
                     </>
@@ -226,6 +240,14 @@ export function Header() {
                     <ChefHat className="h-4 w-4" />
                     Cocina
                   </Link>
+                  <Link
+                    href="/preparados"
+                    className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    Preparados
+                  </Link>
                   {managerOrCeoNav === true && (
                     <>
                       <Link
@@ -251,6 +273,14 @@ export function Header() {
                       >
                         <Package className="h-4 w-4" />
                         Inventario
+                      </Link>
+                      <Link
+                        href="/proveedores"
+                        className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Truck className="h-4 w-4" />
+                        Proveedores
                       </Link>
                     </>
                   )}

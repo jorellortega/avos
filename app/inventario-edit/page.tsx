@@ -7,7 +7,11 @@ import { InventarioEditDashboard } from "@/components/inventario-edit-dashboard"
 import { createServerSupabase } from "@/lib/supabase/server"
 import type { StaffProfile } from "@/lib/profile-types"
 import { isManagerOrCeo } from "@/lib/profile-types"
-import type { InventoryItemRow } from "@/lib/inventario-types"
+import type {
+  InventoryItemRow,
+  InventoryStockCategoryRow,
+} from "@/lib/inventario-types"
+import { DEFAULT_INVENTORY_STOCK_CATEGORIES } from "@/lib/inventario-types"
 
 export const metadata: Metadata = {
   title: "Inventario | Avos",
@@ -54,6 +58,23 @@ export default async function InventarioEditPage() {
 
   const initialItems = (itemRows ?? []) as InventoryItemRow[]
 
+  const { data: categoryRows, error: categoriesError } = await supabase
+    .from("inventory_stock_categories")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true })
+
+  const initialCategories = (
+    (categoryRows?.length ? categoryRows : null) as InventoryStockCategoryRow[] | null
+  ) ?? DEFAULT_INVENTORY_STOCK_CATEGORIES.map((name, i) => ({
+    id: `fallback-${i}`,
+    name,
+    sort_order: i * 10,
+    show_marinated: name === "Proteínas",
+    created_at: "",
+    updated_at: "",
+  }))
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -77,8 +98,16 @@ export default async function InventarioEditPage() {
               No se pudo cargar el inventario ({itemsError.message}). ¿Aplicaste la
               migración <code className="text-xs">inventory_items</code> en Supabase?
             </p>
+          ) : categoriesError ? (
+            <p className="text-destructive text-sm border border-destructive/30 rounded-md px-3 py-2 bg-destructive/10">
+              No se pudieron cargar las categorías ({categoriesError.message}). ¿Aplicaste{" "}
+              <code className="text-xs">inventory_stock_categories</code> en Supabase?
+            </p>
           ) : (
-            <InventarioEditDashboard initialItems={initialItems} />
+            <InventarioEditDashboard
+              initialItems={initialItems}
+              initialCategories={initialCategories}
+            />
           )}
 
           <p className="text-center text-xs text-muted-foreground">

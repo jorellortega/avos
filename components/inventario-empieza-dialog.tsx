@@ -3,18 +3,23 @@
 import { useEffect, useMemo, useState } from "react"
 import type { InventoryItemRow, InventoryListKind } from "@/lib/inventario-types"
 import {
+  findStockActionForValue,
   findStockBolsasPresetForItem,
   findStockCountPresetForItem,
   findStockQuantityPresetForItem,
   findStockStatusForNotes,
   INVENTORY_SELECT_BLANK,
   INVENTORY_SELECT_NONE,
-  INVENTORY_STOCK_CATEGORIES,
+  categoryShowsMarinated,
   inventoryCategoryLabel,
+  type InventoryStockCategoryRow,
+  STOCK_ACTION_OPTIONS,
   STOCK_BOLSAS_PRESETS,
   STOCK_COUNT_PRESETS,
+  STOCK_MARINATED_OPTIONS,
   STOCK_QUANTITY_PRESETS,
   STOCK_STATUS_OPTIONS,
+  stockMarinatedOptionForValue,
 } from "@/lib/inventario-types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -44,6 +49,8 @@ type Props = {
   onOpenChange: (open: boolean) => void
   tab: InventoryListKind
   items: InventoryItemRow[]
+  categoryNames: string[]
+  categories: InventoryStockCategoryRow[]
   busy: boolean
   onPatch: (id: string, patch: Partial<InventoryItemRow>) => void
   onSaveItem: (item: InventoryItemRow) => Promise<boolean>
@@ -55,6 +62,8 @@ export function InventarioEmpiezaDialog({
   onOpenChange,
   tab,
   items,
+  categoryNames,
+  categories,
   busy,
   onPatch,
   onSaveItem,
@@ -219,7 +228,7 @@ export function InventarioEmpiezaDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {INVENTORY_STOCK_CATEGORIES.map((cat) => (
+                      {categoryNames.map((cat) => (
                         <SelectItem key={cat} value={cat}>
                           {cat}
                         </SelectItem>
@@ -252,6 +261,41 @@ export function InventarioEmpiezaDialog({
                         {INVENTORY_SELECT_BLANK}
                       </SelectItem>
                       {STOCK_STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Acción</Label>
+                  <Select
+                    disabled={disabled}
+                    value={
+                      findStockActionForValue(item.stock_action)?.id ??
+                      INVENTORY_SELECT_NONE
+                    }
+                    onValueChange={(id) => {
+                      if (id === INVENTORY_SELECT_NONE) {
+                        onPatch(item.id, { stock_action: "" })
+                        return
+                      }
+                      const option = STOCK_ACTION_OPTIONS.find((o) => o.id === id)
+                      if (option) {
+                        onPatch(item.id, { stock_action: option.value })
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={INVENTORY_SELECT_BLANK} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={INVENTORY_SELECT_NONE}>
+                        {INVENTORY_SELECT_BLANK}
+                      </SelectItem>
+                      {STOCK_ACTION_OPTIONS.map((option) => (
                         <SelectItem key={option.id} value={option.id}>
                           {option.label}
                         </SelectItem>
@@ -365,6 +409,45 @@ export function InventarioEmpiezaDialog({
                     </SelectContent>
                   </Select>
                 </div>
+
+                {categoryShowsMarinated(item.category, categories) && (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Marinado</Label>
+                    <Select
+                      disabled={disabled}
+                      value={
+                        stockMarinatedOptionForValue(item.marinated)?.id ??
+                        INVENTORY_SELECT_NONE
+                      }
+                      onValueChange={(id) => {
+                        if (id === INVENTORY_SELECT_NONE) {
+                          onPatch(item.id, { marinated: null })
+                          return
+                        }
+                        const option = STOCK_MARINATED_OPTIONS.find(
+                          (o) => o.id === id,
+                        )
+                        if (option) {
+                          onPatch(item.id, { marinated: option.value })
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={INVENTORY_SELECT_BLANK} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={INVENTORY_SELECT_NONE}>
+                          {INVENTORY_SELECT_BLANK}
+                        </SelectItem>
+                        {STOCK_MARINATED_OPTIONS.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             ) : (
               <>

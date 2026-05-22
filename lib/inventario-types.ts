@@ -5,8 +5,8 @@ export const INVENTORY_SELECT_BLANK = "—"
 
 export const INVENTORY_SELECT_NONE = "_none" as const
 
-/** Stock inventario sections (one card each on /inventario-edit). */
-export const INVENTORY_STOCK_CATEGORIES = [
+/** Default stock sections (seeded into DB; fallback if table empty). */
+export const DEFAULT_INVENTORY_STOCK_CATEGORIES = [
   "Tomates y vegetales",
   "Especias",
   "Proteínas",
@@ -18,15 +18,59 @@ export const INVENTORY_STOCK_CATEGORIES = [
   "Otros",
 ] as const
 
-export type InventoryStockCategory = (typeof INVENTORY_STOCK_CATEGORIES)[number]
+/** @deprecated Use categories from DB; kept for compatibility. */
+export const INVENTORY_STOCK_CATEGORIES = DEFAULT_INVENTORY_STOCK_CATEGORIES
 
-export function inventoryCategoryLabel(raw: string): string {
-  const t = raw.trim()
+export type InventoryStockCategory =
+  (typeof DEFAULT_INVENTORY_STOCK_CATEGORIES)[number]
+
+export interface InventoryStockCategoryRow {
+  id: string
+  name: string
+  sort_order: number
+  show_marinated: boolean
+  created_at: string
+  updated_at: string
+}
+
+export function normalizeStockCategory(
+  row: InventoryStockCategoryRow,
+): InventoryStockCategoryRow {
+  return {
+    ...row,
+    name: (row.name ?? "").trim(),
+    sort_order: Number(row.sort_order) || 0,
+    show_marinated: Boolean(row.show_marinated),
+  }
+}
+
+export function stockCategoryNames(
+  categories: InventoryStockCategoryRow[],
+): string[] {
+  return [...categories]
+    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, "es"))
+    .map((c) => (c.name ?? "").trim())
+    .filter((name) => name.length > 0)
+}
+
+export function categoryShowsMarinated(
+  categoryName: string | null | undefined,
+  categories: InventoryStockCategoryRow[],
+): boolean {
+  const name = inventoryCategoryLabel(categoryName)
+  return categories.some((c) => c.name === name && c.show_marinated)
+}
+
+export function inventoryCategoryLabel(
+  raw: string | null | undefined,
+): string {
+  const t = (raw ?? "").trim()
   return t || "Otros"
 }
 
 export function groupStockItemsByCategory(
   items: InventoryItemRow[],
+  categoryOrder: string[] = [...DEFAULT_INVENTORY_STOCK_CATEGORIES],
 ): { category: string; items: InventoryItemRow[] }[] {
   const map = new Map<string, InventoryItemRow[]>()
   for (const item of items) {
@@ -37,10 +81,14 @@ export function groupStockItemsByCategory(
   }
 
   const result: { category: string; items: InventoryItemRow[] }[] = []
-  for (const cat of INVENTORY_STOCK_CATEGORIES) {
-    const list = map.get(cat)
-    if (list?.length) result.push({ category: cat, items: list })
-    map.delete(cat)
+  const seen = new Set<string>()
+  for (const cat of categoryOrder) {
+    const label = inventoryCategoryLabel(cat)
+    if (seen.has(label)) continue
+    seen.add(label)
+    const list = map.get(label)
+    if (list?.length) result.push({ category: label, items: list })
+    map.delete(label)
   }
 
   for (const cat of [...map.keys()].sort((a, b) => a.localeCompare(b, "es"))) {
@@ -55,11 +103,13 @@ export interface InventoryItemRow {
   id: string
   name: string
   image_url: string
-  category: string
+  category: string | null
   unit: string
   quantity: number
   bolsas: number | null
   cantidad_num: number | null
+  marinated: boolean | null
+  stock_action: string
   par_level: number | null
   notes: string
   list_kind: InventoryListKind
@@ -106,21 +156,134 @@ const STOCK_STATUS_NOTE_ALIASES: Partial<Record<StockStatusId, string[]>> = {
 }
 
 export function stockStatusIsActive(
-  notes: string,
+  notes: string | null | undefined,
   option: StockStatusOption,
 ): boolean {
-  const n = notes.trim().toLowerCase()
+  const n = (notes ?? "").trim().toLowerCase()
   if (n === option.notes.toLowerCase()) return true
   const aliases = STOCK_STATUS_NOTE_ALIASES[option.id] ?? []
   return aliases.some((alias) => alias.toLowerCase() === n)
 }
 
 export function findStockStatusForNotes(
-  notes: string,
+  notes: string | null | undefined,
 ): StockStatusOption | undefined {
   return STOCK_STATUS_OPTIONS.find((option) =>
     stockStatusIsActive(notes, option),
   )
+}
+
+/** Buy / reorder actions (separate from on-hand Estado). */
+export type StockActionId =
+  | "buy_now"
+  | "have_reserves"
+  | "order_soon"
+  | "in_transit"
+  | "check_supplier"
+
+export interface StockActionOption {
+  id: StockActionId
+  label: string
+  value: string
+}
+
+export const STOCK_ACTION_OPTIONS: StockActionOption[] = [
+  { id: "buy_now", label: "Comprar ahora", value: "Comprar ahora" },
+  { id: "have_reserves", label: "Tener reservas", value: "Tener reservas" },
+  { id: "order_soon", label: "Pedir pronto", value: "Pedir pronto" },
+  { id: "in_transit", label: "En camino", value: "En camino" },
+  { id: "check_supplier", label: "Revisar proveedor", value: "Revisar proveedor" },
+]
+
+const STOCK_ACTION_ALIASES: Partial<Record<StockActionId, string[]>> = {
+  buy_now: ["buy now", "comprar ya"],
+  have_reserves: ["have reserves", "con reservas", "reserves"],
+  order_soon: ["order soon", "pedir"],
+  in_transit: ["in transit", "en transito"],
+  check_supplier: ["check supplier", "revisar"],
+}
+
+export function stockActionIsActive(
+  stockAction: string,
+  option: StockActionOption,
+): boolean {
+  const n = stockAction.trim().toLowerCase()
+  if (n === option.value.toLowerCase()) return true
+  const aliases = STOCK_ACTION_ALIASES[option.id] ?? []
+  return aliases.some((alias) => alias.toLowerCase() === n)
+}
+
+export function findStockActionForValue(
+  stockAction: string | null | undefined,
+): StockActionOption | undefined {
+  const raw = (stockAction ?? "").trim()
+  if (!raw) return undefined
+  return STOCK_ACTION_OPTIONS.find((option) =>
+    stockActionIsActive(raw, option),
+  )
+}
+
+export function stockActionLabelForItem(
+  item: Pick<InventoryItemRow, "stock_action">,
+): string | null {
+  return findStockActionForValue(item.stock_action)?.label ?? null
+}
+
+/** Stock Estado values that should appear on the shopping list. */
+export const STOCK_STATUS_NEEDS_BUY: StockStatusId[] = [
+  "poco",
+  "comprar_mas",
+  "agotado",
+]
+
+/** Stock Acción values that should appear on the shopping list. */
+export const STOCK_ACTION_NEEDS_BUY: StockActionId[] = [
+  "buy_now",
+  "order_soon",
+  "check_supplier",
+]
+
+export function stockItemNeedsPurchase(
+  item: Pick<InventoryItemRow, "list_kind" | "notes" | "stock_action">,
+): boolean {
+  if (item.list_kind !== "stock") return false
+  const status = findStockStatusForNotes(item.notes)
+  if (status && STOCK_STATUS_NEEDS_BUY.includes(status.id)) return true
+  const action = findStockActionForValue(item.stock_action)
+  if (action && STOCK_ACTION_NEEDS_BUY.includes(action.id)) return true
+  return false
+}
+
+/** Notes line for a shopping-list row copied from stock. */
+export function shoppingNotesFromStock(
+  item: Pick<
+    InventoryItemRow,
+    | "notes"
+    | "stock_action"
+    | "quantity"
+    | "unit"
+    | "cantidad_num"
+    | "bolsas"
+  >,
+): string {
+  const parts: string[] = []
+  const status = findStockStatusForNotes(item.notes)
+  if (status) parts.push(`Estado: ${status.label}`)
+  const actionLabel = stockActionLabelForItem(item)
+  if (actionLabel) parts.push(`Acción: ${actionLabel}`)
+  const kilos = stockQuantityLabelForItem(item)
+  if (kilos) parts.push(`En cocina: ${kilos}`)
+  if (item.cantidad_num != null && item.cantidad_num > 0) {
+    parts.push(`Cantidad: ${item.cantidad_num}`)
+  }
+  if (item.bolsas != null && item.bolsas > 0) {
+    parts.push(`Bolsas: ${item.bolsas}`)
+  }
+  return parts.length ? parts.join(" · ") : "Reabastecer"
+}
+
+export function normalizeInventoryItemName(name: string): string {
+  return (name ?? "").trim().toLowerCase()
 }
 
 export type StockQuantityPresetId =
@@ -165,7 +328,7 @@ export function stockQuantityPresetIsActive(
 ): boolean {
   return (
     Math.abs(Number(item.quantity) - preset.quantity) < 0.001 &&
-    item.unit.trim().toLowerCase() === preset.unit.toLowerCase()
+    (item.unit ?? "").trim().toLowerCase() === preset.unit.toLowerCase()
   )
 }
 
@@ -183,7 +346,7 @@ export function stockQuantityLabelForItem(
   const preset = findStockQuantityPresetForItem(item)
   if (preset) return preset.label
   const q = Number(item.quantity)
-  if (q > 0 && item.unit.trim().toLowerCase() === "kg") {
+  if (q > 0 && (item.unit ?? "").trim().toLowerCase() === "kg") {
     if (q === 0.25) return "1/4"
     if (q === 0.5) return "1/2"
     return Number.isInteger(q) ? String(q) : `${q}`
@@ -284,6 +447,44 @@ export function findStockCountPresetForItem(
   return STOCK_COUNT_PRESETS.find((preset) =>
     stockCountPresetIsActive(item, preset),
   )
+}
+
+export type StockMarinatedOptionId = "yes" | "no"
+
+export interface StockMarinatedOption {
+  id: StockMarinatedOptionId
+  label: string
+  value: boolean
+}
+
+export const STOCK_MARINATED_OPTIONS: StockMarinatedOption[] = [
+  { id: "yes", label: "Sí", value: true },
+  { id: "no", label: "No", value: false },
+]
+
+export function stockMarinatedOptionForValue(
+  marinated: boolean | null | undefined,
+): StockMarinatedOption | undefined {
+  if (marinated === true) {
+    return STOCK_MARINATED_OPTIONS.find((o) => o.id === "yes")
+  }
+  if (marinated === false) {
+    return STOCK_MARINATED_OPTIONS.find((o) => o.id === "no")
+  }
+  return undefined
+}
+
+export function stockMarinatedIsActive(
+  item: Pick<InventoryItemRow, "marinated">,
+  option: StockMarinatedOption,
+): boolean {
+  return item.marinated === option.value
+}
+
+export function stockMarinatedLabelForItem(
+  item: Pick<InventoryItemRow, "marinated">,
+): string | null {
+  return stockMarinatedOptionForValue(item.marinated)?.label ?? null
 }
 
 /** @deprecated Use StockStatusOption */

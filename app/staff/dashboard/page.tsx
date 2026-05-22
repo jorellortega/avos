@@ -124,6 +124,12 @@ export default async function StaffDashboardPage() {
                       <Button asChild variant="secondary">
                         <Link href="/staff/menu-catalog">Precios y disponibilidad</Link>
                       </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/preparados">Preparados (frío / caliente)</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/cocina">Cocina</Link>
+                      </Button>
                     </>
                   )}
                   {isManagerOrCeo(profile.role) && (
@@ -142,6 +148,9 @@ export default async function StaffDashboardPage() {
                       </Button>
                       <Button asChild variant="secondary">
                         <Link href="/inventario-edit">Inventario</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/proveedores">Proveedores</Link>
                       </Button>
                     </>
                   )}

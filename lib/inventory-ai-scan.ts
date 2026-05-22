@@ -147,6 +147,8 @@ export function patchesFromInventoryScan(
   if (kilos) {
     patch.quantity = kilos.quantity
     patch.unit = kilos.unit
+  } else if (patch.cantidad_num != null || patch.bolsas != null) {
+    patch.unit = "kg"
   }
 
   const count = matchCount(scan.cantidad)
