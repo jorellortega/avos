@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Utensils, ShoppingBag } from "lucide-react"
+import { Utensils, ShoppingBag, Truck } from "lucide-react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { HeroSlideshow } from "@/components/hero-slideshow"
@@ -35,7 +35,7 @@ export default async function HomePage() {
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <Link href="/comer-aqui" className="flex-1">
                     <Button size="lg" className="w-full h-auto py-6 text-lg flex flex-col gap-2">
                       <Utensils className="h-8 w-8" />
@@ -46,6 +46,12 @@ export default async function HomePage() {
                     <Button variant="outline" size="lg" className="w-full h-auto py-6 text-lg flex flex-col gap-2 border-2">
                       <ShoppingBag className="h-8 w-8" />
                       Para Llevar
+                    </Button>
+                  </Link>
+                  <Link href="/domicilio" className="flex-1">
+                    <Button variant="outline" size="lg" className="w-full h-auto py-6 text-lg flex flex-col gap-2 border-2">
+                      <Truck className="h-8 w-8" />
+                      Domicilio
                     </Button>
                   </Link>
                 </div>

@@ -25,6 +25,16 @@ import { BebidaThumb } from "@/components/bebida-thumb"
 import { useBebidaImagenes } from "@/lib/use-bebida-imagenes"
 import { useProteinaImagenes } from "@/lib/use-proteina-imagenes"
 import { Plus, Minus, Trash2, ChefHat, Users, ArrowLeft, QrCode, CreditCard, Banknote } from "lucide-react"
+import { OrderItemExtrasPicker } from "@/components/order-item-extras-picker"
+import {
+  useCustomizationConfig,
+  useOrderCustomizationsContextOptional,
+} from "@/components/order-customizations-provider"
+import {
+  defaultOrderExtras,
+  defaultPlatilloCustomizationConfig,
+} from "@/lib/order-item-customizations"
+import { cartLineKey, formatOrderItemNotas } from "@/lib/order-item-extras"
 
 type CreatedOrderBanner = {
   id: string
@@ -47,6 +57,17 @@ export default function StaffPage() {
   const [cashLoading, setCashLoading] = useState(false)
   const [cardTerminalLoading, setCardTerminalLoading] = useState(false)
   const [paymentError, setPaymentError] = useState("")
+  const [menuTab, setMenuTab] = useState<string>("tacos")
+  const customizationsCtx = useOrderCustomizationsContextOptional()
+  const pendingPlatilloId =
+    getPlatillosForCategoria(
+      categorias.find((c) => c.id === menuTab) ?? categorias[0],
+    )[0]?.id ?? menuTab
+  const pendingConfig = useCustomizationConfig(menuTab, pendingPlatilloId)
+  const [pendingExtras, setPendingExtras] = useState<string[]>(() =>
+    defaultOrderExtras(pendingConfig),
+  )
+  const [pendingCustomNote, setPendingCustomNote] = useState("")
 
   const addItem = (
     categoria: (typeof categorias)[number],
@@ -65,7 +86,12 @@ export default function StaffPage() {
           platillo.precioBase
         : catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
 
-    const itemId = `${categoria.id}-${platilloId}-${proteina || "default"}`
+    const config =
+      customizationsCtx?.customizations?.getConfig(categoria.id, platilloId) ??
+      defaultPlatilloCustomizationConfig()
+    const baseId = `${categoria.id}-${platilloId}-${proteina || "default"}`
+    const itemId = cartLineKey(baseId, pendingExtras, pendingCustomNote, config)
+    const notas = formatOrderItemNotas(pendingExtras, pendingCustomNote, config)
     const existingItem = currentItems.find((i) => i.id === itemId)
 
     if (existingItem) {
@@ -88,9 +114,12 @@ export default function StaffPage() {
           proteina,
           cantidad: 1,
           precio,
+          notas,
         },
       ])
     }
+    setPendingExtras(defaultOrderExtras(config))
+    setPendingCustomNote("")
   }
 
   const addBebida = (bebida: (typeof bebidas)[number], tamano: BebidaTamano) => {
@@ -365,7 +394,21 @@ export default function StaffPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="tacos">
+                <Tabs
+                  value={menuTab}
+                  onValueChange={(v) => {
+                    setMenuTab(v)
+                    const cat = categorias.find((c) => c.id === v)
+                    const pid = cat
+                      ? (getPlatillosForCategoria(cat)[0]?.id ?? v)
+                      : v
+                    const cfg =
+                      customizationsCtx?.customizations?.getConfig(v, pid) ??
+                      defaultPlatilloCustomizationConfig()
+                    setPendingExtras(defaultOrderExtras(cfg))
+                    setPendingCustomNote("")
+                  }}
+                >
                   <TabsList className="grid grid-cols-6 mb-4">
                     {categorias.map(cat => (
                       <TabsTrigger key={cat.id} value={cat.id} className="text-xs sm:text-sm">
@@ -512,6 +555,18 @@ export default function StaffPage() {
                   />
                 </div>
 
+                <OrderItemExtrasPicker
+                  config={pendingConfig}
+                  extras={pendingExtras}
+                  customNote={pendingCustomNote}
+                  onExtrasChange={setPendingExtras}
+                  onCustomNoteChange={setPendingCustomNote}
+                  compact
+                />
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Aplica al próximo platillo que agregues en la pestaña activa.
+                </p>
+
                 {/* Items */}
                 <div className="border-t pt-4">
                   {currentItems.length === 0 ? (
@@ -524,6 +579,11 @@ export default function StaffPage() {
                         <div key={item.id} className="flex items-center justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{item.nombre}</p>
+                            {item.notas ? (
+                              <p className="text-xs text-primary/90 line-clamp-2">
+                                {item.notas}
+                              </p>
+                            ) : null}
                             <p className="text-xs text-muted-foreground">${item.precio} c/u</p>
                           </div>
                           <div className="flex items-center gap-2">

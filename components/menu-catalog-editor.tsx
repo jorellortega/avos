@@ -304,14 +304,19 @@ export function MenuCatalogEditor({ initial }: Props) {
             vacíos usan el menú base.
           </p>
         </div>
-        <Button onClick={() => void save()} disabled={saving}>
-          {saving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Guardar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/customizations-edit">Personalización de pedidos</Link>
+          </Button>
+          <Button onClick={() => void save()} disabled={saving}>
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Guardar
+          </Button>
+        </div>
       </div>
 
       {message && (

@@ -84,6 +84,11 @@ export default function CarritoPage() {
                         <p className="text-sm text-muted-foreground">
                           {item.categoria}
                         </p>
+                        {item.notas ? (
+                          <p className="text-sm text-primary/90 mt-1">
+                            {item.notas}
+                          </p>
+                        ) : null}
                         <p className="text-primary font-semibold mt-1">
                           ${item.precio} c/u
                         </p>

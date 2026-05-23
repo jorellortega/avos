@@ -6,7 +6,11 @@ import { Plus, Minus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useCart } from "@/components/cart-provider"
+import { OrderItemExtrasPicker } from "@/components/order-item-extras-picker"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
+import { useCustomizationConfig } from "@/components/order-customizations-provider"
+import { defaultOrderExtras } from "@/lib/order-item-customizations"
+import { cartLineKey, formatOrderItemNotas } from "@/lib/order-item-extras"
 import {
   proteinas,
   type Proteina,
@@ -41,8 +45,13 @@ export function MenuItemCard({
 }: MenuItemCardProps) {
   const { addItem } = useCart()
   const { catalog } = useMenuCatalogContext()
+  const customizationConfig = useCustomizationConfig(categoriaId, platilloId)
   const [selectedProteina, setSelectedProteina] = useState<Proteina>("Asada")
   const [cantidad, setCantidad] = useState(1)
+  const [extras, setExtras] = useState<string[]>(() =>
+    defaultOrderExtras(customizationConfig),
+  )
+  const [customNote, setCustomNote] = useState("")
   const [showSuccess, setShowSuccess] = useState(false)
 
   const pid = platilloId ?? categoriaId
@@ -96,23 +105,28 @@ export function MenuItemCard({
     )
       return
 
-    const itemId = tieneProteinas
-      ? `${categoria}-${selectedProteina}-${Date.now()}`
-      : `${categoria}-${Date.now()}`
+    const baseId = tieneProteinas
+      ? `${categoriaId}-${pid}-${selectedProteina}`
+      : `${categoriaId}-${pid}`
+    const itemId = cartLineKey(baseId, extras, customNote, customizationConfig)
+    const notas = formatOrderItemNotas(extras, customNote, customizationConfig)
 
     for (let i = 0; i < cantidad; i++) {
       addItem({
-        id: `${itemId}-${i}`,
+        id: itemId,
         nombre: tieneProteinas ? `${nombre} de ${selectedProteina}` : nombre,
         categoria,
         proteina: tieneProteinas ? selectedProteina : "",
         precio,
         imagen,
+        notas,
       })
     }
 
     setShowSuccess(true)
     setCantidad(1)
+    setExtras(defaultOrderExtras(customizationConfig))
+    setCustomNote("")
     setTimeout(() => setShowSuccess(false), 2000)
   }
 
@@ -220,6 +234,16 @@ export function MenuItemCard({
               )}
             </div>
           )}
+
+          <OrderItemExtrasPicker
+            config={customizationConfig}
+            extras={extras}
+            customNote={customNote}
+            onExtrasChange={setExtras}
+            onCustomNoteChange={setCustomNote}
+            className="mb-4"
+            compact
+          />
 
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">

@@ -10,6 +10,8 @@ export interface CartItem {
   precio: number
   cantidad: number
   imagen: string
+  /** Toppings / modifications (sin salsa, con todo, etc.) */
+  notas?: string
 }
 
 interface CartContextType {

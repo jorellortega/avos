@@ -547,6 +547,9 @@ export default function CustomerOrderPage({ params }: { params: Promise<{ numero
                 <div key={idx} className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">{item.cantidad}x {item.nombre}</p>
+                    {item.notas ? (
+                      <p className="text-sm text-primary/90">{item.notas}</p>
+                    ) : null}
                     <p className="text-sm text-muted-foreground">{formatMxn(item.precio)} c/u</p>
                   </div>
                   <span className="font-semibold">{formatMxn(item.precio * item.cantidad)}</span>

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useOrders, OrderStatus } from "@/components/orders-provider"
-import { ChefHat, Users, Clock, Check, Play, ArrowLeft, RefreshCw } from "lucide-react"
+import { useManagerOrCeoNavAccess } from "@/hooks/use-manager-or-ceo-nav-access"
+import { ChefHat, Users, Clock, Check, Play, ArrowLeft, RefreshCw, Trash2 } from "lucide-react"
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   pendiente: { label: "Pendiente", color: "text-yellow-700", bg: "bg-yellow-100 border-yellow-300" },
@@ -17,8 +18,10 @@ const statusConfig: Record<OrderStatus, { label: string; color: string; bg: stri
 }
 
 export default function CocinaPage() {
-  const { orders, updateOrderStatus } = useOrders()
+  const { orders, updateOrderStatus, deleteOrder } = useOrders()
+  const canDeleteOrders = useManagerOrCeoNavAccess()
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Update time every minute
   useEffect(() => {
@@ -98,6 +101,37 @@ export default function CocinaPage() {
         return "Entregado"
       default:
         return ""
+    }
+  }
+
+  const handleDeleteOrder = async (orderId: string, numero: number) => {
+    if (
+      !confirm(
+        `¿Eliminar la orden #${numero}? Se quitará de cocina y del registro. Esta acción no se puede deshacer.`,
+      )
+    ) {
+      return
+    }
+
+    setDeletingId(orderId)
+    try {
+      const res = await fetch("/api/kitchen/delete-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) {
+        console.error("[cocina] delete", data.error)
+        alert(data.error ?? "No se pudo eliminar la orden.")
+        return
+      }
+      deleteOrder(orderId)
+    } catch (e) {
+      console.error("[cocina] delete", e)
+      alert("Error de red al eliminar la orden.")
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -203,7 +237,17 @@ export default function CocinaPage() {
                       {order.mesa && (
                         <span className="font-medium">Mesa {order.mesa}</span>
                       )}
+                      {order.tipo === "domicilio" && order.deliveryZoneLabel && (
+                        <span className="font-medium">
+                          {order.deliveryZoneLabel}
+                        </span>
+                      )}
                     </div>
+                    {order.tipo === "domicilio" && order.deliveryAddress ? (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {order.deliveryAddress}
+                      </p>
+                    ) : null}
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {/* Items */}
@@ -213,12 +257,62 @@ export default function CocinaPage() {
                           key={idx} 
                           className="flex items-center justify-between bg-background/50 rounded px-3 py-2"
                         >
-                          <span className="font-medium">
-                            {item.cantidad}x {item.nombre}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="font-medium">
+                              {item.cantidad}x {item.nombre}
+                            </span>
+                            {item.notas ? (
+                              <p className="text-xs text-muted-foreground mt-0.5 font-normal">
+                                {item.notas}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>
+
+                    {order.tipo === "domicilio" &&
+                    (order.deliveryPhotoStreetUrl ||
+                      order.deliveryPhotoHouseUrl) ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {order.deliveryPhotoStreetUrl ? (
+                          <a
+                            href={order.deliveryPhotoStreetUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block rounded-lg overflow-hidden border border-border aspect-[4/3] relative bg-muted"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={order.deliveryPhotoStreetUrl}
+                              alt="Calle"
+                              className="object-cover w-full h-full absolute inset-0"
+                            />
+                            <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] text-center py-0.5">
+                              Calle
+                            </span>
+                          </a>
+                        ) : null}
+                        {order.deliveryPhotoHouseUrl ? (
+                          <a
+                            href={order.deliveryPhotoHouseUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block rounded-lg overflow-hidden border border-border aspect-[4/3] relative bg-muted"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={order.deliveryPhotoHouseUrl}
+                              alt="Casa"
+                              className="object-cover w-full h-full absolute inset-0"
+                            />
+                            <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] text-center py-0.5">
+                              Casa
+                            </span>
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {/* Action Button */}
                     {order.status !== "entregado" && (
@@ -230,6 +324,20 @@ export default function CocinaPage() {
                       >
                         {getNextActionIcon(order.status)}
                         {getNextActionLabel(order.status)}
+                      </Button>
+                    )}
+
+                    {canDeleteOrders && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2 text-destructive border-destructive/40 hover:bg-destructive/10"
+                        disabled={deletingId === order.id}
+                        onClick={() => void handleDeleteOrder(order.id, order.numero)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {deletingId === order.id ? "Eliminando…" : "Eliminar orden"}
                       </Button>
                     )}
                   </CardContent>

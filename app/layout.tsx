@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { CartProvider } from '@/components/cart-provider'
 import { MenuCatalogProvider } from '@/components/menu-catalog-provider'
+import { OrderCustomizationsProvider } from '@/components/order-customizations-provider'
 import { OrdersProvider } from '@/components/orders-provider'
 
 const montserrat = Montserrat({ 
@@ -33,7 +34,9 @@ export default function RootLayout({
       <body className={`${montserrat.variable} ${openSans.variable} font-sans antialiased`}>
         <OrdersProvider>
           <CartProvider>
-            <MenuCatalogProvider>{children}</MenuCatalogProvider>
+            <MenuCatalogProvider>
+              <OrderCustomizationsProvider>{children}</OrderCustomizationsProvider>
+            </MenuCatalogProvider>
           </CartProvider>
         </OrdersProvider>
         <Analytics />

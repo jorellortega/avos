@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { Proteina } from "@/lib/menu-data"
 
 export type OrderStatus = "pendiente" | "preparando" | "listo" | "entregado" | "pagado"
-export type OrderType = "mesa" | "pickup"
+export type OrderType = "mesa" | "pickup" | "domicilio"
 
 export interface OrderItem {
   id: string
@@ -27,6 +27,12 @@ export interface Order {
   total: number
   createdAt: Date
   updatedAt: Date
+  deliveryZoneId?: string
+  deliveryZoneLabel?: string
+  deliveryFee?: number
+  deliveryAddress?: string
+  deliveryPhotoStreetUrl?: string
+  deliveryPhotoHouseUrl?: string
 }
 
 interface OrdersContextType {

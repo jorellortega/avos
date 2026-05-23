@@ -1,6 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+} from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -17,6 +24,7 @@ import {
   Utensils,
   ShoppingBag,
   Trash2,
+  Truck,
 } from "lucide-react"
 import {
   BEBIDAS_CATEGORIA_ID,
@@ -41,6 +49,17 @@ import { insertAvosOrderToSupabase } from "@/lib/avos-orders-sync"
 import { logCheckoutClient } from "@/lib/checkout-debug-client"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { OrderItemExtrasPicker } from "@/components/order-item-extras-picker"
+import {
+  useCustomizationConfig,
+  useOrderCustomizationsContext,
+  useOrderCustomizationsContextOptional,
+} from "@/components/order-customizations-provider"
+import {
+  defaultOrderExtras,
+  defaultPlatilloCustomizationConfig,
+} from "@/lib/order-item-customizations"
+import { cartLineKey, formatOrderItemNotas } from "@/lib/order-item-extras"
 
 interface CartItem {
   id: string
@@ -49,6 +68,10 @@ interface CartItem {
   protein?: Proteina
   price: number
   quantity: number
+  extras: string[]
+  customNote: string
+  categoryId: string
+  menuItemId: string
 }
 
 const categoriaEmoji: Record<string, string> = {
@@ -77,9 +100,16 @@ function OrdenarFixedPlatilloRow({
     categoria: string,
     qty: number,
     categoryId: string,
+    extras: string[],
+    customNote: string,
   ) => void
 }) {
   const [qty, setQty] = useState(1)
+  const customizationConfig = useCustomizationConfig(categoryId, item.id)
+  const [extras, setExtras] = useState<string[]>(() =>
+    defaultOrderExtras(customizationConfig),
+  )
+  const [customNote, setCustomNote] = useState("")
   const agotado = catalog?.isPlatilloOut(categoryId, item.id) ?? false
   const price = catalog?.getPlatilloPrecio(categoryId, item.id) ?? item.basePrice
 
@@ -88,6 +118,14 @@ function OrdenarFixedPlatilloRow({
       {agotado && (
         <p className="text-sm text-destructive font-medium mb-3">Agotado</p>
       )}
+      <OrderItemExtrasPicker
+        config={customizationConfig}
+        extras={extras}
+        customNote={customNote}
+        onExtrasChange={setExtras}
+        onCustomNoteChange={setCustomNote}
+        className="mb-4"
+      />
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-1">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium shrink-0">Cantidad</span>
@@ -120,8 +158,238 @@ function OrdenarFixedPlatilloRow({
           className="sm:ml-auto w-full sm:w-auto"
           disabled={agotado}
           onClick={() => {
-            onAdd(item, categoryName, qty, categoryId)
+            onAdd(item, categoryName, qty, categoryId, extras, customNote)
             setQty(1)
+            setExtras(defaultOrderExtras(customizationConfig))
+            setCustomNote("")
+          }}
+        >
+          Agregar al carrito
+        </Button>
+      </div>
+    </>
+  )
+}
+
+function OrdenarProteinPlatilloBlock({
+  item,
+  category,
+  catalog,
+  linesForItem,
+  selectedProtein,
+  setSelectedProtein,
+  pickerQty,
+  setPickerQty,
+  proteinaImgs,
+  onAdd,
+}: {
+  item: OrdenarMenuItem
+  category: { id: string; name: string }
+  catalog: MenuCatalogHelpers | null
+  linesForItem: CartItem[]
+  selectedProtein: Proteina | null
+  setSelectedProtein: (p: Proteina | null) => void
+  pickerQty: number
+  setPickerQty: Dispatch<SetStateAction<number>>
+  proteinaImgs: Record<Proteina, string>
+  onAdd: (
+    item: OrdenarMenuItem,
+    categoria: string,
+    protein: Proteina,
+    qty: number,
+    categoryId: string,
+    extras: string[],
+    customNote: string,
+  ) => void
+}) {
+  const customizationConfig = useCustomizationConfig(category.id, item.id)
+  const customizationsCtx = useOrderCustomizationsContextOptional()
+  const [extras, setExtras] = useState<string[]>(() =>
+    defaultOrderExtras(customizationConfig),
+  )
+  const [customNote, setCustomNote] = useState("")
+
+  const lineNotas = (line: CartItem) => {
+    const cfg =
+      customizationsCtx?.customizations?.getConfig(
+        line.categoryId,
+        line.menuItemId,
+      ) ?? defaultPlatilloCustomizationConfig()
+    return formatOrderItemNotas(line.extras, line.customNote, cfg)
+  }
+
+  return (
+    <>
+      <p className="text-sm font-medium mb-2">Proteína</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        {item.proteins
+          .filter(
+            (protein) =>
+              !catalog?.isProteinaHidden(category.id, protein, item.id),
+          )
+          .map((protein) => {
+            const isSel = selectedProtein === protein
+            const agotada =
+              catalog?.isProteinaOut(category.id, protein, item.id) ?? false
+            const proteinPrice = catalog
+              ? catalog.getPrecioConProteina(category.id, protein, item.id)
+              : item.basePrice +
+                (protein === "Camarón" ? (item.shrimpExtra ?? 20) : 0)
+            return (
+              <button
+                key={protein}
+                type="button"
+                disabled={agotada}
+                onClick={() => {
+                  if (agotada) return
+                  setSelectedProtein(protein)
+                  setPickerQty(1)
+                }}
+                className={cn(
+                  "touch-manipulation flex flex-col rounded-lg border overflow-hidden transition-colors text-left",
+                  agotada
+                    ? "opacity-40 cursor-not-allowed border-border bg-muted"
+                    : "cursor-pointer border-border bg-card hover:border-primary/60 hover:bg-accent/30",
+                  isSel &&
+                    !agotada &&
+                    "border-primary ring-2 ring-primary/30 bg-accent/40",
+                )}
+              >
+                <span className="relative aspect-[4/3] w-full bg-muted pointer-events-none">
+                  <Image
+                    src={proteinaImgs[protein]}
+                    alt=""
+                    fill
+                    className="object-cover pointer-events-none select-none"
+                    sizes="(max-width: 640px) 45vw, 140px"
+                    draggable={false}
+                  />
+                </span>
+                <span className="flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-xs font-medium">
+                  {protein}
+                  {!agotada && (
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      ${proteinPrice}
+                    </span>
+                  )}
+                  {agotada && (
+                    <span className="block text-[10px] text-destructive">
+                      Agotado
+                    </span>
+                  )}
+                </span>
+              </button>
+            )
+          })}
+      </div>
+
+      {linesForItem.length > 0 && (
+        <div
+          className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-3 space-y-2 mb-4"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+            <ShoppingCart className="h-3.5 w-3.5" />
+            En tu carrito
+          </p>
+          <ul className="space-y-1.5">
+            {linesForItem.map((line) => {
+              const notas = lineNotas(line)
+              return (
+                <li
+                  key={line.id}
+                  className="flex justify-between gap-2 text-sm"
+                >
+                  <span className="min-w-0">
+                    <span className="font-medium">
+                      {line.protein
+                        ? `${line.name} de ${line.protein}`
+                        : line.name}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      ×{line.quantity}
+                    </span>
+                    {notas ? (
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        {notas}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="text-muted-foreground tabular-nums shrink-0">
+                    ${(line.price * line.quantity).toFixed(2)}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
+      <OrderItemExtrasPicker
+        config={customizationConfig}
+        extras={extras}
+        customNote={customNote}
+        onExtrasChange={setExtras}
+        onCustomNoteChange={setCustomNote}
+        className="mb-4"
+      />
+
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-3 border-t border-border">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium shrink-0">Cantidad</span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-9 w-9"
+              disabled={pickerQty <= 1}
+              onClick={() => setPickerQty((q) => Math.max(1, q - 1))}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="w-8 text-center tabular-nums font-medium">
+              {pickerQty}
+            </span>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-9 w-9"
+              onClick={() => setPickerQty((q) => q + 1)}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <Button
+          type="button"
+          className="sm:ml-auto w-full sm:w-auto"
+          disabled={
+            !selectedProtein ||
+            (catalog?.isProteinaOut(category.id, selectedProtein, item.id) ??
+              false)
+          }
+          onClick={() => {
+            if (!selectedProtein) return
+            if (
+              catalog?.isProteinaOut(category.id, selectedProtein, item.id)
+            )
+              return
+            onAdd(
+              item,
+              category.name,
+              selectedProtein,
+              pickerQty,
+              category.id,
+              extras,
+              customNote,
+            )
+            setPickerQty(1)
+            setExtras(defaultOrderExtras(customizationConfig))
+            setCustomNote("")
           }}
         >
           Agregar al carrito
@@ -135,13 +403,32 @@ export default function OrdenarPage() {
   const router = useRouter()
   const { addOrder } = useOrders()
   const { catalog } = useMenuCatalogContext()
+  const { customizations } = useOrderCustomizationsContext()
+
+  const cartItemNotasLabel = useCallback(
+    (item: Pick<CartItem, "extras" | "customNote" | "categoryId" | "menuItemId">) => {
+      const config =
+        customizations?.getConfig(item.categoryId, item.menuItemId) ??
+        defaultPlatilloCustomizationConfig()
+      return formatOrderItemNotas(item.extras, item.customNote, config)
+    },
+    [customizations],
+  )
   const proteinaImgs = useProteinaImagenes()
   const bebidaImgs = useBebidaImagenes()
   const categoriaImgs = useCategoriaImagenes()
-  const [orderType, setOrderType] = useState<"dine-in" | "takeout" | null>(null)
+  const [orderType, setOrderType] = useState<
+    "dine-in" | "takeout" | "domicilio" | null
+  >(null)
   const [tableNumber, setTableNumber] = useState("")
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
+  const [deliveryZoneId, setDeliveryZoneId] = useState("")
+  const [deliveryZoneLabel, setDeliveryZoneLabel] = useState("")
+  const [deliveryFee, setDeliveryFee] = useState(0)
+  const [deliveryAddress, setDeliveryAddress] = useState("")
+  const [deliveryPhotoStreetUrl, setDeliveryPhotoStreetUrl] = useState("")
+  const [deliveryPhotoHouseUrl, setDeliveryPhotoHouseUrl] = useState("")
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null,
@@ -173,7 +460,11 @@ export default function OrdenarPage() {
   }, [])
 
   useEffect(() => {
-    const type = sessionStorage.getItem("orderType") as "dine-in" | "takeout" | null
+    const type = sessionStorage.getItem("orderType") as
+      | "dine-in"
+      | "takeout"
+      | "domicilio"
+      | null
     const table = sessionStorage.getItem("tableNumber") || ""
     const name = sessionStorage.getItem("customerName") || ""
     const phone = sessionStorage.getItem("customerPhone") || ""
@@ -187,6 +478,18 @@ export default function OrdenarPage() {
     setTableNumber(table)
     setCustomerName(name)
     setCustomerPhone(phone)
+    if (type === "domicilio") {
+      setDeliveryZoneId(sessionStorage.getItem("deliveryZoneId") || "")
+      setDeliveryZoneLabel(sessionStorage.getItem("deliveryZoneLabel") || "")
+      setDeliveryFee(Number(sessionStorage.getItem("deliveryFee") || "0"))
+      setDeliveryAddress(sessionStorage.getItem("deliveryAddress") || "")
+      setDeliveryPhotoStreetUrl(
+        sessionStorage.getItem("deliveryPhotoStreetUrl") || "",
+      )
+      setDeliveryPhotoHouseUrl(
+        sessionStorage.getItem("deliveryPhotoHouseUrl") || "",
+      )
+    }
   }, [router])
 
   useEffect(() => {
@@ -223,8 +526,18 @@ export default function OrdenarPage() {
       protein: Proteina | undefined,
       qty: number,
       categoryId: string,
+      extras: string[] = [],
+      customNote = "",
     ) => {
-      const itemId = `${item.id}-${protein || "none"}`
+      const config =
+        customizations?.getConfig(categoryId, item.id) ??
+        defaultPlatilloCustomizationConfig()
+      const itemId = cartLineKey(
+        `${item.id}-${protein || "none"}`,
+        extras,
+        customNote,
+        config,
+      )
       setCart((prev) => {
         const existingItem = prev.find((i) => i.id === itemId)
         let price: number
@@ -254,11 +567,15 @@ export default function OrdenarPage() {
             protein,
             price,
             quantity: qty,
+            extras: [...extras],
+            customNote,
+            categoryId,
+            menuItemId: item.id,
           },
         ]
       })
     },
-    [catalog],
+    [catalog, customizations],
   )
 
   const addBebidaToCart = useCallback(
@@ -285,6 +602,10 @@ export default function OrdenarPage() {
             categoria: "Bebidas",
             price: unitPrice,
             quantity: qty,
+            extras: [],
+            customNote: "",
+            categoryId: BEBIDAS_CATEGORIA_ID,
+            menuItemId: bebida.id,
           },
         ]
       })
@@ -310,7 +631,9 @@ export default function OrdenarPage() {
     setCart((prev) => prev.filter((item) => item.id !== itemId))
   }
 
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const deliveryCharge = orderType === "domicilio" ? deliveryFee : 0
+  const total = subtotal + deliveryCharge
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
   const cartBebidasLines = cart.filter((c) => c.categoria === "Bebidas")
 
@@ -333,21 +656,43 @@ export default function OrdenarPage() {
       proteina: item.protein,
       cantidad: item.quantity,
       precio: item.price,
+      notas: cartItemNotasLabel(item),
     }))
 
     const newOrder = addOrder({
       items: orderItems,
       nombreCliente: customerName || undefined,
       mesa: orderType === "dine-in" ? tableNumber : undefined,
-      tipo: orderType === "dine-in" ? "mesa" : "pickup",
+      tipo:
+        orderType === "dine-in"
+          ? "mesa"
+          : orderType === "domicilio"
+            ? "domicilio"
+            : "pickup",
       status: "pendiente",
       total,
+      deliveryZoneId: orderType === "domicilio" ? deliveryZoneId : undefined,
+      deliveryZoneLabel:
+        orderType === "domicilio" ? deliveryZoneLabel : undefined,
+      deliveryFee: orderType === "domicilio" ? deliveryCharge : undefined,
+      deliveryAddress:
+        orderType === "domicilio" ? deliveryAddress : undefined,
+      deliveryPhotoStreetUrl:
+        orderType === "domicilio" ? deliveryPhotoStreetUrl : undefined,
+      deliveryPhotoHouseUrl:
+        orderType === "domicilio" ? deliveryPhotoHouseUrl : undefined,
     })
 
     sessionStorage.removeItem("orderType")
     sessionStorage.removeItem("tableNumber")
     sessionStorage.removeItem("customerName")
     sessionStorage.removeItem("customerPhone")
+    sessionStorage.removeItem("deliveryZoneId")
+    sessionStorage.removeItem("deliveryZoneLabel")
+    sessionStorage.removeItem("deliveryFee")
+    sessionStorage.removeItem("deliveryAddress")
+    sessionStorage.removeItem("deliveryPhotoStreetUrl")
+    sessionStorage.removeItem("deliveryPhotoHouseUrl")
 
     const inserted = await insertAvosOrderToSupabase(newOrder)
     if (!inserted) {
@@ -358,7 +703,7 @@ export default function OrdenarPage() {
       return
     }
 
-    if (orderType === "takeout") {
+    if (orderType === "takeout" || orderType === "domicilio") {
       setPlaceOrderLoading(true)
       try {
         logCheckoutClient("ordenar:takeout:checkout_order", {
@@ -432,7 +777,13 @@ export default function OrdenarPage() {
         ) : null}
         <div className="flex items-center justify-between mb-6">
           <Link
-            href={orderType === "dine-in" ? "/comer-aqui" : "/para-llevar"}
+            href={
+              orderType === "dine-in"
+                ? "/comer-aqui"
+                : orderType === "domicilio"
+                  ? "/domicilio"
+                  : "/para-llevar"
+            }
             className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -444,6 +795,11 @@ export default function OrdenarPage() {
               <Badge variant="secondary" className="flex items-center gap-1">
                 <Utensils className="h-3 w-3" />
                 Mesa {tableNumber}
+              </Badge>
+            ) : orderType === "domicilio" ? (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Truck className="h-3 w-3" />
+                {deliveryZoneLabel || "Domicilio"}
               </Badge>
             ) : (
               <Badge variant="secondary" className="flex items-center gap-1">
@@ -470,9 +826,11 @@ export default function OrdenarPage() {
                 Toca una categoría: se abre aquí mismo para elegir proteína y
                 cantidad. Vuelve a tocar la misma para cerrar.
               </p>
-              {orderType === "takeout" && (
+              {(orderType === "takeout" || orderType === "domicilio") && (
                 <p className="mt-3 text-sm font-medium text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 rounded-lg px-3 py-2 max-w-2xl">
-                  Para llevar: debes pagar en línea para confirmar el pedido (no efectivo al recoger).
+                  {orderType === "domicilio"
+                    ? "Domicilio: paga en línea para confirmar. Incluye envío a tu zona."
+                    : "Para llevar: debes pagar en línea para confirmar el pedido (no efectivo al recoger)."}
                 </p>
               )}
               {orderType === "dine-in" && (
@@ -621,7 +979,9 @@ export default function OrdenarPage() {
                                           En tu carrito
                                         </p>
                                         <ul className="space-y-1.5">
-                                          {linesForItem.map((line) => (
+                                          {linesForItem.map((line) => {
+                                            const notas = cartItemNotasLabel(line)
+                                            return (
                                             <li
                                               key={line.id}
                                               className="flex justify-between gap-2 text-sm"
@@ -634,6 +994,11 @@ export default function OrdenarPage() {
                                                   {" "}
                                                   ×{line.quantity}
                                                 </span>
+                                                {notas ? (
+                                                  <span className="block text-xs text-muted-foreground mt-0.5">
+                                                    {notas}
+                                                  </span>
+                                                ) : null}
                                               </span>
                                               <span className="text-muted-foreground tabular-nums shrink-0">
                                                 $
@@ -642,7 +1007,8 @@ export default function OrdenarPage() {
                                                 ).toFixed(2)}
                                               </span>
                                             </li>
-                                          ))}
+                                            )
+                                          })}
                                         </ul>
                                       </div>
                                     )}
@@ -651,203 +1017,32 @@ export default function OrdenarPage() {
                                       categoryId={category.id}
                                       categoryName={category.name}
                                       catalog={catalog}
-                                      onAdd={(it, cat, qty, catId) =>
-                                        addToCart(it, cat, undefined, qty, catId)
+                                      onAdd={(it, cat, qty, catId, extras, note) =>
+                                        addToCart(
+                                          it,
+                                          cat,
+                                          undefined,
+                                          qty,
+                                          catId,
+                                          extras,
+                                          note,
+                                        )
                                       }
                                     />
                                   </>
                                 ) : (
-                                  <>
-                                <p className="text-sm font-medium mb-2">
-                                  Proteína
-                                </p>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                                  {item.proteins
-                                    .filter(
-                                      (protein) =>
-                                        !catalog?.isProteinaHidden(
-                                          category.id,
-                                          protein,
-                                          item.id,
-                                        ),
-                                    )
-                                    .map((protein) => {
-                                    const isSel = selectedProtein === protein
-                                    const agotada =
-                                      catalog?.isProteinaOut(
-                                        category.id,
-                                        protein,
-                                        item.id,
-                                      ) ?? false
-                                    const proteinPrice = catalog
-                                      ? catalog.getPrecioConProteina(
-                                          category.id,
-                                          protein,
-                                          item.id,
-                                        )
-                                      : item.basePrice +
-                                        (protein === "Camarón"
-                                          ? (item.shrimpExtra ?? 20)
-                                          : 0)
-                                    return (
-                                      <button
-                                        key={protein}
-                                        type="button"
-                                        disabled={agotada}
-                                        onClick={() => {
-                                          if (agotada) return
-                                          setSelectedProtein(protein)
-                                          setPickerQty(1)
-                                        }}
-                                        className={cn(
-                                          "touch-manipulation flex flex-col rounded-lg border overflow-hidden transition-colors text-left",
-                                          agotada
-                                            ? "opacity-40 cursor-not-allowed border-border bg-muted"
-                                            : "cursor-pointer border-border bg-card hover:border-primary/60 hover:bg-accent/30",
-                                          isSel &&
-                                            !agotada &&
-                                            "border-primary ring-2 ring-primary/30 bg-accent/40",
-                                        )}
-                                      >
-                                        <span className="relative aspect-[4/3] w-full bg-muted pointer-events-none">
-                                          <Image
-                                            src={proteinaImgs[protein]}
-                                            alt=""
-                                            fill
-                                            className="object-cover pointer-events-none select-none"
-                                            sizes="(max-width: 640px) 45vw, 140px"
-                                            draggable={false}
-                                          />
-                                        </span>
-                                        <span className="flex flex-col items-center justify-center gap-0.5 px-2 py-2 text-xs font-medium">
-                                          {protein}
-                                          {!agotada && (
-                                            <span className="text-[10px] text-muted-foreground tabular-nums">
-                                              ${proteinPrice}
-                                            </span>
-                                          )}
-                                          {agotada && (
-                                            <span className="block text-[10px] text-destructive">
-                                              Agotado
-                                            </span>
-                                          )}
-                                        </span>
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-
-                                {linesForItem.length > 0 && (
-                                  <div
-                                    className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-3 space-y-2 mb-4"
-                                    role="status"
-                                    aria-live="polite"
-                                  >
-                                    <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
-                                      <ShoppingCart className="h-3.5 w-3.5" />
-                                      En tu carrito
-                                    </p>
-                                    <ul className="space-y-1.5">
-                                      {linesForItem.map((line) => (
-                                        <li
-                                          key={line.id}
-                                          className="flex justify-between gap-2 text-sm"
-                                        >
-                                          <span className="min-w-0">
-                                            <span className="font-medium">
-                                              {line.protein
-                                                ? `${line.name} de ${line.protein}`
-                                                : line.name}
-                                            </span>
-                                            <span className="text-muted-foreground">
-                                              {" "}
-                                              ×{line.quantity}
-                                            </span>
-                                          </span>
-                                          <span className="text-muted-foreground tabular-nums shrink-0">
-                                            $
-                                            {(
-                                              line.price * line.quantity
-                                            ).toFixed(2)}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-3 border-t border-border">
-                                  <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium shrink-0">
-                                      Cantidad
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      <Button
-                                        type="button"
-                                        size="icon"
-                                        variant="outline"
-                                        className="h-9 w-9"
-                                        disabled={pickerQty <= 1}
-                                        onClick={() =>
-                                          setPickerQty((q) =>
-                                            Math.max(1, q - 1),
-                                          )
-                                        }
-                                      >
-                                        <Minus className="h-4 w-4" />
-                                      </Button>
-                                      <span className="w-8 text-center tabular-nums font-medium">
-                                        {pickerQty}
-                                      </span>
-                                      <Button
-                                        type="button"
-                                        size="icon"
-                                        variant="outline"
-                                        className="h-9 w-9"
-                                        onClick={() =>
-                                          setPickerQty((q) => q + 1)
-                                        }
-                                      >
-                                        <Plus className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                  <Button
-                                    type="button"
-                                    className="sm:ml-auto w-full sm:w-auto"
-                                    disabled={
-                                      !selectedProtein ||
-                                      (catalog?.isProteinaOut(
-                                        category.id,
-                                        selectedProtein,
-                                        item.id,
-                                      ) ??
-                                        false)
-                                    }
-                                    onClick={() => {
-                                      if (!selectedProtein) return
-                                      if (
-                                        catalog?.isProteinaOut(
-                                          category.id,
-                                          selectedProtein,
-                                          item.id,
-                                        )
-                                      )
-                                        return
-                                      addToCart(
-                                        item,
-                                        category.name,
-                                        selectedProtein,
-                                        pickerQty,
-                                        category.id,
-                                      )
-                                      setPickerQty(1)
-                                    }}
-                                  >
-                                    Agregar al carrito
-                                  </Button>
-                                </div>
-                                  </>
+                                  <OrdenarProteinPlatilloBlock
+                                    item={item}
+                                    category={category}
+                                    catalog={catalog}
+                                    linesForItem={linesForItem}
+                                    selectedProtein={selectedProtein}
+                                    setSelectedProtein={setSelectedProtein}
+                                    pickerQty={pickerQty}
+                                    setPickerQty={setPickerQty}
+                                    proteinaImgs={proteinaImgs}
+                                    onAdd={addToCart}
+                                  />
                                 )}
                               </div>
                             )
@@ -1151,7 +1346,9 @@ export default function OrdenarPage() {
                   ) : (
                     <>
                       <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                        {cart.map((item) => (
+                        {cart.map((item) => {
+                          const notas = cartItemNotasLabel(item)
+                          return (
                           <div
                             key={item.id}
                             className="flex items-center justify-between py-2 border-b border-border last:border-0"
@@ -1162,6 +1359,11 @@ export default function OrdenarPage() {
                                   ? `${item.name} de ${item.protein}`
                                   : item.name}
                               </p>
+                              {notas ? (
+                                <p className="text-xs text-primary/90 mt-0.5 line-clamp-2">
+                                  {notas}
+                                </p>
+                              ) : null}
                               <p className="text-xs text-muted-foreground">
                                 ${item.price} c/u
                               </p>
@@ -1196,11 +1398,26 @@ export default function OrdenarPage() {
                               </Button>
                             </div>
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
 
-                      <div className="border-t border-border mt-4 pt-4">
-                        <div className="flex justify-between items-center mb-4">
+                      <div className="border-t border-border mt-4 pt-4 space-y-2">
+                        {orderType === "domicilio" && deliveryCharge > 0 ? (
+                          <>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">Subtotal</span>
+                              <span>${subtotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-muted-foreground">
+                                Envío ({deliveryZoneLabel})
+                              </span>
+                              <span>${deliveryCharge.toFixed(2)}</span>
+                            </div>
+                          </>
+                        ) : null}
+                        <div className="flex justify-between items-center mb-4 pt-1">
                           <span className="font-semibold">Total</span>
                           <span className="text-xl font-bold text-primary">
                             ${total.toFixed(2)} MXN
@@ -1220,13 +1437,16 @@ export default function OrdenarPage() {
                         >
                           {placeOrderLoading
                             ? "Abriendo pago…"
-                            : orderType === "takeout"
+                            : orderType === "takeout" || orderType === "domicilio"
                               ? "Pagar y confirmar pedido"
                               : "Hacer pedido"}
                         </Button>
-                        {orderType === "takeout" && !placeOrderLoading && (
+                        {(orderType === "takeout" || orderType === "domicilio") &&
+                          !placeOrderLoading && (
                           <p className="text-xs text-muted-foreground text-center mt-2">
-                            Para llevar: el pedido se confirma al completar el pago con tarjeta.
+                            {orderType === "domicilio"
+                              ? "Domicilio: el pedido se confirma al pagar; te llevamos a tu dirección."
+                              : "Para llevar: el pedido se confirma al completar el pago con tarjeta."}
                           </p>
                         )}
                       </div>

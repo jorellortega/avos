@@ -124,6 +124,13 @@ export default async function StaffDashboardPage() {
                       <Button asChild variant="secondary">
                         <Link href="/staff/menu-catalog">Precios y disponibilidad</Link>
                       </Button>
+                      {profile.role !== "ceo" && (
+                        <Button asChild variant="secondary">
+                          <Link href="/customizations-edit">
+                            Personalización de pedidos
+                          </Link>
+                        </Button>
+                      )}
                       <Button asChild variant="secondary">
                         <Link href="/preparados">Preparados (frío / caliente)</Link>
                       </Button>
@@ -140,6 +147,13 @@ export default async function StaffDashboardPage() {
                       <Button asChild variant="secondary">
                         <Link href="/staff/ordering">Pedidos en línea (on/off)</Link>
                       </Button>
+                      {profile.role === "manager" && (
+                        <Button asChild variant="secondary">
+                          <Link href="/customizations-edit">
+                            Personalización de pedidos
+                          </Link>
+                        </Button>
+                      )}
                       <Button asChild variant="secondary">
                         <Link href="/jobs-edit">Empleos — vacantes y solicitudes</Link>
                       </Button>
@@ -158,6 +172,14 @@ export default async function StaffDashboardPage() {
                     <>
                       <Button asChild variant="secondary">
                         <Link href="/edit">Editar sitio</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/customizations-edit">
+                          Personalización de pedidos
+                        </Link>
+                      </Button>
+                      <Button asChild variant="secondary">
+                        <Link href="/delivery-zones-edit">Tarifas de domicilio</Link>
                       </Button>
                       <Button asChild variant="secondary">
                         <Link href="/ai-settings">Ajustes de IA</Link>

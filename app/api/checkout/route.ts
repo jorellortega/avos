@@ -9,6 +9,7 @@ type CheckoutItem = {
   nombre: string
   precio: number
   cantidad: number
+  notas?: string
 }
 
 type CheckoutBody = {
@@ -95,12 +96,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Precio inválido" }, { status: 400 })
     }
     const unit_amount = conv.stripeUnitAmount
+    const lineName = item.notas?.trim()
+      ? `${item.nombre} — ${item.notas.trim()}`.slice(0, 120)
+      : item.nombre.slice(0, 120)
     line_items.push({
       quantity: Math.max(1, Math.floor(item.cantidad)),
       price_data: {
         currency: "mxn" as const,
         product_data: {
-          name: item.nombre.slice(0, 120),
+          name: lineName,
         },
         unit_amount,
       },

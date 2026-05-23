@@ -46,7 +46,11 @@ export async function fulfillAvosOrderFromStripeSession(
   }
   if (row.paid_at) return
 
-  if (row.order_type !== "pickup" && row.order_type !== "mesa") {
+  if (
+    row.order_type !== "pickup" &&
+    row.order_type !== "mesa" &&
+    row.order_type !== "domicilio"
+  ) {
     console.warn("[stripe fulfillment] skip unsupported order_type", row.order_type, orderId)
     return
   }

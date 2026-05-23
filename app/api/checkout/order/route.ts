@@ -72,7 +72,9 @@ export async function POST(request: Request) {
   }
   const { data: row, error } = await supabase
     .from("avos_orders")
-    .select("id,numero,total,status,order_type,paid_at,items,nombre_cliente")
+    .select(
+      "id,numero,total,status,order_type,paid_at,items,nombre_cliente,delivery_fee,delivery_zone_id",
+    )
     .eq("id", orderId)
     .maybeSingle()
 
@@ -83,9 +85,13 @@ export async function POST(request: Request) {
   if (!row) {
     return NextResponse.json({ error: "Orden no encontrada" }, { status: 404 })
   }
-  if (row.order_type !== "pickup" && row.order_type !== "mesa") {
+  if (
+    row.order_type !== "pickup" &&
+    row.order_type !== "mesa" &&
+    row.order_type !== "domicilio"
+  ) {
     return NextResponse.json(
-      { error: "Solo pedidos para llevar o en mesa pueden pagarse en línea desde aquí." },
+      { error: "Este tipo de pedido no puede pagarse en línea desde aquí." },
       { status: 400 },
     )
   }
@@ -159,6 +165,27 @@ export async function POST(request: Request) {
           name: nombre.slice(0, 120),
         },
         unit_amount,
+      },
+    })
+  }
+
+  const deliveryFee = Number(row.delivery_fee)
+  if (Number.isFinite(deliveryFee) && deliveryFee > 0) {
+    const conv = menuPesosMxnToStripeUnitAmount(deliveryFee)
+    if (!conv.ok) {
+      return NextResponse.json({ error: "Tarifa de envío inválida." }, { status: 400 })
+    }
+    line_items.push({
+      quantity: 1,
+      price_data: {
+        currency: "mxn",
+        product_data: {
+          name: `Envío a domicilio${row.delivery_zone_id ? ` (${String(row.delivery_zone_id)})` : ""}`.slice(
+            0,
+            120,
+          ),
+        },
+        unit_amount: conv.stripeUnitAmount,
       },
     })
   }

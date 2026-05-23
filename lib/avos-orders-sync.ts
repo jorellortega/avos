@@ -80,9 +80,21 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
       p_items: order.items,
     }
 
-    let payload: typeof basePayload & { p_customer_user_id?: string } = basePayload
-    if (customerUserId) {
-      payload = { ...basePayload, p_customer_user_id: customerUserId }
+    const payload: typeof basePayload & {
+      p_customer_user_id?: string
+      p_delivery_zone_id?: string | null
+      p_delivery_fee?: number | null
+      p_delivery_address?: string | null
+      p_delivery_photo_street_url?: string | null
+      p_delivery_photo_house_url?: string | null
+    } = {
+      ...basePayload,
+      p_delivery_zone_id: order.deliveryZoneId ?? null,
+      p_delivery_fee: order.deliveryFee ?? null,
+      p_delivery_address: order.deliveryAddress ?? null,
+      p_delivery_photo_street_url: order.deliveryPhotoStreetUrl ?? null,
+      p_delivery_photo_house_url: order.deliveryPhotoHouseUrl ?? null,
+      ...(customerUserId ? { p_customer_user_id: customerUserId } : {}),
     }
 
     let { error } = await supabase.rpc("insert_avos_order", payload)

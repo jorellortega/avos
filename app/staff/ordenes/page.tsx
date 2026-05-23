@@ -38,6 +38,16 @@ type AvosOrderRow = {
   payment_method: string | null
   paid_at: string | null
   created_at: string
+  delivery_zone_id: string | null
+  delivery_address: string | null
+  delivery_photo_street_url: string | null
+  delivery_photo_house_url: string | null
+}
+
+function orderTypeLabel(t: string) {
+  if (t === "mesa") return "Mesa"
+  if (t === "domicilio") return "Domicilio"
+  return "Para llevar"
 }
 
 function formatMoney(n: number) {
@@ -91,7 +101,7 @@ export default async function StaffOrdenesPage() {
   const { data: rows, error } = await supabase
     .from("avos_orders")
     .select(
-      "id,numero,total,status,order_type,mesa,nombre_cliente,payment_method,paid_at,created_at",
+      "id,numero,total,status,order_type,mesa,nombre_cliente,payment_method,paid_at,created_at,delivery_zone_id,delivery_address,delivery_photo_street_url,delivery_photo_house_url",
     )
     .order("created_at", { ascending: false })
     .limit(200)
@@ -213,9 +223,46 @@ export default async function StaffOrdenesPage() {
                               {formatDate(r.created_at)}
                             </TableCell>
                             <TableCell>
-                              {r.order_type === "mesa" ? "Mesa" : "Para llevar"}
+                              {orderTypeLabel(r.order_type)}
                             </TableCell>
-                            <TableCell>{r.mesa ?? "—"}</TableCell>
+                            <TableCell className="max-w-[140px]">
+                              {r.order_type === "domicilio" ? (
+                                <div className="space-y-1">
+                                  <span className="text-xs block truncate">
+                                    {r.delivery_zone_id ?? "—"}
+                                  </span>
+                                  {r.delivery_address ? (
+                                    <span className="text-[10px] text-muted-foreground line-clamp-2 block">
+                                      {r.delivery_address}
+                                    </span>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-2">
+                                    {r.delivery_photo_street_url ? (
+                                      <a
+                                        href={r.delivery_photo_street_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-primary underline"
+                                      >
+                                        Foto calle
+                                      </a>
+                                    ) : null}
+                                    {r.delivery_photo_house_url ? (
+                                      <a
+                                        href={r.delivery_photo_house_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-primary underline"
+                                      >
+                                        Foto casa
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : (
+                                (r.mesa ?? "—")
+                              )}
+                            </TableCell>
                             <TableCell className="max-w-[140px] truncate">
                               {r.nombre_cliente ?? "—"}
                             </TableCell>

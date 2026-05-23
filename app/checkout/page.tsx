@@ -102,6 +102,7 @@ export default function CheckoutPage() {
             nombre: i.nombre,
             precio: i.precio,
             cantidad: i.cantidad,
+            notas: i.notas,
           })),
           customerEmail: formData.email.trim(),
           nombre: formData.nombre.trim(),
@@ -393,8 +394,13 @@ export default function CheckoutPage() {
                       <div key={item.id} className="flex justify-between text-sm">
                         <div className="flex-1 min-w-0">
                           <span className="text-foreground">{item.cantidad}x </span>
-                          <span className="text-muted-foreground truncate">
+                          <span className="text-muted-foreground truncate block">
                             {item.nombre}
+                            {item.notas ? (
+                              <span className="block text-xs text-primary/90 mt-0.5">
+                                {item.notas}
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                         <span className="font-medium ml-2">
