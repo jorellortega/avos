@@ -16,12 +16,20 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { useOrders, type OrderItem } from "@/components/orders-provider"
+import { useOrders, type OrderItem, type OrderType } from "@/components/orders-provider"
 import {
   insertAvosOrderForPortal,
+  portalUpdateOrderDelivery,
+  portalUpdateOrderTipo,
   staffConfirmAvosOrderPayment,
   updateAvosOrderCartForPortal,
 } from "@/lib/avos-orders-sync"
+import {
+  type PortalDeliveryInfo,
+  portalDeliveryFromOrder,
+  portalItemsTotalWithDelivery,
+  portalOrderNeedsDeliveryInfo,
+} from "@/lib/portal-delivery"
 import { cartItemNeedsCompletion } from "@/lib/portal-cart-item"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
@@ -96,6 +104,8 @@ export function PortalPageClient() {
   const [submitLoading, setSubmitLoading] = useState(false)
   const [ordersSheetOpen, setOrdersSheetOpen] = useState(false)
   const [addMode, setAddMode] = useState(false)
+  const [draftOrderTipo, setDraftOrderTipo] = useState<OrderType>("mesa")
+  const [draftDelivery, setDraftDelivery] = useState<PortalDeliveryInfo>({})
   const menuRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<PortalAiChatHandle>(null)
 
@@ -127,11 +137,99 @@ export function PortalPageClient() {
   )
 
   const activeItems = selectedOrder ? selectedOrder.items : draftItems
+  const orderTipo = selectedOrder?.tipo ?? draftOrderTipo
+
+  const activeDelivery = useMemo(
+    (): PortalDeliveryInfo =>
+      selectedOrder
+        ? portalDeliveryFromOrder(selectedOrder)
+        : draftDelivery,
+    [selectedOrder, draftDelivery],
+  )
+
+  const itemsSubtotal = orderItemsTotal(activeItems)
+  const total = portalItemsTotalWithDelivery(
+    itemsSubtotal,
+    orderTipo,
+    activeDelivery,
+  )
+  const needsDelivery = portalOrderNeedsDeliveryInfo(orderTipo, activeDelivery)
+
+  const saveDelivery = useCallback(
+    (delivery: PortalDeliveryInfo) => {
+      const sub = orderItemsTotal(activeItems)
+      const newTotal = portalItemsTotalWithDelivery(sub, "domicilio", delivery)
+      if (selectedOrder) {
+        updateOrder(selectedOrder.id, {
+          tipo: "domicilio",
+          deliveryZoneId: delivery.deliveryZoneId,
+          deliveryZoneLabel: delivery.deliveryZoneLabel,
+          deliveryFee: delivery.deliveryFee,
+          deliveryAddress: delivery.deliveryAddress,
+          total: newTotal,
+        })
+        if (delivery.deliveryZoneId && delivery.deliveryAddress) {
+          void portalUpdateOrderDelivery(selectedOrder.id, {
+            deliveryZoneId: delivery.deliveryZoneId,
+            deliveryZoneLabel: delivery.deliveryZoneLabel ?? "",
+            deliveryFee: delivery.deliveryFee ?? 0,
+            deliveryAddress: delivery.deliveryAddress,
+            total: newTotal,
+          }).then((result) => {
+            if (!result.ok) {
+              setPaymentError(result.error ?? "No se pudo guardar la entrega.")
+            }
+          })
+        }
+      } else {
+        setDraftDelivery(delivery)
+        setDraftOrderTipo("domicilio")
+      }
+    },
+    [activeItems, selectedOrder, updateOrder],
+  )
+
+  const setOrderTipo = useCallback(
+    (tipo: OrderType) => {
+      const sub = orderItemsTotal(activeItems)
+      const cleared: PortalDeliveryInfo =
+        tipo === "domicilio"
+          ? activeDelivery
+          : {
+              deliveryZoneId: undefined,
+              deliveryZoneLabel: undefined,
+              deliveryFee: undefined,
+              deliveryAddress: undefined,
+            }
+      const newTotal = portalItemsTotalWithDelivery(sub, tipo, cleared)
+      if (selectedOrder) {
+        updateOrder(selectedOrder.id, {
+          tipo,
+          ...cleared,
+          total: newTotal,
+        })
+        void portalUpdateOrderTipo(selectedOrder.id, tipo).then((result) => {
+          if (!result.ok) {
+            setPaymentError(result.error ?? "No se pudo guardar el tipo de orden.")
+          }
+        })
+      } else {
+        setDraftOrderTipo(tipo)
+        if (tipo !== "domicilio") setDraftDelivery({})
+      }
+    },
+    [activeItems, activeDelivery, selectedOrder, updateOrder],
+  )
   const setActiveItems = useCallback(
     (items: OrderItem[]) => {
       if (selectedOrder) {
-        const total = orderItemsTotal(items)
-        updateOrder(selectedOrder.id, { items, total })
+        const sub = orderItemsTotal(items)
+        const newTotal = portalItemsTotalWithDelivery(
+          sub,
+          selectedOrder.tipo,
+          portalDeliveryFromOrder(selectedOrder),
+        )
+        updateOrder(selectedOrder.id, { items, total: newTotal })
       } else {
         setDraftItems(items)
       }
@@ -141,7 +239,6 @@ export function PortalPageClient() {
 
   const nextNum = getNextOrderNumber()
   const displayOrderNum = selectedOrder?.numero ?? nextNum
-  const total = orderItemsTotal(activeItems)
 
   const submitLabel = selectedOrder
     ? "Guardar cambios"
@@ -160,6 +257,8 @@ export function PortalPageClient() {
   const startNewOrder = useCallback(() => {
     setSelectedOrderId(null)
     setDraftItems([])
+    setDraftOrderTipo("mesa")
+    setDraftDelivery({})
     setAddMode(false)
     setOrderCreated(null)
     setPaymentError("")
@@ -313,27 +412,54 @@ export function PortalPageClient() {
       return
     }
 
+    if (needsDelivery) {
+      setPaymentError(
+        "Domicilio: toca la línea roja en el pedido para elegir zona y dirección.",
+      )
+      return
+    }
+
     setSubmitLoading(true)
     setPaymentError("")
 
     if (selectedOrder) {
-      const result = await updateAvosOrderCartForPortal(
-        selectedOrder.id,
-        activeItems,
-        total,
-      )
+      const promises: Promise<{ ok: boolean; error?: string }>[] = [
+        updateAvosOrderCartForPortal(selectedOrder.id, activeItems, total),
+        portalUpdateOrderTipo(selectedOrder.id, orderTipo),
+      ]
+      if (
+        orderTipo === "domicilio" &&
+        activeDelivery.deliveryZoneId &&
+        activeDelivery.deliveryAddress
+      ) {
+        promises.push(
+          portalUpdateOrderDelivery(selectedOrder.id, {
+            deliveryZoneId: activeDelivery.deliveryZoneId,
+            deliveryZoneLabel: activeDelivery.deliveryZoneLabel ?? "",
+            deliveryFee: activeDelivery.deliveryFee ?? 0,
+            deliveryAddress: activeDelivery.deliveryAddress,
+            total,
+          }),
+        )
+      }
+      const results = await Promise.all(promises)
       setSubmitLoading(false)
-      if (!result.ok) {
-        setPaymentError(result.error ?? "No se pudo guardar en el servidor.")
+      const failed = results.find((r) => !r.ok)
+      if (failed) {
+        setPaymentError(failed.error ?? "No se pudo guardar en el servidor.")
       }
       return
     }
 
     const order = addOrder({
-      tipo: "mesa",
+      tipo: orderTipo,
       items: activeItems,
       status: "pendiente",
       total,
+      deliveryZoneId: activeDelivery.deliveryZoneId,
+      deliveryZoneLabel: activeDelivery.deliveryZoneLabel,
+      deliveryFee: activeDelivery.deliveryFee,
+      deliveryAddress: activeDelivery.deliveryAddress,
     })
     const result = await insertAvosOrderForPortal(order)
     if (result.ok) {
@@ -485,6 +611,20 @@ export function PortalPageClient() {
                 Cocina
               </Button>
             </Link>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                startNewOrder()
+                setOrdersSheetOpen(false)
+                requestAnimationFrame(() => chatRef.current?.focusInput())
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Nueva orden
+            </Button>
             <Sheet open={ordersSheetOpen} onOpenChange={setOrdersSheetOpen}>
               <SheetTrigger asChild>
                 <Button variant="secondary" size="sm" className="gap-1.5">
@@ -621,9 +761,15 @@ export function PortalPageClient() {
             <PortalAiChat
               ref={chatRef}
               existingItems={activeItems}
+              cartTotal={total}
               nextOrderNumber={nextNum}
               orderNumero={selectedOrder?.numero}
+              orderTipo={orderTipo}
               addMode={addMode}
+              delivery={activeDelivery}
+              needsDelivery={needsDelivery}
+              onDeliverySave={saveDelivery}
+              onOrderTipoChange={setOrderTipo}
               onItemsResolved={(items) => {
                 setActiveItems(items)
                 if (items.length > 0) setAddMode(true)

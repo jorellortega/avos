@@ -101,6 +101,64 @@ export async function insertAvosOrderForPortal(
   return portalOrderFetch({ order })
 }
 
+export async function portalUpdateOrderTipo(
+  orderId: string,
+  tipo: OrderType,
+): Promise<{ ok: boolean; tipo?: OrderType; error?: string }> {
+  try {
+    const res = await fetch("/api/portal/update-order-tipo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ orderId, tipo }),
+    })
+    const data = (await res.json()) as {
+      ok?: boolean
+      tipo?: OrderType
+      error?: string
+    }
+    if (!res.ok) {
+      return { ok: false, error: data.error ?? `Error ${res.status}` }
+    }
+    return { ok: true, tipo: (data.tipo as OrderType) ?? tipo }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Error de red",
+    }
+  }
+}
+
+export async function portalUpdateOrderDelivery(
+  orderId: string,
+  delivery: {
+    deliveryZoneId: string
+    deliveryZoneLabel: string
+    deliveryFee: number
+    deliveryAddress: string
+    total?: number
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/portal/update-order-delivery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ orderId, ...delivery }),
+    })
+    const data = (await res.json()) as { ok?: boolean; error?: string }
+    if (!res.ok) {
+      return { ok: false, error: data.error ?? `Error ${res.status}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Error de red",
+    }
+  }
+}
+
 export async function portalUpdateOrderStatus(
   orderId: string,
   status: OrderStatus,

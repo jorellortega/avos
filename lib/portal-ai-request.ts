@@ -30,13 +30,43 @@ export async function requirePortalStaff() {
   return { user, profile }
 }
 
+const PORTAL_AI_SETTING_KEYS = [
+  "openai_api_key",
+  "openai_model",
+  "anthropic_api_key",
+  "anthropic_model",
+  "elevenlabs_api_key",
+  "elevenlabs_voice_id",
+  "elevenlabs_model",
+  "elevenlabs_stt_model",
+] as const
+
 export async function loadPortalAiSettings(): Promise<Record<string, string>> {
   const settings: Record<string, string> = {}
   try {
     const service = createServiceRoleClient()
-    const { data, error } = await service.rpc("get_ai_settings")
+    const { data, error } = await service
+      .from("ai_settings")
+      .select("setting_key, setting_value")
+      .in("setting_key", [...PORTAL_AI_SETTING_KEYS])
+
+    if (error) {
+      console.error("portal ai settings query", error.message)
+    }
+
     if (!error && Array.isArray(data)) {
-      for (const row of data as { setting_key: string; setting_value: string }[]) {
+      for (const row of data) {
+        if (row?.setting_key) settings[row.setting_key] = row.setting_value ?? ""
+      }
+      if (data.length > 0) return settings
+    }
+
+    const { data: rpcData, error: rpcError } = await service.rpc("get_ai_settings")
+    if (rpcError) {
+      console.error("portal ai settings rpc", rpcError.message)
+    }
+    if (!rpcError && Array.isArray(rpcData)) {
+      for (const row of rpcData as { setting_key: string; setting_value: string }[]) {
         if (row?.setting_key) settings[row.setting_key] = row.setting_value ?? ""
       }
     }

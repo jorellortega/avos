@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { User } from "@supabase/supabase-js"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 
-/** @deprecated Prefer createBrowserSupabase from @/lib/supabase/client */
+/** Returns the shared browser Supabase client (singleton). */
 export function getBrowserSupabase(): SupabaseClient {
   return createBrowserSupabase()
 }

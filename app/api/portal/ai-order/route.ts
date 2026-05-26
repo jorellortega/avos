@@ -18,6 +18,8 @@ import {
   type PortalAiLineInput,
 } from "@/lib/portal-menu-snapshot"
 import { sanitizePortalAiLinesFromMessage } from "@/lib/portal-ai-sanitize"
+import { resolvePortalOrderTipo } from "@/lib/portal-order-tipo"
+import type { OrderType } from "@/components/orders-provider"
 
 const MAX_MESSAGE_LEN = 4000
 
@@ -25,6 +27,7 @@ type AiOrderJson = {
   items?: PortalAiLineInput[]
   assistantMessage?: string
   mergeMode?: "replace" | "append"
+  orderTipo?: string
 }
 
 async function loadMenuCatalog() {
@@ -146,6 +149,7 @@ export async function POST(req: Request) {
     nextOrderNumber?: number
     orderNumero?: number
     forceAppend?: boolean
+    orderTipo?: OrderType
   }
   try {
     body = await req.json()
@@ -169,6 +173,12 @@ export async function POST(req: Request) {
     typeof body.nextOrderNumber === "number" ? body.nextOrderNumber : undefined
   const orderNumero =
     typeof body.orderNumero === "number" ? body.orderNumero : undefined
+  const currentOrderTipo =
+    body.orderTipo === "mesa" ||
+    body.orderTipo === "pickup" ||
+    body.orderTipo === "domicilio"
+      ? body.orderTipo
+      : undefined
 
   const settings: Record<string, string> = {}
   try {
@@ -195,12 +205,18 @@ export async function POST(req: Request) {
   const catalog = await loadMenuCatalog()
   const menuSnapshot = buildPortalMenuSnapshot(catalog)
 
+  const tipoLabel =
+    currentOrderTipo === "pickup"
+      ? "para llevar"
+      : currentOrderTipo === "domicilio"
+        ? "domicilio"
+        : "aquí (mesa)"
   const contextBlock =
     orderNumero != null
-      ? `Orden activa #${orderNumero}. Carrito actual (${existingItems.length} líneas):\n${JSON.stringify(existingItems, null, 0)}\nModo: agregar o reemplazar según lo que pida el usuario.`
+      ? `Orden activa #${orderNumero} (${tipoLabel}). Carrito actual (${existingItems.length} líneas):\n${JSON.stringify(existingItems, null, 0)}\nModo: agregar o reemplazar según lo que pida el usuario.`
       : nextOrderNumber != null
-        ? `Nueva orden (número reservado #${nextOrderNumber}). Carrito borrador:\n${JSON.stringify(existingItems, null, 0)}`
-        : `Carrito borrador:\n${JSON.stringify(existingItems, null, 0)}`
+        ? `Nueva orden (número reservado #${nextOrderNumber}, tipo actual: ${tipoLabel}). Carrito borrador:\n${JSON.stringify(existingItems, null, 0)}`
+        : `Carrito borrador (tipo actual: ${tipoLabel}):\n${JSON.stringify(existingItems, null, 0)}`
 
   const system = `Eres el asistente de toma de pedidos en Avos Mexican Grill (portal de caja).
 Convierte el mensaje del staff en líneas de pedido usando SOLO ítems del menú con precios exactos.
@@ -222,7 +238,8 @@ Responde ÚNICAMENTE con JSON válido (sin markdown) con esta forma:
       "cantidad": 1
     }
   ],
-  "assistantMessage": "Resumen breve en español con total estimado"
+  "assistantMessage": "Resumen breve en español con total estimado",
+  "orderTipo": "mesa" | "pickup" | "domicilio"
 }
 
 Reglas:
@@ -238,6 +255,7 @@ Reglas:
 - bebidaId válidos son SOLO los del menú (jamaica, horchata, pina, limon-pepino, mango, etc.), nunca "agua" solo.
 - NUNCA pongas proteína en una línea si el fragmento del pedido no la menciona. Ej: "tacos, 3 tacos asada" → línea 1: tacos cantidad 1 SIN proteina; línea 2: tacos cantidad 3 proteina Asada.
 - Separa cantidades distintas en líneas distintas (ej. "3 tacos" y "2 tacos asada" = 2 líneas).
+- TIPO DE ORDEN (orderTipo): "mesa" = comer aquí / en mesa / aquí; "pickup" = para llevar / llevar / takeout; "domicilio" = domicilio / delivery / envío. Si el staff lo dice en el mensaje, incluye orderTipo. Si no lo menciona, omite orderTipo (se mantiene el actual).
 
 MENÚ Y PRECIOS:
 ${menuSnapshot}`
@@ -302,12 +320,18 @@ ${menuSnapshot}`
   const items = mergeOrderItems(existingItems, resolved, mergeMode)
   const total = orderItemsTotal(items)
   const lineBreakdown = buildPortalOrderLineBreakdown(items)
+  const orderTipo = resolvePortalOrderTipo(
+    message,
+    parsed.orderTipo,
+    currentOrderTipo,
+  )
 
   return NextResponse.json({
     items,
     total,
     lineBreakdown,
     mergeMode,
+    orderTipo,
     assistantMessage:
       parsed.assistantMessage?.trim() ||
       `Listo: ${resolved.length} línea(s). Total $${total.toFixed(2)}.`,

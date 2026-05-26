@@ -150,12 +150,20 @@ export function PortalOrdersPanel({
             </p>
           ) : (
             active.map((order) => (
-              <button
+              <div
                 key={order.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectOrder(order.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    onSelectOrder(order.id)
+                  }
+                }}
                 className={cn(
-                  "w-full text-left rounded-lg border px-3 py-2.5 transition-colors",
+                  "w-full text-left rounded-lg border px-3 py-2.5 transition-colors cursor-pointer",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   selectedOrderId === order.id
                     ? "border-primary bg-primary/10 ring-1 ring-primary/30"
                     : "border-border/80 bg-card hover:bg-muted/50",
@@ -174,7 +182,7 @@ export function PortalOrdersPanel({
                 {order.nombreCliente && (
                   <p className="text-xs truncate mt-0.5">{order.nombreCliente}</p>
                 )}
-              </button>
+              </div>
             ))
           )}
         </div>

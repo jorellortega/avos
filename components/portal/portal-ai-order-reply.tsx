@@ -27,15 +27,22 @@ import {
   type Proteina,
 } from "@/lib/menu-data"
 import type { PortalOrderLineBreakdown } from "@/lib/portal-menu-snapshot"
+import type { OrderType } from "@/components/orders-provider"
+import { PortalDomicilioDelivery } from "@/components/portal/portal-domicilio-delivery"
+import { PortalOrderTipoPicker } from "@/components/portal/portal-order-tipo-picker"
+import type { PortalDeliveryInfo } from "@/lib/portal-delivery"
 import {
   parseCartLineBaseId,
   type PortalCartItemUpdate,
 } from "@/lib/portal-cart-item"
 import { cn } from "@/lib/utils"
+import { formatPortalOrderSpeechText } from "@/lib/portal-order-speech"
+import { PortalOrderPlayback } from "@/components/portal/portal-order-playback"
 
 type PortalAiOrderReplyProps = {
   lines: PortalOrderLineBreakdown[]
   total: number
+  orderNumero?: number
   warnings?: string
   onUpdateItem?: (itemId: string, update: PortalCartItemUpdate) => void
   onDeleteItem?: (itemId: string) => void
@@ -46,11 +53,17 @@ type PortalAiOrderReplyProps = {
   ) => Promise<{ notas: string } | { error: string }>
   itemFixItemId?: string | null
   onItemFixHandled?: () => void
+  orderTipo?: OrderType
+  onOrderTipoChange?: (tipo: OrderType) => void
+  delivery?: PortalDeliveryInfo
+  needsDelivery?: boolean
+  onDeliverySave?: (delivery: PortalDeliveryInfo) => void
 }
 
 export function PortalAiOrderReply({
   lines,
   total,
+  orderNumero,
   warnings,
   onUpdateItem,
   onDeleteItem,
@@ -58,6 +71,11 @@ export function PortalAiOrderReply({
   onAiCustomize,
   itemFixItemId,
   onItemFixHandled,
+  orderTipo = "mesa",
+  onOrderTipoChange,
+  delivery = {},
+  needsDelivery = false,
+  onDeliverySave,
 }: PortalAiOrderReplyProps) {
   const { catalog } = useMenuCatalogContext()
   const [showLinePrices, setShowLinePrices] = useState(false)
@@ -76,6 +94,13 @@ export function PortalAiOrderReply({
 
   const canEdit = Boolean(onUpdateItem && onDeleteItem)
   const canAiCustomize = Boolean(onAiCustomize)
+  const speechText = formatPortalOrderSpeechText({
+    orderNumero,
+    lines,
+    total,
+    orderTipo,
+    delivery,
+  })
   const hasIncomplete = lines.some(
     (l) => l.needsProteina || l.needsBebidaTamano || l.needsBebidaEleccion,
   )
@@ -225,21 +250,24 @@ export function PortalAiOrderReply({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">Has pedido:</p>
-        {canEdit && onAddItem && (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            title="Agregar otro artículo"
-            aria-label="Agregar otro artículo"
-            onClick={onAddItem}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        )}
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium pt-1">Has pedido:</p>
+        <div className="flex items-center gap-1 shrink-0">
+          <PortalOrderPlayback text={speechText} />
+          {canEdit && onAddItem && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              title="Agregar otro artículo"
+              aria-label="Agregar otro artículo"
+              onClick={onAddItem}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
       {hasIncomplete && (
         <p className="text-xs text-destructive font-medium">
@@ -300,8 +328,28 @@ export function PortalAiOrderReply({
           ),
         )}
       </ul>
+      {onOrderTipoChange && (
+        <PortalOrderTipoPicker
+          variant="inline"
+          value={orderTipo}
+          onChange={onOrderTipoChange}
+          className="pt-1"
+        />
+      )}
+      {orderTipo === "domicilio" && onDeliverySave && (
+        <PortalDomicilioDelivery
+          delivery={delivery}
+          needsDelivery={needsDelivery}
+          onSave={onDeliverySave}
+        />
+      )}
       <p className="text-sm font-semibold pt-0.5">
         Total: ${total.toFixed(2)} MXN
+        {orderTipo === "domicilio" && delivery.deliveryFee != null && delivery.deliveryFee > 0 ? (
+          <span className="block text-xs font-normal text-muted-foreground">
+            Incluye envío ${delivery.deliveryFee.toFixed(2)}
+          </span>
+        ) : null}
         {hasIncomplete && (
           <span className="text-xs font-normal text-destructive block">
             Incluye precios base; corrige líneas en rojo

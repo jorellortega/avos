@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Loader2, LogOut, RefreshCw, Save } from "lucide-react"
@@ -26,6 +26,7 @@ import {
 import type { AISetting } from "@/lib/ai-types"
 import { getBrowserSupabase, isCeoAccess } from "@/lib/supabase-browser"
 import type { User } from "@supabase/supabase-js"
+import { ElevenLabsVoicePicker } from "@/components/elevenlabs-voice-picker"
 
 const OPENAI_MODELS = [
   "gpt-4o-mini",
@@ -60,9 +61,20 @@ const ELEVENLABS_STT_MODELS = ["scribe_v2", "scribe_v1"] as const
 
 const CUSTOM_LABELS: Record<string, string> = {
   elevenlabs_api_key: "Clave API de ElevenLabs",
-  elevenlabs_voice_id: "ID de voz",
+  elevenlabs_voice_id: "Voz (TTS)",
   elevenlabs_model: "Modelo de voz (TTS)",
   elevenlabs_stt_model: "Modelo speech-to-text",
+}
+
+const ELEVENLABS_SETTING_DESCRIPTIONS: Record<string, string> = {
+  elevenlabs_api_key:
+    "API key from elevenlabs.io → Profile → API keys. Used for voice synthesis.",
+  elevenlabs_voice_id:
+    "Voice ID from ElevenLabs → Voices (e.g. Rachel, Adam). Required for TTS.",
+  elevenlabs_model:
+    "TTS model: multilingual v2 (quality), turbo v2.5 (faster), or flash v2.5 (low latency).",
+  elevenlabs_stt_model:
+    "Speech-to-text model for portal voice orders (ElevenLabs Scribe).",
 }
 
 function labelForKey(key: string): string {
@@ -101,6 +113,10 @@ export function AiSettingsPanel() {
   const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>(
     {},
   )
+  const [voiceSaveState, setVoiceSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle")
+  const voiceSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const ceo = useMemo(() => isCeoAccess(user, profile), [user, profile])
 
@@ -163,11 +179,11 @@ export function AiSettingsPanel() {
 
       const {
         data: { subscription },
-      } = client.auth.onAuthStateChange(async (_event, session) => {
+      } = client.auth.onAuthStateChange((_event, session) => {
         if (cancelled) return
         const u = session?.user ?? null
         setUser(u)
-        if (u) await loadProfile(u.id)
+        if (u) void loadProfile(u.id)
         else setProfile(null)
       })
 
@@ -204,6 +220,64 @@ export function AiSettingsPanel() {
     setValues((prev) => ({ ...prev, [key]: value }))
     setSaveOk(false)
   }
+
+  const persistSetting = useCallback(
+    async (key: string, value: string) => {
+      const client = getBrowserSupabase()
+      const row = rows.find((r) => r.setting_key === key)
+      const { error } = await client.from("ai_settings").upsert(
+        {
+          setting_key: key,
+          setting_value: value,
+          description: row?.description ?? ELEVENLABS_SETTING_DESCRIPTIONS[key] ?? null,
+        },
+        { onConflict: "setting_key" },
+      )
+      if (error) throw error
+      await loadSettings()
+    },
+    [rows, loadSettings],
+  )
+
+  const saveVoiceId = useCallback(
+    async (voiceId: string, immediate = false) => {
+      const id = voiceId.trim()
+      if (!id) return
+
+      const run = async () => {
+        setVoiceSaveState("saving")
+        try {
+          await persistSetting("elevenlabs_voice_id", id)
+          setVoiceSaveState("saved")
+          setSaveOk(true)
+          setSaveError(null)
+        } catch (e) {
+          console.error(e)
+          setVoiceSaveState("error")
+          setSaveError("No se pudo guardar la voz. Pulsa «Guardar cambios».")
+        }
+      }
+
+      if (immediate) {
+        if (voiceSaveTimerRef.current) clearTimeout(voiceSaveTimerRef.current)
+        await run()
+        return
+      }
+
+      if (voiceSaveTimerRef.current) clearTimeout(voiceSaveTimerRef.current)
+      voiceSaveTimerRef.current = setTimeout(() => {
+        void run()
+      }, 600)
+    },
+    [persistSetting],
+  )
+
+  useEffect(
+    () => () => {
+      if (voiceSaveTimerRef.current) clearTimeout(voiceSaveTimerRef.current)
+    },
+    [],
+  )
 
   const openaiRows = useMemo(
     () => rows.filter((r) => OPENAI_KEYS.has(r.setting_key)),
@@ -353,6 +427,32 @@ export function AiSettingsPanel() {
       )
     }
 
+    if (key === "elevenlabs_voice_id") {
+      return (
+        <div key={key} className="space-y-1">
+          <ElevenLabsVoicePicker
+            apiKey={values.elevenlabs_api_key ?? ""}
+            voiceId={v}
+            onVoiceChange={(id) => {
+              updateValue(key, id)
+              void saveVoiceId(id, false)
+            }}
+            onVoiceSelect={(id) => {
+              updateValue(key, id)
+              void saveVoiceId(id, true)
+            }}
+            description={row.description}
+          />
+          {voiceSaveState === "saving" && (
+            <p className="text-xs text-muted-foreground">Guardando voz…</p>
+          )}
+          {voiceSaveState === "saved" && (
+            <p className="text-xs text-primary">Voz guardada — ya puedes usar «Escuchar» en el portal.</p>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div key={key} className="space-y-2">
         <Label htmlFor={key}>{labelForKey(key)}</Label>
@@ -367,11 +467,7 @@ export function AiSettingsPanel() {
             onChange={(e) => updateValue(key, e.target.value)}
             className="font-mono text-sm"
             autoComplete="off"
-            placeholder={
-              key === "elevenlabs_voice_id"
-                ? "ej. 21m00Tcm4TlvDq8ikWAM"
-                : undefined
-            }
+            placeholder={undefined}
           />
           {secret && (
             <Button
@@ -408,10 +504,28 @@ export function AiSettingsPanel() {
       for (const row of rows) {
         const next = values[row.setting_key] ?? ""
         if (next === row.setting_value) continue
-        const { error } = await client
-          .from("ai_settings")
-          .update({ setting_value: next })
-          .eq("setting_key", row.setting_key)
+        const { error } = await client.from("ai_settings").upsert(
+          {
+            setting_key: row.setting_key,
+            setting_value: next,
+            description: row.description,
+          },
+          { onConflict: "setting_key" },
+        )
+        if (error) throw error
+      }
+      for (const key of ELEVENLABS_KEYS) {
+        if (rows.some((r) => r.setting_key === key)) continue
+        const next = values[key]
+        if (next === undefined) continue
+        const { error } = await client.from("ai_settings").upsert(
+          {
+            setting_key: key,
+            setting_value: next,
+            description: ELEVENLABS_SETTING_DESCRIPTIONS[key] ?? null,
+          },
+          { onConflict: "setting_key" },
+        )
         if (error) throw error
       }
       await loadSettings()
@@ -580,10 +694,14 @@ export function AiSettingsPanel() {
             <CardHeader>
               <CardTitle>ElevenLabs</CardTitle>
               <CardDescription>
-                Voz (TTS) y dictado en el portal (STT). La clave API debe incluir el
-                permiso{" "}
-                <strong className="font-medium">speech_to_text</strong> para el
-                micrófono del portal; actívalo al crear o editar la clave en{" "}
+                Voz (TTS) para escuchar pedidos en el portal y dictado (STT) para el
+                micrófono. La clave API debe incluir{" "}
+                <strong className="font-medium">text_to_speech</strong> (obligatorio
+                para «Escuchar» en el portal),{" "}
+                <strong className="font-medium">voices_read</strong> (listar voces;
+                opcional si usas presets) y{" "}
+                <strong className="font-medium">speech_to_text</strong> (micrófono);
+                actívalos al crear o editar la clave en{" "}
                 <a
                   href="https://elevenlabs.io/app/settings/api-keys"
                   target="_blank"
@@ -592,12 +710,28 @@ export function AiSettingsPanel() {
                 >
                   API keys
                 </a>
-                . Sin ese permiso, el portal usará dictado del navegador.
+                . Sin permiso STT, el portal usará dictado del navegador. Guarda la
+                clave API, elige una voz abajo y pulsa «Guardar cambios» antes de
+                usar «Escuchar» en el portal.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {elevenlabsRows.length > 0 ? (
-                elevenlabsRows.map(renderSettingField)
+                <>
+                  {elevenlabsRows
+                    .filter((r) => r.setting_key === "elevenlabs_api_key")
+                    .map(renderSettingField)}
+                  {elevenlabsRows
+                    .filter((r) => r.setting_key === "elevenlabs_voice_id")
+                    .map(renderSettingField)}
+                  {elevenlabsRows
+                    .filter(
+                      (r) =>
+                        r.setting_key !== "elevenlabs_api_key" &&
+                        r.setting_key !== "elevenlabs_voice_id",
+                    )
+                    .map(renderSettingField)}
+                </>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Aplica la migración{" "}

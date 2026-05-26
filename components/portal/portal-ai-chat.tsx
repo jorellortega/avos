@@ -19,7 +19,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import type { OrderItem } from "@/components/orders-provider"
+import type { OrderItem, OrderType } from "@/components/orders-provider"
+import type { PortalDeliveryInfo } from "@/lib/portal-delivery"
+import { portalItemsTotalWithDelivery } from "@/lib/portal-delivery"
 import {
   buildPortalOrderLineBreakdown,
   orderItemsTotal,
@@ -27,6 +29,7 @@ import {
 } from "@/lib/portal-menu-snapshot"
 import { PortalAiOrderReply } from "@/components/portal/portal-ai-order-reply"
 import type { PortalCartItemUpdate } from "@/lib/portal-cart-item"
+import { resolvePortalOrderTipo } from "@/lib/portal-order-tipo"
 import {
   startBrowserSpeechSession,
   type BrowserSpeechSession,
@@ -57,8 +60,15 @@ type PortalAiChatProps = {
   existingItems: OrderItem[]
   nextOrderNumber: number
   orderNumero?: number
+  orderTipo?: OrderType
   addMode?: boolean
   onItemsResolved: (items: OrderItem[], total: number, message: string) => void
+  onOrderTipoChange?: (tipo: OrderType) => void
+  delivery?: PortalDeliveryInfo
+  needsDelivery?: boolean
+  onDeliverySave?: (delivery: PortalDeliveryInfo) => void
+  /** Total with envío when domicilio. */
+  cartTotal?: number
   onUpdateItem?: (itemId: string, update: PortalCartItemUpdate) => void
   onDeleteItem?: (itemId: string) => void
   onRequestAddItem?: () => void
@@ -77,8 +87,14 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
       existingItems,
       nextOrderNumber,
       orderNumero,
+      orderTipo = "mesa",
       addMode = false,
       onItemsResolved,
+      onOrderTipoChange,
+      delivery = {},
+      needsDelivery = false,
+      onDeliverySave,
+      cartTotal,
       onUpdateItem,
       onDeleteItem,
       onRequestAddItem,
@@ -222,7 +238,13 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
         return
       }
       const lines = buildPortalOrderLineBreakdown(existingItems)
-      const total = orderItemsTotal(existingItems)
+      const total =
+        cartTotal ??
+        portalItemsTotalWithDelivery(
+          orderItemsTotal(existingItems),
+          orderTipo,
+          delivery,
+        )
       setMessages((prev) =>
         prev.map((m) =>
           m.orderReply
@@ -230,7 +252,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
             : m,
         ),
       )
-    }, [existingItems])
+    }, [existingItems, cartTotal, orderTipo, delivery])
 
     const lastOrderReplyIndex = (() => {
       let idx = -1
@@ -312,6 +334,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
               hasActiveCart || orderNumero != null ? undefined : nextOrderNumber,
             orderNumero: hasActiveCart ? displayNum : orderNumero,
             forceAppend: hasActiveCart,
+            orderTipo,
           }),
         })
         const data = (await res.json()) as {
@@ -319,6 +342,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           total?: number
           lineBreakdown?: PortalOrderLineBreakdown[]
           assistantMessage?: string
+          orderTipo?: OrderType
           error?: string
           warnings?: string[]
         }
@@ -331,10 +355,24 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
         }
 
         const items = data.items ?? []
-        const total = data.total ?? 0
+        const itemsTotal = data.total ?? orderItemsTotal(items)
         const lines = data.lineBreakdown ?? []
         const warnings = data.warnings?.length ? data.warnings.join("; ") : undefined
-        const orderReply = { lines, total, warnings }
+        const replyTotal = portalItemsTotalWithDelivery(
+          itemsTotal,
+          orderTipo,
+          delivery,
+        )
+        const orderReply = { lines, total: replyTotal, warnings }
+
+        const resolvedTipo = resolvePortalOrderTipo(
+          trimmed,
+          data.orderTipo,
+          orderTipo,
+        )
+        if (onOrderTipoChange && resolvedTipo !== orderTipo) {
+          onOrderTipoChange(resolvedTipo)
+        }
 
         setMessages((prev) => {
           let lastReplyIdx = -1
@@ -355,7 +393,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
             { role: "assistant", content: "", orderReply },
           ]
         })
-        onItemsResolved(items, total, "")
+        onItemsResolved(items, replyTotal, "")
       } catch {
         setMessages((prev) => prev.slice(0, -1))
         setInput(trimmed)
@@ -625,6 +663,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                 <PortalAiOrderReply
                   lines={m.orderReply.lines}
                   total={m.orderReply.total}
+                  orderNumero={displayNum}
                   warnings={m.orderReply.warnings}
                   onUpdateItem={onUpdateItem}
                   onDeleteItem={onDeleteItem}
@@ -636,6 +675,17 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                   }
                   itemFixItemId={i === lastOrderReplyIndex ? itemFixItemId : null}
                   onItemFixHandled={() => setItemFixItemId(null)}
+                  orderTipo={orderTipo}
+                  onOrderTipoChange={
+                    i === lastOrderReplyIndex ? onOrderTipoChange : undefined
+                  }
+                  delivery={delivery}
+                  needsDelivery={
+                    i === lastOrderReplyIndex ? needsDelivery : false
+                  }
+                  onDeliverySave={
+                    i === lastOrderReplyIndex ? onDeliverySave : undefined
+                  }
                 />
                 ) : (
                   <span className="whitespace-pre-wrap text-sm">{m.content}</span>
