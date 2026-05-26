@@ -41,7 +41,7 @@ type Props = {
 
 const MAX_IMAGE_DIM = 1280
 
-async function fileToBase64(file: File): Promise<string> {
+export async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
@@ -60,7 +60,7 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 /** Downscale large photos so upload + base64 + vision stay reliable on mobile. */
-async function prepareImageFile(file: File): Promise<File> {
+export async function prepareImageFile(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file
 
   let bitmap: ImageBitmap | null = null
@@ -112,7 +112,7 @@ function canvasToJpegFile(
   })
 }
 
-function InventoryCameraDialog({
+export function InventoryCameraDialog({
   open,
   onOpenChange,
   onCapture,

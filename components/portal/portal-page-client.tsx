@@ -52,6 +52,7 @@ import {
   ChefHat,
   CreditCard,
   Banknote,
+  Home,
   PanelLeft,
   UserCircle,
 } from "lucide-react"
@@ -580,6 +581,31 @@ export function PortalPageClient() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <div className="border-b bg-card shrink-0">
+        <div className="px-4 py-2 flex items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-foreground hover:opacity-80 transition-opacity"
+          >
+            <Home className="h-4 w-4 text-primary shrink-0" aria-hidden />
+            <span
+              className="font-bold text-primary text-sm sm:text-base"
+              style={{ fontFamily: "var(--font-heading)" }}
+            >
+              AVOS
+            </span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              Inicio
+            </span>
+          </Link>
+          <Link
+            href="/staff/dashboard"
+            className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+          >
+            Panel de personal
+          </Link>
+        </div>
+      </div>
       <header className="bg-primary text-primary-foreground shrink-0">
         <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
