@@ -14,6 +14,11 @@ export interface OrderItem {
   cantidad: number
   precio: number
   notas?: string
+  /** Platillo needs protein but none was chosen yet (portal). */
+  needsProteina?: boolean
+  /** Drink needs chico/grande but size was not specified (portal). */
+  needsBebidaTamano?: boolean
+  bebidaId?: string
 }
 
 export interface Order {

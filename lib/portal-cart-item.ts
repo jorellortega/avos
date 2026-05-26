@@ -1,0 +1,231 @@
+import type { OrderItem } from "@/components/orders-provider"
+import {
+  bebidas,
+  categorias,
+  getCategoriaById,
+  getBebidaPrecioDefault,
+  getPlatillosForCategoria,
+  proteinas,
+  bebidaTamanoLabels,
+  type BebidaTamano,
+  type Proteina,
+} from "@/lib/menu-data"
+import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
+
+export const PORTAL_INCOMPLETE_PROTEIN_SUFFIX = "pendiente"
+export const PORTAL_INCOMPLETE_BEBIDA_SUFFIX = "tamano-pendiente"
+
+export function parseCartLineBaseId(itemId: string): {
+  categoriaId: string
+  platilloId: string
+  proteina?: Proteina
+} | null {
+  const baseId = itemId.split("::")[0]
+  for (const cat of categorias) {
+    const prefix = `${cat.id}-`
+    if (!baseId.startsWith(prefix)) continue
+    const tail = baseId.slice(prefix.length)
+    if (tail.endsWith(`-${PORTAL_INCOMPLETE_PROTEIN_SUFFIX}`)) {
+      return {
+        categoriaId: cat.id,
+        platilloId: tail.slice(0, -`-${PORTAL_INCOMPLETE_PROTEIN_SUFFIX}`.length),
+      }
+    }
+    if (tail.endsWith("-default")) {
+      return {
+        categoriaId: cat.id,
+        platilloId: tail.slice(0, -"-default".length),
+      }
+    }
+    for (const p of proteinas) {
+      const suf = `-${p}`
+      if (tail.endsWith(suf)) {
+        return {
+          categoriaId: cat.id,
+          platilloId: tail.slice(0, -suf.length),
+          proteina: p,
+        }
+      }
+    }
+  }
+  return null
+}
+
+export function parseBebidaItemId(itemId: string): {
+  bebidaId: string
+  tamano?: BebidaTamano
+} | null {
+  const base = itemId.split("::")[0]
+  if (base.endsWith(`-${PORTAL_INCOMPLETE_BEBIDA_SUFFIX}`)) {
+    return {
+      bebidaId: base.slice(0, -`-${PORTAL_INCOMPLETE_BEBIDA_SUFFIX}`.length),
+    }
+  }
+  for (const tam of ["chico", "grande"] as const) {
+    if (base.endsWith(`-${tam}`)) {
+      const bebidaId = base.slice(0, -`-${tam}`.length)
+      if (bebidas.some((b) => b.id === bebidaId)) {
+        return { bebidaId, tamano: tam }
+      }
+    }
+  }
+  return null
+}
+
+export function cartItemNeedsCompletion(item: OrderItem): boolean {
+  return Boolean(item.needsProteina || item.needsBebidaTamano)
+}
+
+export function cartItemSupportsProtein(item: OrderItem): boolean {
+  if (item.needsProteina) return true
+  if (item.categoria === "bebidas") return false
+  const parsed = parseCartLineBaseId(item.id)
+  if (!parsed?.proteina) return false
+  const cat = getCategoriaById(parsed.categoriaId)
+  if (!cat) return false
+  const platillo = getPlatillosForCategoria(cat).find((p) => p.id === parsed.platilloId)
+  return platillo?.tieneProteinas !== false
+}
+
+export function cartItemSupportsBebidaTamano(item: OrderItem): boolean {
+  return Boolean(item.needsBebidaTamano || item.categoria === "bebidas")
+}
+
+function platilloDisplayName(categoriaId: string, platilloId: string): string {
+  const cat = getCategoriaById(categoriaId)
+  if (!cat) return platilloId
+  const platillo = getPlatillosForCategoria(cat).find((p) => p.id === platilloId)
+  return platillo?.nombre ?? cat.nombre
+}
+
+function precioConProteina(
+  catalog: MenuCatalogHelpers | null,
+  categoriaId: string,
+  platilloId: string,
+  proteina: Proteina,
+): number {
+  const cat = getCategoriaById(categoriaId)
+  const platillo = cat
+    ? getPlatillosForCategoria(cat).find((p) => p.id === platilloId)
+    : undefined
+  const base = platillo?.precioBase ?? cat?.precioBase ?? 0
+  return (
+    catalog?.getPrecioConProteina(categoriaId, proteina, platilloId) ??
+    (proteina === "Camarón" ? base + 20 : base)
+  )
+}
+
+function precioBebida(
+  catalog: MenuCatalogHelpers | null,
+  bebidaId: string,
+  tamano: BebidaTamano,
+): number {
+  const bebida = bebidas.find((b) => b.id === bebidaId)
+  if (!bebida) return 0
+  return (
+    catalog?.getBebidaPrecio(bebidaId, tamano) ?? getBebidaPrecioDefault(bebida, tamano)
+  )
+}
+
+export type PortalCartItemUpdate = {
+  cantidad?: number
+  proteina?: Proteina
+  bebidaTamano?: BebidaTamano
+}
+
+/** Apply quantity, protein, and/or drink size change; merges lines if the new id already exists. */
+export function applyPortalCartItemUpdate(
+  items: OrderItem[],
+  itemId: string,
+  update: PortalCartItemUpdate,
+  catalog: MenuCatalogHelpers | null,
+): OrderItem[] {
+  const item = items.find((i) => i.id === itemId)
+  if (!item) return items
+
+  const cantidad = update.cantidad ?? item.cantidad
+
+  if (
+    update.bebidaTamano != null &&
+    (item.needsBebidaTamano || item.categoria === "bebidas")
+  ) {
+    const bebidaId =
+      item.bebidaId ?? parseBebidaItemId(item.id)?.bebidaId
+    if (!bebidaId) {
+      return items.map((i) => (i.id === itemId ? { ...i, cantidad } : i))
+    }
+    const bebida = bebidas.find((b) => b.id === bebidaId)
+    if (!bebida) return items
+
+    const tam = update.bebidaTamano
+    const newId = `${bebidaId}-${tam}`
+    const updated: OrderItem = {
+      ...item,
+      id: newId,
+      bebidaId,
+      needsBebidaTamano: false,
+      nombre: `${bebida.nombre} (${bebidaTamanoLabels[tam]})`,
+      precio: precioBebida(catalog, bebidaId, tam),
+      cantidad,
+    }
+
+    const withoutOld = items.filter((i) => i.id !== itemId)
+    const existing = withoutOld.find((i) => i.id === newId)
+    if (existing) {
+      return withoutOld
+        .map((i) =>
+          i.id === newId ? { ...i, cantidad: i.cantidad + cantidad } : i,
+        )
+        .filter((i) => i.cantidad > 0)
+    }
+    return [...withoutOld, updated].filter((i) => i.cantidad > 0)
+  }
+
+  const proteinaChange =
+    update.proteina != null &&
+    (item.needsProteina ||
+      (update.proteina !== item.proteina && cartItemSupportsProtein(item)))
+
+  if (!proteinaChange) {
+    return items
+      .map((i) => (i.id === itemId ? { ...i, cantidad } : i))
+      .filter((i) => i.cantidad > 0)
+  }
+
+  const parsed = parseCartLineBaseId(item.id)
+  if (!parsed) {
+    return items.map((i) => (i.id === itemId ? { ...i, cantidad } : i))
+  }
+
+  const newProteina = update.proteina!
+  const parts = item.id.split("::")
+  const baseId = `${parsed.categoriaId}-${parsed.platilloId}-${newProteina}`
+  const newId = parts.length <= 1 ? baseId : `${baseId}::${parts.slice(1).join("::")}`
+  const platilloNombre = platilloDisplayName(parsed.categoriaId, parsed.platilloId)
+  const updated: OrderItem = {
+    ...item,
+    id: newId,
+    proteina: newProteina,
+    needsProteina: false,
+    nombre: `${platilloNombre} de ${newProteina}`,
+    precio: precioConProteina(
+      catalog,
+      parsed.categoriaId,
+      parsed.platilloId,
+      newProteina,
+    ),
+    cantidad,
+  }
+
+  const withoutOld = items.filter((i) => i.id !== itemId)
+  const existing = withoutOld.find((i) => i.id === newId)
+  if (existing) {
+    return withoutOld
+      .map((i) =>
+        i.id === newId ? { ...i, cantidad: i.cantidad + cantidad } : i,
+      )
+      .filter((i) => i.cantidad > 0)
+  }
+
+  return [...withoutOld, updated].filter((i) => i.cantidad > 0)
+}

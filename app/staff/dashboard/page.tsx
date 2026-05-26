@@ -119,6 +119,9 @@ export default async function StaffDashboardPage() {
                   {isStaffOrdersRole(profile.role) && (
                     <>
                       <Button asChild variant="default">
+                        <Link href="/portal">Portal de caja</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
                         <Link href="/staff/ordenes">Órdenes y pagos</Link>
                       </Button>
                       <Button asChild variant="secondary">
