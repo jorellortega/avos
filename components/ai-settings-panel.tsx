@@ -40,7 +40,33 @@ const ANTHROPIC_MODELS = [
   "claude-3-opus-20240229",
 ] as const
 
+const ELEVENLABS_MODELS = [
+  "eleven_multilingual_v2",
+  "eleven_turbo_v2_5",
+  "eleven_flash_v2_5",
+  "eleven_monolingual_v1",
+] as const
+
+const OPENAI_KEYS = new Set(["openai_api_key", "openai_model"])
+const ANTHROPIC_KEYS = new Set(["anthropic_api_key", "anthropic_model"])
+const ELEVENLABS_KEYS = new Set([
+  "elevenlabs_api_key",
+  "elevenlabs_voice_id",
+  "elevenlabs_model",
+  "elevenlabs_stt_model",
+])
+
+const ELEVENLABS_STT_MODELS = ["scribe_v2", "scribe_v1"] as const
+
+const CUSTOM_LABELS: Record<string, string> = {
+  elevenlabs_api_key: "Clave API de ElevenLabs",
+  elevenlabs_voice_id: "ID de voz",
+  elevenlabs_model: "Modelo de voz (TTS)",
+  elevenlabs_stt_model: "Modelo speech-to-text",
+}
+
 function labelForKey(key: string): string {
+  if (CUSTOM_LABELS[key]) return CUSTOM_LABELS[key]
   return key
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -49,6 +75,15 @@ function labelForKey(key: string): string {
 
 function isSecretSetting(key: string): boolean {
   return key.includes("api_key") || key.includes("secret")
+}
+
+function isProviderKey(key: string): boolean {
+  return (
+    OPENAI_KEYS.has(key) ||
+    ANTHROPIC_KEYS.has(key) ||
+    ELEVENLABS_KEYS.has(key) ||
+    key === "system_prompt"
+  )
 }
 
 export function AiSettingsPanel() {
@@ -168,6 +203,199 @@ export function AiSettingsPanel() {
   const updateValue = (key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }))
     setSaveOk(false)
+  }
+
+  const openaiRows = useMemo(
+    () => rows.filter((r) => OPENAI_KEYS.has(r.setting_key)),
+    [rows],
+  )
+  const anthropicRows = useMemo(
+    () => rows.filter((r) => ANTHROPIC_KEYS.has(r.setting_key)),
+    [rows],
+  )
+  const elevenlabsRows = useMemo(
+    () => rows.filter((r) => ELEVENLABS_KEYS.has(r.setting_key)),
+    [rows],
+  )
+  const otherRows = useMemo(
+    () => rows.filter((r) => !isProviderKey(r.setting_key)),
+    [rows],
+  )
+  const systemPromptRow = useMemo(
+    () => rows.find((r) => r.setting_key === "system_prompt"),
+    [rows],
+  )
+
+  const renderSettingField = (row: AISetting) => {
+    const key = row.setting_key
+    const v = values[key] ?? ""
+    const secret = isSecretSetting(key)
+    const show = visibleSecrets[key] ?? false
+
+    if (key === "system_prompt") {
+      return (
+        <div key={key} className="space-y-2">
+          <Label htmlFor={key}>{labelForKey(key)}</Label>
+          {row.description && (
+            <p className="text-xs text-muted-foreground">{row.description}</p>
+          )}
+          <Textarea
+            id={key}
+            value={v}
+            onChange={(e) => updateValue(key, e.target.value)}
+            className="min-h-[200px] font-mono text-sm"
+          />
+        </div>
+      )
+    }
+
+    if (key === "openai_model") {
+      return (
+        <div key={key} className="space-y-2">
+          <Label htmlFor={key}>{labelForKey(key)}</Label>
+          {row.description && (
+            <p className="text-xs text-muted-foreground">{row.description}</p>
+          )}
+          <Select
+            value={v || OPENAI_MODELS[0]}
+            onValueChange={(value) => updateValue(key, value)}
+          >
+            <SelectTrigger id={key} className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {OPENAI_MODELS.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )
+    }
+
+    if (key === "anthropic_model") {
+      return (
+        <div key={key} className="space-y-2">
+          <Label htmlFor={key}>{labelForKey(key)}</Label>
+          {row.description && (
+            <p className="text-xs text-muted-foreground">{row.description}</p>
+          )}
+          <Select
+            value={v || ANTHROPIC_MODELS[0]}
+            onValueChange={(value) => updateValue(key, value)}
+          >
+            <SelectTrigger id={key} className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ANTHROPIC_MODELS.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )
+    }
+
+    if (key === "elevenlabs_model") {
+      return (
+        <div key={key} className="space-y-2">
+          <Label htmlFor={key}>{labelForKey(key)}</Label>
+          {row.description && (
+            <p className="text-xs text-muted-foreground">{row.description}</p>
+          )}
+          <Select
+            value={v || ELEVENLABS_MODELS[0]}
+            onValueChange={(value) => updateValue(key, value)}
+          >
+            <SelectTrigger id={key} className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ELEVENLABS_MODELS.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )
+    }
+
+    if (key === "elevenlabs_stt_model") {
+      return (
+        <div key={key} className="space-y-2">
+          <Label htmlFor={key}>{labelForKey(key)}</Label>
+          {row.description && (
+            <p className="text-xs text-muted-foreground">{row.description}</p>
+          )}
+          <Select
+            value={v || ELEVENLABS_STT_MODELS[0]}
+            onValueChange={(value) => updateValue(key, value)}
+          >
+            <SelectTrigger id={key} className="w-full max-w-md">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ELEVENLABS_STT_MODELS.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )
+    }
+
+    return (
+      <div key={key} className="space-y-2">
+        <Label htmlFor={key}>{labelForKey(key)}</Label>
+        {row.description && (
+          <p className="text-xs text-muted-foreground">{row.description}</p>
+        )}
+        <div className="flex gap-2 max-w-xl">
+          <Input
+            id={key}
+            type={secret && !show ? "password" : "text"}
+            value={v}
+            onChange={(e) => updateValue(key, e.target.value)}
+            className="font-mono text-sm"
+            autoComplete="off"
+            placeholder={
+              key === "elevenlabs_voice_id"
+                ? "ej. 21m00Tcm4TlvDq8ikWAM"
+                : undefined
+            }
+          />
+          {secret && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                setVisibleSecrets((prev) => ({
+                  ...prev,
+                  [key]: !show,
+                }))
+              }
+              aria-label={show ? "Ocultar valor" : "Mostrar valor"}
+            >
+              {show ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    )
   }
 
   const handleSave = async () => {
@@ -306,146 +534,112 @@ export function AiSettingsPanel() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Proveedores</CardTitle>
-          <CardDescription>
-            Las claves se guardan en la tabla{" "}
-            <code className="text-xs bg-muted px-1 rounded">ai_settings</code>.
-            Los campos sensibles pueden mostrarse u ocultarse.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-8">
-          {settingsLoading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            rows.map((row) => {
-              const key = row.setting_key
-              const v = values[key] ?? ""
-              const secret = isSecretSetting(key)
-              const show = visibleSecrets[key] ?? false
+      {settingsLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>OpenAI</CardTitle>
+              <CardDescription>
+                Chat del asistente y pedidos con IA (portal de caja).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {openaiRows.length > 0
+                ? openaiRows.map(renderSettingField)
+                : (
+                  <p className="text-sm text-muted-foreground">
+                    Sin filas OpenAI en la base de datos.
+                  </p>
+                )}
+            </CardContent>
+          </Card>
 
-              if (key === "system_prompt") {
-                return (
-                  <div key={key} className="space-y-2">
-                    <Label htmlFor={key}>{labelForKey(key)}</Label>
-                    {row.description && (
-                      <p className="text-xs text-muted-foreground">
-                        {row.description}
-                      </p>
-                    )}
-                    <Textarea
-                      id={key}
-                      value={v}
-                      onChange={(e) => updateValue(key, e.target.value)}
-                      className="min-h-[200px] font-mono text-sm"
-                    />
-                  </div>
-                )
-              }
+          <Card>
+            <CardHeader>
+              <CardTitle>Anthropic</CardTitle>
+              <CardDescription>
+                Respaldo opcional si OpenAI no está disponible.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {anthropicRows.length > 0
+                ? anthropicRows.map(renderSettingField)
+                : (
+                  <p className="text-sm text-muted-foreground">
+                    Sin filas Anthropic en la base de datos.
+                  </p>
+                )}
+            </CardContent>
+          </Card>
 
-              if (key === "openai_model") {
-                return (
-                  <div key={key} className="space-y-2">
-                    <Label htmlFor={key}>{labelForKey(key)}</Label>
-                    {row.description && (
-                      <p className="text-xs text-muted-foreground">
-                        {row.description}
-                      </p>
-                    )}
-                    <Select
-                      value={v || OPENAI_MODELS[0]}
-                      onValueChange={(value) => updateValue(key, value)}
-                    >
-                      <SelectTrigger id={key} className="w-full max-w-md">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {OPENAI_MODELS.map((m) => (
-                          <SelectItem key={m} value={m}>
-                            {m}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )
-              }
+          <Card>
+            <CardHeader>
+              <CardTitle>ElevenLabs</CardTitle>
+              <CardDescription>
+                Voz (TTS) y dictado en el portal (STT). La clave API debe incluir el
+                permiso{" "}
+                <strong className="font-medium">speech_to_text</strong> para el
+                micrófono del portal; actívalo al crear o editar la clave en{" "}
+                <a
+                  href="https://elevenlabs.io/app/settings/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 text-primary"
+                >
+                  API keys
+                </a>
+                . Sin ese permiso, el portal usará dictado del navegador.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {elevenlabsRows.length > 0 ? (
+                elevenlabsRows.map(renderSettingField)
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Aplica la migración{" "}
+                  <code className="text-xs bg-muted px-1 rounded">
+                    20260526120000_elevenlabs_ai_settings
+                  </code>{" "}
+                  en Supabase para ver estos campos.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-              if (key === "anthropic_model") {
-                return (
-                  <div key={key} className="space-y-2">
-                    <Label htmlFor={key}>{labelForKey(key)}</Label>
-                    {row.description && (
-                      <p className="text-xs text-muted-foreground">
-                        {row.description}
-                      </p>
-                    )}
-                    <Select
-                      value={v || ANTHROPIC_MODELS[0]}
-                      onValueChange={(value) => updateValue(key, value)}
-                    >
-                      <SelectTrigger id={key} className="w-full max-w-md">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ANTHROPIC_MODELS.map((m) => (
-                          <SelectItem key={m} value={m}>
-                            {m}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )
-              }
-
-              return (
-                <div key={key} className="space-y-2">
-                  <Label htmlFor={key}>{labelForKey(key)}</Label>
-                  {row.description && (
-                    <p className="text-xs text-muted-foreground">
-                      {row.description}
-                    </p>
-                  )}
-                  <div className="flex gap-2 max-w-xl">
-                    <Input
-                      id={key}
-                      type={secret && !show ? "password" : "text"}
-                      value={v}
-                      onChange={(e) => updateValue(key, e.target.value)}
-                      className="font-mono text-sm"
-                      autoComplete="off"
-                    />
-                    {secret && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() =>
-                          setVisibleSecrets((prev) => ({
-                            ...prev,
-                            [key]: !show,
-                          }))
-                        }
-                        aria-label={show ? "Ocultar valor" : "Mostrar valor"}
-                      >
-                        {show ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )
-            })
+          {systemPromptRow && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Asistente</CardTitle>
+                <CardDescription>
+                  Instrucciones del chat público de Avos.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>{renderSettingField(systemPromptRow)}</CardContent>
+            </Card>
           )}
-        </CardContent>
-        <CardFooter className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-between">
+
+          {otherRows.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Sitio y catálogo</CardTitle>
+                <CardDescription>
+                  JSON público (menú, imágenes, domicilio, etc.).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {otherRows.map(renderSettingField)}
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+
+      <Card>
+        <CardFooter className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-between pt-6">
           <div className="text-sm min-h-[1.25rem]">
             {saveError && (
               <span className="text-destructive">{saveError}</span>

@@ -8,13 +8,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { useOrders, type OrderItem } from "@/components/orders-provider"
 import {
-  insertAvosOrderToSupabase,
+  insertAvosOrderForPortal,
   staffConfirmAvosOrderPayment,
-  updateAvosOrderCartInSupabase,
+  updateAvosOrderCartForPortal,
 } from "@/lib/avos-orders-sync"
+import { cartItemNeedsCompletion } from "@/lib/portal-cart-item"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
   bebidaTamanoLabels,
@@ -69,7 +77,8 @@ type CreatedOrderBanner = {
 }
 
 export function PortalPageClient() {
-  const { addOrder, getNextOrderNumber, orders, updateOrder } = useOrders()
+  const { addOrder, getNextOrderNumber, orders, updateOrder, updateOrderStatus } =
+    useOrders()
   const { catalog } = useMenuCatalogContext()
   const proteinaImgs = useProteinaImagenes()
   const bebidaImgs = useBebidaImagenes()
@@ -154,6 +163,7 @@ export function PortalPageClient() {
     setAddMode(false)
     setOrderCreated(null)
     setPaymentError("")
+    chatRef.current?.resetChat()
   }, [])
 
   useEffect(() => {
@@ -272,21 +282,49 @@ export function PortalPageClient() {
     setActiveItems(activeItems.filter((item) => item.id !== itemId))
   }
 
+  const retrySyncOrder = async () => {
+    if (!orderCreated || orderCreated.synced) return
+    setSubmitLoading(true)
+    setPaymentError("")
+    const local = orders.find((o) => o.id === orderCreated.id)
+    if (!local) {
+      setPaymentError("Orden no encontrada localmente.")
+      setSubmitLoading(false)
+      return
+    }
+    const result = await insertAvosOrderForPortal(local)
+    setSubmitLoading(false)
+    if (result.ok) {
+      setOrderCreated({ ...orderCreated, synced: true })
+    } else {
+      setPaymentError(result.error ?? "No se pudo guardar en el servidor.")
+    }
+  }
+
   const submitOrder = async () => {
     if (activeItems.length === 0) return
+
+    const incomplete = activeItems.filter(cartItemNeedsCompletion)
+    if (incomplete.length > 0) {
+      setPaymentError(
+        `Hay ${incomplete.length} línea(s) en rojo (falta proteína, bebida o tamaño). Corrígelas antes de enviar.`,
+      )
+      chatRef.current?.openItemFixPicker(incomplete[0].id)
+      return
+    }
+
     setSubmitLoading(true)
     setPaymentError("")
 
     if (selectedOrder) {
-      const synced = await updateAvosOrderCartInSupabase(
+      const result = await updateAvosOrderCartForPortal(
         selectedOrder.id,
         activeItems,
         total,
       )
       setSubmitLoading(false)
-      if (!synced) {
-        setPaymentError("No se pudo guardar en el servidor.")
-        return
+      if (!result.ok) {
+        setPaymentError(result.error ?? "No se pudo guardar en el servidor.")
       }
       return
     }
@@ -297,10 +335,30 @@ export function PortalPageClient() {
       status: "pendiente",
       total,
     })
-    const synced = await insertAvosOrderToSupabase(order)
-    setOrderCreated({ id: order.id, numero: order.numero, total: order.total, synced })
-    setDraftItems([])
-    setAddMode(false)
+    const result = await insertAvosOrderForPortal(order)
+    if (result.ok) {
+      setOrderCreated({
+        id: order.id,
+        numero: order.numero,
+        total: order.total,
+        synced: true,
+      })
+      setDraftItems([])
+      setAddMode(false)
+      chatRef.current?.resetChat()
+      requestAnimationFrame(() => chatRef.current?.focusInput())
+    } else {
+      setOrderCreated({
+        id: order.id,
+        numero: order.numero,
+        total: order.total,
+        synced: false,
+      })
+      setPaymentError(
+        result.error ??
+          "No se pudo guardar en el servidor. Revisa tu conexión e intenta de nuevo.",
+      )
+    }
     setSubmitLoading(false)
   }
 
@@ -357,14 +415,33 @@ export function PortalPageClient() {
     <PortalOrdersPanel
       orders={orders}
       selectedOrderId={selectedOrderId}
+      onOrderStatusChange={(orderId, status) => {
+        updateOrderStatus(orderId, status)
+        if (
+          selectedOrderId === orderId &&
+          status !== "pendiente" &&
+          status !== "preparando"
+        ) {
+          setSelectedOrderId(null)
+        }
+      }}
       onSelectOrder={(id) => {
         setSelectedOrderId(id)
         setOrdersSheetOpen(false)
+        setOrderCreated(null)
+        setPaymentError("")
         if (id) {
           const order = orders.find((o) => o.id === id)
           if (order && order.items.length > 0) {
             setAddMode(true)
+            requestAnimationFrame(() => {
+              chatRef.current?.openOrder(order.items)
+            })
+          } else {
+            requestAnimationFrame(() => chatRef.current?.focusInput())
           }
+        } else {
+          chatRef.current?.resetChat()
         }
       }}
       onStartNewOrder={() => {
@@ -378,8 +455,8 @@ export function PortalPageClient() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="bg-primary text-primary-foreground shrink-0">
-        <div className="px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="rounded-xl bg-primary-foreground/15 px-4 py-2 text-center shrink-0">
               <p className="text-[10px] uppercase tracking-wide opacity-80">Orden</p>
               <p className="text-3xl font-bold leading-none">#{displayOrderNum}</p>
@@ -397,16 +474,11 @@ export function PortalPageClient() {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs flex items-center gap-1.5">
-              <span className="opacity-80 whitespace-nowrap">Cobrando:</span>
-              <Input
-                value={cashierName}
-                onChange={(e) => setCashierName(e.target.value)}
-                className="h-8 w-36 text-sm bg-primary-foreground/10 border-primary-foreground/30 text-primary-foreground placeholder:text-primary-foreground/50"
-                placeholder="Nombre"
-              />
-            </label>
+
+          <nav
+            className="flex items-center gap-1 shrink-0"
+            aria-label="Portal de caja"
+          >
             <Link href="/cocina">
               <Button variant="secondary" size="sm" className="gap-1.5">
                 <ChefHat className="h-4 w-4" />
@@ -415,32 +487,73 @@ export function PortalPageClient() {
             </Link>
             <Sheet open={ordersSheetOpen} onOpenChange={setOrdersSheetOpen}>
               <SheetTrigger asChild>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="lg:hidden gap-1.5"
-                >
+                <Button variant="secondary" size="sm" className="gap-1.5">
                   <PanelLeft className="h-4 w-4" />
                   Órdenes
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[min(100%,280px)] p-0">
+                <SheetHeader className="sr-only">
+                  <SheetTitle>Órdenes activas</SheetTitle>
+                  <SheetDescription>
+                    Selecciona una orden o crea una nueva
+                  </SheetDescription>
+                </SheetHeader>
                 {ordersPanel}
               </SheetContent>
             </Sheet>
-          </div>
+          </nav>
+
+          <label className="text-xs flex items-center gap-1.5 shrink-0 ml-auto">
+            <span className="opacity-80 whitespace-nowrap">Cobrando:</span>
+            <Input
+              value={cashierName}
+              onChange={(e) => setCashierName(e.target.value)}
+              className="h-8 w-36 text-sm bg-primary-foreground/10 border-primary-foreground/30 text-primary-foreground placeholder:text-primary-foreground/50"
+              placeholder="Nombre"
+            />
+          </label>
         </div>
       </header>
 
       {orderCreated && (
-        <div className="bg-green-600 text-white py-3 px-4 shrink-0">
+        <div
+          className={cn(
+            "py-3 px-4 shrink-0 text-white",
+            orderCreated.synced ? "bg-green-600" : "bg-amber-600",
+          )}
+        >
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <p className="font-semibold">Orden #{orderCreated.numero} enviada</p>
+              <p className="font-semibold">
+                {orderCreated.synced
+                  ? `Orden #${orderCreated.numero} enviada`
+                  : `Orden #${orderCreated.numero} — no guardada en servidor`}
+              </p>
               <p className="text-sm text-white/85">
                 Total ${orderCreated.total.toFixed(2)} · Cobro: {cashierName}
               </p>
             </div>
+            {!orderCreated.synced && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={submitLoading}
+                  onClick={() => void retrySyncOrder()}
+                >
+                  {submitLoading ? "Reintentando…" : "Reintentar guardar"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-white"
+                  onClick={() => setOrderCreated(null)}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            )}
             {orderCreated.synced && (
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -497,6 +610,14 @@ export function PortalPageClient() {
 
         <div className="flex-1 flex flex-col min-w-0 overflow-auto">
           <div className="p-4 max-w-6xl mx-auto w-full space-y-4">
+            {paymentError && !orderCreated && (
+              <p
+                className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2"
+                role="alert"
+              >
+                {paymentError}
+              </p>
+            )}
             <PortalAiChat
               ref={chatRef}
               existingItems={activeItems}
@@ -744,7 +865,9 @@ export function PortalPageClient() {
                             key={item.id}
                             className={cn(
                               "flex items-center justify-between gap-2 rounded-md -mx-1 px-1",
-                              (item.needsProteina || item.needsBebidaTamano) &&
+                              (item.needsProteina ||
+                                item.needsBebidaTamano ||
+                                item.needsBebidaEleccion) &&
                                 "border border-destructive/50 bg-destructive/5 py-1",
                             )}
                           >
@@ -752,11 +875,17 @@ export function PortalPageClient() {
                               type="button"
                               className={cn(
                                 "min-w-0 flex-1 text-left",
-                                (item.needsProteina || item.needsBebidaTamano) &&
+                                (item.needsProteina ||
+                                item.needsBebidaTamano ||
+                                item.needsBebidaEleccion) &&
                                   "cursor-pointer",
                               )}
                               onClick={() => {
-                                if (item.needsProteina || item.needsBebidaTamano) {
+                                if (
+                                  item.needsProteina ||
+                                  item.needsBebidaTamano ||
+                                  item.needsBebidaEleccion
+                                ) {
                                   chatRef.current?.openItemFixPicker(item.id)
                                 }
                               }}
@@ -764,7 +893,9 @@ export function PortalPageClient() {
                               <p
                                 className={cn(
                                   "text-sm font-medium truncate",
-                                  (item.needsProteina || item.needsBebidaTamano) &&
+                                  (item.needsProteina ||
+                                item.needsBebidaTamano ||
+                                item.needsBebidaEleccion) &&
                                     "text-destructive",
                                 )}
                               >
@@ -781,6 +912,11 @@ export function PortalPageClient() {
                               {item.needsProteina && (
                                 <p className="text-xs text-destructive">
                                   Toca para elegir proteína
+                                </p>
+                              )}
+                              {item.needsBebidaEleccion && (
+                                <p className="text-xs text-destructive">
+                                  Toca para elegir bebida
                                 </p>
                               )}
                               {item.needsBebidaTamano && (

@@ -32,9 +32,14 @@ export function AccountNavLinks() {
 
   if (isStaffOrdersRole(state.role)) {
     return (
-      <Link href="/staff/dashboard" className={className}>
-        Panel personal
-      </Link>
+      <div className="flex items-center gap-4">
+        <Link href="/portal" className={className}>
+          Portal de caja
+        </Link>
+        <Link href="/staff/dashboard" className={className}>
+          Panel personal
+        </Link>
+      </div>
     )
   }
 

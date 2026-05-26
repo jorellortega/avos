@@ -14,6 +14,7 @@ import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
 
 export const PORTAL_INCOMPLETE_PROTEIN_SUFFIX = "pendiente"
 export const PORTAL_INCOMPLETE_BEBIDA_SUFFIX = "tamano-pendiente"
+export const PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX = "bebida-pendiente"
 
 export function parseCartLineBaseId(itemId: string): {
   categoriaId: string
@@ -73,7 +74,9 @@ export function parseBebidaItemId(itemId: string): {
 }
 
 export function cartItemNeedsCompletion(item: OrderItem): boolean {
-  return Boolean(item.needsProteina || item.needsBebidaTamano)
+  return Boolean(
+    item.needsProteina || item.needsBebidaTamano || item.needsBebidaEleccion,
+  )
 }
 
 export function cartItemSupportsProtein(item: OrderItem): boolean {
@@ -131,6 +134,8 @@ export type PortalCartItemUpdate = {
   cantidad?: number
   proteina?: Proteina
   bebidaTamano?: BebidaTamano
+  bebidaId?: string
+  notas?: string
 }
 
 /** Apply quantity, protein, and/or drink size change; merges lines if the new id already exists. */
@@ -144,6 +149,84 @@ export function applyPortalCartItemUpdate(
   if (!item) return items
 
   const cantidad = update.cantidad ?? item.cantidad
+
+  if (update.notas !== undefined) {
+    const notas = update.notas.trim() || undefined
+    const parts = itemId.split("::")
+    const newId =
+      parts.length >= 3 ? `${parts[0]}::${parts[1]}::${notas ?? ""}` : itemId
+    const updated: OrderItem = { ...item, id: newId, notas, cantidad }
+    const withoutOld = items.filter((i) => i.id !== itemId)
+    if (newId !== itemId) {
+      const existing = withoutOld.find((i) => i.id === newId)
+      if (existing) {
+        return withoutOld
+          .map((i) =>
+            i.id === newId ? { ...i, cantidad: i.cantidad + cantidad } : i,
+          )
+          .filter((i) => i.cantidad > 0)
+      }
+      return [...withoutOld, updated].filter((i) => i.cantidad > 0)
+    }
+    return items.map((i) => (i.id === itemId ? { ...i, notas, cantidad } : i))
+  }
+
+  if (
+    update.bebidaId != null &&
+    (item.needsBebidaEleccion || item.categoria === "bebidas")
+  ) {
+    const bebida = bebidas.find((b) => b.id === update.bebidaId)
+    if (!bebida) return items
+
+    const parsed = parseBebidaItemId(item.id)
+    const tamPreset = item.id.includes("elige-grande")
+      ? "grande"
+      : item.id.includes("elige-chico")
+        ? "chico"
+        : null
+    const tam: BebidaTamano =
+      update.bebidaTamano ?? parsed?.tamano ?? tamPreset ?? "chico"
+
+    if (item.needsBebidaTamano && !tamPreset && update.bebidaTamano == null) {
+      const pendingId = `${update.bebidaId}-${PORTAL_INCOMPLETE_BEBIDA_SUFFIX}`
+      const updated: OrderItem = {
+        ...item,
+        id: pendingId,
+        bebidaId: update.bebidaId,
+        needsBebidaEleccion: false,
+        needsBebidaTamano: true,
+        nombre: `${bebida.nombre} (elige tamaño)`,
+        precio:
+          catalog?.getBebidaPrecio(update.bebidaId, "chico") ??
+          getBebidaPrecioDefault(bebida, "chico"),
+        cantidad,
+      }
+      return [...items.filter((i) => i.id !== itemId), updated]
+    }
+
+    const newId = `${update.bebidaId}-${tam}`
+    const updated: OrderItem = {
+      ...item,
+      id: newId,
+      bebidaId: update.bebidaId,
+      needsBebidaEleccion: false,
+      needsBebidaTamano: false,
+      nombre: `${bebida.nombre} (${bebidaTamanoLabels[tam]})`,
+      precio: precioBebida(catalog, update.bebidaId, tam),
+      cantidad,
+    }
+
+    const withoutOld = items.filter((i) => i.id !== itemId)
+    const existing = withoutOld.find((i) => i.id === newId)
+    if (existing) {
+      return withoutOld
+        .map((i) =>
+          i.id === newId ? { ...i, cantidad: i.cantidad + cantidad } : i,
+        )
+        .filter((i) => i.cantidad > 0)
+    }
+    return [...withoutOld, updated].filter((i) => i.cantidad > 0)
+  }
 
   if (
     update.bebidaTamano != null &&

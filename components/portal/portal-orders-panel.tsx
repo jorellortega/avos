@@ -1,21 +1,38 @@
 "use client"
 
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import type { Order } from "@/components/orders-provider"
-import { Plus, Receipt } from "lucide-react"
+import type { Order, OrderStatus } from "@/components/orders-provider"
+import { portalUpdateOrderStatus } from "@/lib/avos-orders-sync"
+import { ChevronDown, Loader2, Plus, Receipt } from "lucide-react"
 
 type PortalOrdersPanelProps = {
   orders: Order[]
   selectedOrderId: string | null
   onSelectOrder: (orderId: string | null) => void
   onStartNewOrder: () => void
+  onOrderStatusChange: (orderId: string, status: OrderStatus) => void
   nextOrderNumber: number
 }
 
-const statusLabel: Record<string, string> = {
+const STATUS_OPTIONS: OrderStatus[] = [
+  "pendiente",
+  "preparando",
+  "listo",
+  "entregado",
+  "pagado",
+]
+
+const statusLabel: Record<OrderStatus, string> = {
   pendiente: "Pendiente",
   preparando: "Preparando",
   listo: "Listo",
@@ -23,11 +40,76 @@ const statusLabel: Record<string, string> = {
   pagado: "Pagado",
 }
 
+function OrderStatusPicker({
+  order,
+  onStatusChange,
+}: {
+  order: Order
+  onStatusChange: (orderId: string, status: OrderStatus) => void
+}) {
+  const [saving, setSaving] = useState(false)
+
+  const handlePick = async (status: OrderStatus) => {
+    if (status === order.status || saving) return
+    setSaving(true)
+    const result = await portalUpdateOrderStatus(order.id, status)
+    setSaving(false)
+    if (result.ok) {
+      onStatusChange(order.id, result.status ?? status)
+    } else {
+      alert(result.error ?? "No se pudo cambiar el estado.")
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={saving}
+          className={cn(
+            "inline-flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[10px] font-medium capitalize",
+            "bg-background hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            saving && "opacity-60 pointer-events-none",
+          )}
+          title="Cambiar estado"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {saving ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <>
+              {statusLabel[order.status]}
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[9rem]">
+        {STATUS_OPTIONS.map((status) => (
+          <DropdownMenuItem
+            key={status}
+            className={cn(
+              "text-xs capitalize",
+              order.status === status && "font-semibold bg-accent",
+            )}
+            onSelect={() => void handlePick(status)}
+          >
+            {statusLabel[status]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export function PortalOrdersPanel({
   orders,
   selectedOrderId,
   onSelectOrder,
   onStartNewOrder,
+  onOrderStatusChange,
   nextOrderNumber,
 }: PortalOrdersPanelProps) {
   const active = orders
@@ -81,9 +163,10 @@ export function PortalOrdersPanel({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-bold text-lg">#{order.numero}</span>
-                  <Badge variant="outline" className="text-[10px] capitalize">
-                    {statusLabel[order.status] ?? order.status}
-                  </Badge>
+                  <OrderStatusPicker
+                    order={order}
+                    onStatusChange={onOrderStatusChange}
+                  />
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {order.items.length} artículo(s) · ${order.total.toFixed(2)}

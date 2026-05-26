@@ -15,6 +15,7 @@ import {
   Package,
   Truck,
   ClipboardList,
+  LayoutGrid,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/components/cart-provider"
@@ -82,6 +83,12 @@ export function Header() {
                   <ChevronDown className="h-4 w-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href="/portal" className="flex items-center gap-2 cursor-pointer">
+                      <LayoutGrid className="h-4 w-4" />
+                      Portal de caja
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/staff/ordenes" className="flex items-center gap-2 cursor-pointer">
                       <Banknote className="h-4 w-4" />
@@ -208,6 +215,14 @@ export function Header() {
               {staffOrdenesNav === true && (
                 <div className="border-t border-border pt-4 mt-2">
                   <p className="text-sm text-muted-foreground mb-2">Staff</p>
+                  <Link
+                    href="/portal"
+                    className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                    Portal de caja
+                  </Link>
                   <Link
                     href="/staff/ordenes"
                     className="flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors font-medium py-2"

@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { Bot, Loader2, Send } from "lucide-react"
+import { Bot, Loader2, Mic, Send, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -27,6 +27,13 @@ import {
 } from "@/lib/portal-menu-snapshot"
 import { PortalAiOrderReply } from "@/components/portal/portal-ai-order-reply"
 import type { PortalCartItemUpdate } from "@/lib/portal-cart-item"
+import {
+  startBrowserSpeechSession,
+  type BrowserSpeechSession,
+} from "@/lib/browser-speech-recognition"
+import { portalShouldUseBrowserStt } from "@/lib/portal-stt-mode"
+
+const PORTAL_STT_BROWSER_KEY = "portal_stt_use_browser"
 
 type ChatMessage = {
   role: "user" | "assistant"
@@ -41,6 +48,9 @@ type ChatMessage = {
 export type PortalAiChatHandle = {
   focusInput: () => void
   openItemFixPicker: (itemId: string) => void
+  resetChat: () => void
+  /** Scroll chat into view and show the order summary (e.g. side panel selection). */
+  openOrder: (items: OrderItem[]) => void
 }
 
 type PortalAiChatProps = {
@@ -80,6 +90,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
     const [input, setInput] = useState("")
     const [isSending, setIsSending] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const cardRef = useRef<HTMLDivElement>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLTextAreaElement>(null)
     const skipCartSyncRef = useRef(true)
@@ -89,23 +100,45 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
     const showAddHighlight = addMode && hasActiveCart
 
     const [itemFixItemId, setItemFixItemId] = useState<string | null>(null)
+    const [isRecording, setIsRecording] = useState(false)
+    const [isTranscribing, setIsTranscribing] = useState(false)
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+    const mediaStreamRef = useRef<MediaStream | null>(null)
+    const audioChunksRef = useRef<Blob[]>([])
+    const recordMimeRef = useRef("audio/webm")
+    const browserSpeechRef = useRef<BrowserSpeechSession | null>(null)
+    const preferBrowserSttRef = useRef(false)
+    const [useBrowserStt, setUseBrowserStt] = useState(false)
+    const voiceBusyRef = useRef({
+      sending: false,
+      transcribing: false,
+      recording: false,
+    })
 
-    useImperativeHandle(
-      ref,
-      () => ({
-        focusInput: () => {
-          inputRef.current?.focus()
-          inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-        },
-        openItemFixPicker: (itemId: string) => {
-          const item = existingItems.find((i) => i.id === itemId)
-          if (item?.needsProteina || item?.needsBebidaTamano) {
-            setItemFixItemId(itemId)
-          }
-        },
-      }),
-      [existingItems],
-    )
+    useEffect(() => {
+      voiceBusyRef.current = {
+        sending: isSending,
+        transcribing: isTranscribing,
+        recording: isRecording,
+      }
+    }, [isSending, isTranscribing, isRecording])
+
+    useEffect(() => {
+      try {
+        const stored = sessionStorage.getItem(PORTAL_STT_BROWSER_KEY)
+        const preferBrowser =
+          stored === "1" || portalShouldUseBrowserStt(stored === "1")
+        preferBrowserSttRef.current = preferBrowser
+        setUseBrowserStt(preferBrowser)
+        if (preferBrowser && stored !== "1") {
+          sessionStorage.setItem(PORTAL_STT_BROWSER_KEY, "1")
+        }
+      } catch {
+        const preferBrowser = portalShouldUseBrowserStt()
+        preferBrowserSttRef.current = preferBrowser
+        setUseBrowserStt(preferBrowser)
+      }
+    }, [])
 
     const scrollToBottom = useCallback(() => {
       scrollRef.current?.scrollTo({
@@ -113,6 +146,71 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
         behavior: "smooth",
       })
     }, [])
+
+    const resetChat = useCallback(() => {
+      skipCartSyncRef.current = true
+      setMessages([INITIAL])
+      setInput("")
+      setError(null)
+      setItemFixItemId(null)
+      setIsSending(false)
+    }, [])
+
+    const scrollChatIntoView = useCallback(() => {
+      cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, [])
+
+    const openOrder = useCallback(
+      (items: OrderItem[]) => {
+        scrollChatIntoView()
+        if (items.length === 0) {
+          resetChat()
+          requestAnimationFrame(() => {
+            inputRef.current?.focus()
+          })
+          return
+        }
+        skipCartSyncRef.current = true
+        const lines = buildPortalOrderLineBreakdown(items)
+        const total = orderItemsTotal(items)
+        setMessages([
+          INITIAL,
+          { role: "assistant", content: "", orderReply: { lines, total } },
+        ])
+        setInput("")
+        setError(null)
+        setItemFixItemId(null)
+        requestAnimationFrame(() => {
+          inputRef.current?.focus()
+          inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+        })
+      },
+      [resetChat, scrollChatIntoView],
+    )
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        focusInput: () => {
+          scrollChatIntoView()
+          inputRef.current?.focus()
+          inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+        },
+        openItemFixPicker: (itemId: string) => {
+          const item = existingItems.find((i) => i.id === itemId)
+          if (
+            item?.needsProteina ||
+            item?.needsBebidaTamano ||
+            item?.needsBebidaEleccion
+          ) {
+            setItemFixItemId(itemId)
+          }
+        },
+        resetChat,
+        openOrder,
+      }),
+      [existingItems, resetChat, openOrder, scrollChatIntoView],
+    )
 
     useEffect(() => {
       scrollToBottom()
@@ -142,9 +240,61 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
       return idx
     })()
 
-    const send = async () => {
-      const trimmed = input.trim()
-      if (!trimmed || isSending || disabled) return
+    const handleAiCustomize = async (
+      itemId: string,
+      instruction: string,
+    ): Promise<{ notas: string } | { error: string }> => {
+      const item = existingItems.find((i) => i.id === itemId)
+      if (!item) return { error: "Artículo no encontrado." }
+
+      try {
+        const res = await fetch("/api/portal/ai-customize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item, instruction }),
+        })
+        const data = (await res.json()) as { notas?: string; error?: string }
+        if (!res.ok) {
+          return { error: data.error ?? "No se pudo personalizar." }
+        }
+        if (!data.notas?.trim()) {
+          return { error: "La IA no devolvió notas." }
+        }
+        onUpdateItem?.(itemId, { notas: data.notas, cantidad: item.cantidad })
+        return { notas: data.notas }
+      } catch {
+        return { error: "Error de red." }
+      }
+    }
+
+    const stopMediaTracks = useCallback(() => {
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop())
+      mediaStreamRef.current = null
+      mediaRecorderRef.current = null
+    }, [])
+
+    useEffect(() => {
+      return () => {
+        browserSpeechRef.current?.stop()
+        browserSpeechRef.current = null
+        stopMediaTracks()
+      }
+    }, [stopMediaTracks])
+
+    const send = async (
+      messageOverride?: string,
+      opts?: { fromVoice?: boolean },
+    ) => {
+      const trimmed = (messageOverride ?? input).trim()
+      const busy = voiceBusyRef.current
+      if (
+        !trimmed ||
+        isSending ||
+        disabled ||
+        (!opts?.fromVoice && (isTranscribing || busy.transcribing))
+      ) {
+        return
+      }
 
       setError(null)
       setInput("")
@@ -215,7 +365,197 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
       }
     }
 
+    const enableBrowserStt = useCallback(() => {
+      preferBrowserSttRef.current = true
+      setUseBrowserStt(true)
+      try {
+        sessionStorage.setItem(PORTAL_STT_BROWSER_KEY, "1")
+      } catch {
+        /* ignore */
+      }
+    }, [])
+
+    const stopBrowserDictation = useCallback(() => {
+      browserSpeechRef.current?.stop()
+    }, [])
+
+    const startBrowserDictation = async (opts?: { force?: boolean }) => {
+      const busy = voiceBusyRef.current
+      if (
+        !opts?.force &&
+        (busy.sending || busy.transcribing || busy.recording || disabled)
+      ) {
+        return
+      }
+      setError(null)
+      setIsRecording(true)
+      voiceBusyRef.current = { ...voiceBusyRef.current, recording: true }
+
+      const session = startBrowserSpeechSession()
+      browserSpeechRef.current = session
+
+      try {
+        const text = await session.done
+        await send(text, { fromVoice: true })
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : "No se pudo dictar con el navegador.",
+        )
+      } finally {
+        browserSpeechRef.current = null
+        setIsRecording(false)
+        voiceBusyRef.current = { ...voiceBusyRef.current, recording: false }
+      }
+    }
+
+    const transcribeAndSend = async (audio: Blob) => {
+      setIsTranscribing(true)
+      voiceBusyRef.current = { ...voiceBusyRef.current, transcribing: true }
+      setError(null)
+      try {
+        const form = new FormData()
+        const ext = recordMimeRef.current.includes("mp4") ? "m4a" : "webm"
+        form.append("file", audio, `pedido.${ext}`)
+
+        const res = await fetch("/api/portal/speech-to-text", {
+          method: "POST",
+          body: form,
+        })
+        const data = (await res.json()) as {
+          text?: string
+          error?: string
+          code?: string
+          fallback?: string
+        }
+        if (!res.ok) {
+          if (
+            data.code === "missing_stt_permission" &&
+            data.fallback === "browser"
+          ) {
+            enableBrowserStt()
+            setIsTranscribing(false)
+            voiceBusyRef.current = {
+              ...voiceBusyRef.current,
+              transcribing: false,
+            }
+            setError(
+              "ElevenLabs sin permiso STT. Usando dictado del navegador…",
+            )
+            await startBrowserDictation({ force: true })
+            return
+          }
+          setError(data.error ?? "No se pudo transcribir el audio.")
+          return
+        }
+        const text = data.text?.trim()
+        if (!text) {
+          setError("No se detectó texto en el audio.")
+          return
+        }
+        await send(text, { fromVoice: true })
+      } catch {
+        setError("Error de red al transcribir.")
+      } finally {
+        setIsTranscribing(false)
+        voiceBusyRef.current = { ...voiceBusyRef.current, transcribing: false }
+      }
+    }
+
+    const stopRecording = useCallback(() => {
+      const recorder = mediaRecorderRef.current
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop()
+      }
+      setIsRecording(false)
+      voiceBusyRef.current = { ...voiceBusyRef.current, recording: false }
+    }, [])
+
+    const handleMicClick = () => {
+      if (isRecording) {
+        if (useBrowserStt) stopBrowserDictation()
+        else stopRecording()
+        return
+      }
+      void startRecording()
+    }
+
+    const startRecording = async () => {
+      const busy = voiceBusyRef.current
+      if (busy.sending || disabled || busy.transcribing || busy.recording) {
+        return
+      }
+      setError(null)
+
+      if (portalShouldUseBrowserStt(preferBrowserSttRef.current)) {
+        await startBrowserDictation({ force: true })
+        return
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("Tu navegador no permite grabar audio.")
+        return
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        mediaStreamRef.current = stream
+        audioChunksRef.current = []
+
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/webm")
+            ? "audio/webm"
+            : MediaRecorder.isTypeSupported("audio/mp4")
+              ? "audio/mp4"
+              : ""
+        recordMimeRef.current = mimeType || "audio/webm"
+
+        const recorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream)
+        mediaRecorderRef.current = recorder
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data)
+        }
+        recorder.onerror = () => {
+          setError("Error al grabar audio.")
+          stopRecording()
+          stopMediaTracks()
+        }
+        recorder.onstop = () => {
+          stopMediaTracks()
+          const blob = new Blob(audioChunksRef.current, {
+            type: recordMimeRef.current,
+          })
+          audioChunksRef.current = []
+          if (blob.size > 0) {
+            void transcribeAndSend(blob)
+          } else {
+            setError("No se capturó audio. Intenta de nuevo.")
+          }
+        }
+
+        recorder.start()
+        setIsRecording(true)
+      } catch (e) {
+        stopMediaTracks()
+        const name = e instanceof DOMException ? e.name : ""
+        if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+          setError("Permite el micrófono para dictar el pedido.")
+        } else {
+          setError("No se pudo iniciar la grabación.")
+        }
+      }
+    }
+
+    const voiceBusy = isRecording || isTranscribing
+    const hasOrderReply = messages.some((m) => m.orderReply)
+
     return (
+      <div ref={cardRef} className="scroll-mt-4">
       <Card
         className={cn(
           "shadow-sm transition-colors",
@@ -245,9 +585,15 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                   <span className="text-green-700 dark:text-green-400 font-medium">
                     Agregando a orden #{displayNum} — escribe más artículos
                   </span>
+                ) : useBrowserStt ? (
+                  <>
+                    Dictado del navegador (sin ElevenLabs STT) · Orden #
+                    {displayNum}
+                  </>
                 ) : (
                   <>
-                    La IA arma el carrito y calcula el total · Orden #{displayNum}
+                    Escribe o usa el micrófono · La IA arma el carrito · Orden #
+                    {displayNum}
                   </>
                 )}
               </CardDescription>
@@ -257,7 +603,12 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
         <CardContent className="px-4 pb-4 pt-0 space-y-3">
           <div
             ref={scrollRef}
-            className="max-h-36 overflow-y-auto rounded-md border bg-muted/40 p-3 space-y-2 text-sm"
+            className={cn(
+              "rounded-md border bg-muted/40 p-3 space-y-2 text-sm",
+              hasOrderReply
+                ? "overflow-visible"
+                : "max-h-36 overflow-y-auto",
+            )}
             role="log"
           >
             {messages.map((m, i) => (
@@ -277,6 +628,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                   warnings={m.orderReply.warnings}
                   onUpdateItem={onUpdateItem}
                   onDeleteItem={onDeleteItem}
+                  onAiCustomize={onUpdateItem ? handleAiCustomize : undefined}
                   onAddItem={
                     i === lastOrderReplyIndex && hasActiveCart
                       ? onRequestAddItem
@@ -290,10 +642,21 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                 )}
               </div>
             ))}
-            {isSending && (
+            {(isSending || isTranscribing) && (
               <div className="flex items-center gap-2 text-muted-foreground text-xs">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Calculando…
+                {isTranscribing ? "Transcribiendo…" : "Calculando…"}
+              </div>
+            )}
+            {isRecording && (
+              <div className="flex items-center gap-2 text-destructive text-xs font-medium">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
+                </span>
+                {useBrowserStt
+                  ? "Escuchando… toca el micrófono para enviar"
+                  : "Grabando… toca el micrófono para terminar"}
               </div>
             )}
           </div>
@@ -320,7 +683,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                     ? `Más para orden #${displayNum}…`
                     : `Nueva orden #${nextOrderNumber}…`
               }
-              disabled={isSending || disabled}
+              disabled={isSending || disabled || voiceBusy}
               className={cn(
                 "min-h-[2.5rem] resize-none flex-1 text-sm transition-colors",
                 showAddHighlight &&
@@ -331,11 +694,37 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
             <Button
               type="button"
               size="icon"
+              variant={isRecording ? "destructive" : "outline"}
+              className="shrink-0 self-end"
+              disabled={isSending || disabled || isTranscribing}
+              title={
+                isRecording
+                  ? "Detener y enviar pedido"
+                  : useBrowserStt
+                    ? "Dictar pedido (navegador)"
+                    : "Dictar pedido con voz"
+              }
+              aria-label={
+                isRecording ? "Detener y enviar pedido" : "Dictar pedido con voz"
+              }
+              onClick={handleMicClick}
+            >
+              {isTranscribing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : isRecording ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="icon"
               className={cn(
                 "shrink-0 self-end",
                 showAddHighlight && "bg-green-600 hover:bg-green-700 text-white",
               )}
-              disabled={isSending || !input.trim() || disabled}
+              disabled={isSending || !input.trim() || disabled || voiceBusy}
               onClick={() => void send()}
             >
               {isSending ? (
@@ -347,6 +736,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           </div>
         </CardContent>
       </Card>
+      </div>
     )
   },
 )

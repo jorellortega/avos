@@ -17,6 +17,7 @@ import {
   resolvePortalAiLines,
   type PortalAiLineInput,
 } from "@/lib/portal-menu-snapshot"
+import { sanitizePortalAiLinesFromMessage } from "@/lib/portal-ai-sanitize"
 
 const MAX_MESSAGE_LEN = 4000
 
@@ -232,7 +233,10 @@ Reglas:
 - mergeMode "append" salvo que diga reemplazar, borrar todo o nueva orden limpia.
 - assistantMessage debe mencionar cantidades y total aproximado en pesos MXN ($).
 - IMPORTANTE: Si piden tacos/tortas/burritos/quesadillas/platillos SIN decir proteína, igual incluye la línea con categoriaId y platilloId correctos y cantidad, pero OMITE el campo "proteina" (no adivines). Ej: "3 tacos" → cantidad 3, categoriaId tacos, sin proteina.
-- IMPORTANTE: Si piden bebida/agua/refresco SIN decir chico o grande, incluye bebidaId y cantidad pero OMITE "bebidaTamano". Ej: "large water" → bebidaTamano "grande"; "agua de jamaica" o "water" sin tamaño → sin bebidaTamano.
+- IMPORTANTE: Si piden bebida/agua/refresco SIN decir chico o grande, incluye bebidaId y cantidad pero OMITE "bebidaTamano". Ej: "agua de jamaica" sin tamaño → sin bebidaTamano; "large jamaica" → bebidaId jamaica + bebidaTamano grande.
+- Si dicen solo "drink"/"bebida"/"grande agua"/"agua" SIN sabor específico (jamaica, horchata, piña, etc.), NO uses bebidaId "agua" (no existe). Usa categoriaId=bebidas, cantidad, bebidaTamano si dijeron grande/chico, y OMITE bebidaId.
+- bebidaId válidos son SOLO los del menú (jamaica, horchata, pina, limon-pepino, mango, etc.), nunca "agua" solo.
+- NUNCA pongas proteína en una línea si el fragmento del pedido no la menciona. Ej: "tacos, 3 tacos asada" → línea 1: tacos cantidad 1 SIN proteina; línea 2: tacos cantidad 3 proteina Asada.
 - Separa cantidades distintas en líneas distintas (ej. "3 tacos" y "2 tacos asada" = 2 líneas).
 
 MENÚ Y PRECIOS:
@@ -273,7 +277,11 @@ ${menuSnapshot}`
     )
   }
 
-  const { items: resolved, errors } = resolvePortalAiLines(parsed.items, catalog)
+  const sanitizedItems = sanitizePortalAiLinesFromMessage(
+    parsed.items as PortalAiLineInput[],
+    message,
+  )
+  const { items: resolved, errors } = resolvePortalAiLines(sanitizedItems, catalog)
   if (resolved.length === 0) {
     return NextResponse.json(
       {

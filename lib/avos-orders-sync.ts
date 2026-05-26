@@ -1,6 +1,6 @@
 "use client"
 
-import type { Order, OrderItem } from "@/components/orders-provider"
+import type { Order, OrderItem, OrderStatus } from "@/components/orders-provider"
 import { logCheckoutClient } from "@/lib/checkout-debug-client"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 
@@ -59,6 +59,87 @@ export async function updateAvosOrderCartInSupabase(
     })
     return false
   }
+}
+
+const PORTAL_ORDER_FETCH_MS = 20_000
+
+async function portalOrderFetch(
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), PORTAL_ORDER_FETCH_MS)
+  try {
+    const res = await fetch("/api/portal/submit-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    const data = (await res.json()) as { ok?: boolean; error?: string }
+    if (!res.ok) {
+      return { ok: false, error: data.error ?? `Error ${res.status}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.name === "AbortError"
+        ? "Tiempo de espera agotado. Revisa tu conexión."
+        : e instanceof Error
+          ? e.message
+          : "Error de red"
+    return { ok: false, error: msg }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Portal POS: same-origin API avoids browser → Supabase CORS/network quirks. */
+export async function insertAvosOrderForPortal(
+  order: Order,
+): Promise<{ ok: boolean; error?: string }> {
+  return portalOrderFetch({ order })
+}
+
+export async function portalUpdateOrderStatus(
+  orderId: string,
+  status: OrderStatus,
+): Promise<{ ok: boolean; status?: OrderStatus; error?: string }> {
+  try {
+    const res = await fetch("/api/portal/update-order-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ orderId, status }),
+    })
+    const data = (await res.json()) as {
+      ok?: boolean
+      status?: OrderStatus
+      error?: string
+    }
+    if (!res.ok) {
+      return { ok: false, error: data.error ?? `Error ${res.status}` }
+    }
+    return { ok: true, status: data.status ?? status }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Error de red",
+    }
+  }
+}
+
+export async function updateAvosOrderCartForPortal(
+  orderId: string,
+  items: OrderItem[],
+  total: number,
+): Promise<{ ok: boolean; error?: string }> {
+  return portalOrderFetch({
+    action: "update_cart",
+    orderId,
+    items,
+    total,
+  })
 }
 
 export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> {

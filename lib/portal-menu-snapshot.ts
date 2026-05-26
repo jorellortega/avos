@@ -13,6 +13,7 @@ import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
 import { cartLineKey } from "@/lib/order-item-extras"
 import { defaultPlatilloCustomizationConfig } from "@/lib/order-item-customizations"
 import {
+  PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX,
   PORTAL_INCOMPLETE_BEBIDA_SUFFIX,
   PORTAL_INCOMPLETE_PROTEIN_SUFFIX,
   cartItemSupportsProtein,
@@ -126,12 +127,66 @@ export function resolvePortalAiLines(
     if (line.categoriaId === "bebidas" || line.bebidaId) {
       const bebidaId = line.bebidaId
       if (!bebidaId) {
-        errors.push("Línea de bebida sin bebidaId")
+        const tamPreset =
+          line.bebidaTamano === "grande"
+            ? "grande"
+            : line.bebidaTamano === "chico"
+              ? "chico"
+              : null
+        const itemId = tamPreset
+          ? `elige-${tamPreset}-${PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX}`
+          : `elige-${PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX}`
+        const nombre = tamPreset
+          ? `Bebida (elige sabor) — ${bebidaTamanoLabels[tamPreset]}`
+          : "Bebida (elige sabor)"
+        const precio = 25
+        const existing = byId.get(itemId)
+        if (existing) {
+          existing.cantidad += qty
+        } else {
+          byId.set(itemId, {
+            id: itemId,
+            categoria: "bebidas",
+            nombre,
+            cantidad: qty,
+            precio,
+            notas,
+            needsBebidaEleccion: true,
+            needsBebidaTamano: tamPreset == null,
+          })
+        }
         continue
       }
       const bebida = bebidas.find((b) => b.id === bebidaId)
       if (!bebida) {
-        errors.push(`Bebida desconocida: ${bebidaId}`)
+        const tamPreset =
+          line.bebidaTamano === "grande"
+            ? "grande"
+            : line.bebidaTamano === "chico"
+              ? "chico"
+              : null
+        const itemId = tamPreset
+          ? `elige-${tamPreset}-${PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX}`
+          : `elige-${PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX}`
+        const nombre = tamPreset
+          ? `Bebida (elige sabor) — ${bebidaTamanoLabels[tamPreset]}`
+          : "Bebida (elige sabor)"
+        const precio = 25
+        const existing = byId.get(itemId)
+        if (existing) {
+          existing.cantidad += qty
+        } else {
+          byId.set(itemId, {
+            id: itemId,
+            categoria: "bebidas",
+            nombre,
+            cantidad: qty,
+            precio,
+            notas,
+            needsBebidaEleccion: true,
+            needsBebidaTamano: tamPreset == null,
+          })
+        }
         continue
       }
       const tam =
@@ -287,6 +342,7 @@ export type PortalOrderLineBreakdown = {
   tieneProteinas: boolean
   needsProteina: boolean
   needsBebidaTamano: boolean
+  needsBebidaEleccion: boolean
   bebidaId?: string
 }
 
@@ -304,6 +360,7 @@ export function buildPortalOrderLineBreakdown(
     tieneProteinas: cartItemSupportsProtein(i) || Boolean(i.needsProteina),
     needsProteina: Boolean(i.needsProteina),
     needsBebidaTamano: Boolean(i.needsBebidaTamano),
+    needsBebidaEleccion: Boolean(i.needsBebidaEleccion),
     bebidaId: i.bebidaId,
   }))
 }
