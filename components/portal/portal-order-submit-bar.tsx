@@ -3,6 +3,7 @@
 import { QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { PortalCashChange } from "@/components/portal/portal-cash-change"
 
 type PortalOrderSubmitBarProps = {
   total: number
@@ -28,8 +29,11 @@ export function PortalOrderSubmitBar({
       <CardContent className="py-4 space-y-3">
         <div className="flex items-center justify-between text-lg font-bold">
           <span>Total</span>
-          <span>${total.toFixed(2)}</span>
+          <span className="tabular-nums">${total.toFixed(2)}</span>
         </div>
+
+        <PortalCashChange total={total} />
+
         <Button
           className="w-full"
           size="lg"

@@ -71,6 +71,7 @@ import {
 } from "@/components/portal/portal-ai-chat"
 import { PortalOrdersPanel } from "@/components/portal/portal-orders-panel"
 import { PortalOrderSubmitBar } from "@/components/portal/portal-order-submit-bar"
+import { PortalCashChange } from "@/components/portal/portal-cash-change"
 import { PortalCartLineCustomization } from "@/components/portal/portal-cart-line-customization"
 import { orderItemsTotal } from "@/lib/portal-menu-snapshot"
 import {
@@ -730,6 +731,13 @@ export function PortalPageClient() {
               <p className="text-sm text-white/85">
                 Total ${orderCreated.total.toFixed(2)} · Tomando: {takerName}
               </p>
+              {orderCreated.synced && (
+                <PortalCashChange
+                  total={orderCreated.total}
+                  variant="banner"
+                  className="mt-3 max-w-sm"
+                />
+              )}
             </div>
             {!orderCreated.synced && (
               <div className="flex flex-wrap gap-2">

@@ -38,6 +38,7 @@ import {
 import { cn } from "@/lib/utils"
 import { formatPortalOrderSpeechText } from "@/lib/portal-order-speech"
 import { PortalOrderPlayback } from "@/components/portal/portal-order-playback"
+import { PortalCashChange } from "@/components/portal/portal-cash-change"
 
 type PortalAiOrderReplyProps = {
   lines: PortalOrderLineBreakdown[]
@@ -356,6 +357,12 @@ export function PortalAiOrderReply({
           </span>
         )}
       </p>
+
+      <PortalCashChange
+        total={total}
+        className="pt-2 border-t border-border/60"
+      />
+
       {warnings && (
         <p className="text-xs text-amber-700 dark:text-amber-400">⚠ {warnings}</p>
       )}
