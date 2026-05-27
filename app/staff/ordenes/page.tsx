@@ -73,9 +73,15 @@ export default async function StaffOrdenesPage() {
 
   let sumEfectivo = 0
   let sumTarjeta = 0
+  let sumPendienteCaja = 0
+  let countPendienteCaja = 0
   for (const r of list) {
-    if (!r.paid_at) continue
     const t = Number(r.total)
+    if (!r.paid_at) {
+      sumPendienteCaja += t
+      countPendienteCaja += 1
+      continue
+    }
     if (r.payment_method === "efectivo") sumEfectivo += t
     if (r.payment_method === "tarjeta") sumTarjeta += t
   }
@@ -121,10 +127,10 @@ export default async function StaffOrdenesPage() {
 
           {!error && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardDescription>Total efectivo (pagado)</CardDescription>
+                    <CardDescription>Total efectivo (confirmado)</CardDescription>
                     <CardTitle className="text-2xl text-foreground">
                       {formatMoney(sumEfectivo)}
                     </CardTitle>
@@ -132,9 +138,25 @@ export default async function StaffOrdenesPage() {
                 </Card>
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardDescription>Total tarjeta (pagado)</CardDescription>
+                    <CardDescription>Total tarjeta (confirmado)</CardDescription>
                     <CardTitle className="text-2xl text-foreground">
                       {formatMoney(sumTarjeta)}
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card
+                  className={
+                    countPendienteCaja > 0
+                      ? "border-amber-300/80 bg-amber-50/50 dark:bg-amber-950/20"
+                      : undefined
+                  }
+                >
+                  <CardHeader className="pb-2">
+                    <CardDescription>
+                      Por confirmar en caja ({countPendienteCaja})
+                    </CardDescription>
+                    <CardTitle className="text-2xl text-foreground">
+                      {formatMoney(sumPendienteCaja)}
                     </CardTitle>
                   </CardHeader>
                 </Card>
@@ -147,6 +169,13 @@ export default async function StaffOrdenesPage() {
                   </CardHeader>
                 </Card>
               </div>
+              {countPendienteCaja > 0 && (
+                <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800 rounded-md px-3 py-2">
+                  Hay {countPendienteCaja} orden(es) sin cobro confirmado. El estado
+                  &quot;pagado&quot; en portal no cuenta en caja hasta que pulses{" "}
+                  <strong>Confirmar pago</strong> (efectivo o tarjeta) en la tabla.
+                </p>
+              )}
 
               <Card>
                 <CardHeader>

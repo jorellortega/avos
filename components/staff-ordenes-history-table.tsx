@@ -292,7 +292,13 @@ export function StaffOrdenesHistoryTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  <span className="text-xs text-muted-foreground">{r.status}</span>
+                  {r.status === "pagado" && !r.paid_at ? (
+                    <span className="text-xs text-amber-700 dark:text-amber-300">
+                      pagado · falta confirmar caja
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{r.status}</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right">
                   {!r.paid_at ? (

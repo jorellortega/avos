@@ -8,12 +8,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import type { Order, OrderStatus } from "@/components/orders-provider"
 import { isOrderCreatedToday } from "@/lib/portal-today-orders"
-import { portalUpdateOrderStatus } from "@/lib/avos-orders-sync"
+import {
+  portalUpdateOrderStatus,
+  staffConfirmAvosOrderPayment,
+} from "@/lib/avos-orders-sync"
 import { ChevronDown, Loader2, Plus, Receipt } from "lucide-react"
 
 type PortalOrdersPanelProps = {
@@ -25,12 +32,11 @@ type PortalOrdersPanelProps = {
   nextOrderNumber: number
 }
 
-const STATUS_OPTIONS: OrderStatus[] = [
+const KITCHEN_STATUS_OPTIONS: OrderStatus[] = [
   "pendiente",
   "preparando",
   "listo",
   "entregado",
-  "pagado",
 ]
 
 const statusLabel: Record<OrderStatus, string> = {
@@ -52,10 +58,12 @@ function formatTime(d: Date) {
 function OrderStatusPicker({
   orderId,
   status,
+  orderTipo,
   onStatusChange,
 }: {
   orderId: string
   status: OrderStatus
+  orderTipo: Order["tipo"]
   onStatusChange: (orderId: string, status: OrderStatus) => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -77,6 +85,19 @@ function OrderStatusPicker({
     }
   }
 
+  const handleConfirmPayment = async (method: "efectivo" | "tarjeta") => {
+    if (saving) return
+    const previous = status
+    onStatusChange(orderId, "pagado")
+    setSaving(true)
+    const ok = await staffConfirmAvosOrderPayment(orderId, method)
+    setSaving(false)
+    if (!ok) {
+      onStatusChange(orderId, previous)
+      alert("No se pudo registrar el cobro en caja.")
+    }
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -88,7 +109,7 @@ function OrderStatusPicker({
             "bg-background hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             saving && "opacity-60 pointer-events-none",
           )}
-          title="Cambiar estado"
+          title="Cambiar estado o registrar cobro"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
@@ -102,8 +123,8 @@ function OrderStatusPicker({
           )}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[9rem]">
-        {STATUS_OPTIONS.map((option) => (
+      <DropdownMenuContent align="end" className="min-w-[10rem]">
+        {KITCHEN_STATUS_OPTIONS.map((option) => (
           <DropdownMenuItem
             key={option}
             className={cn(
@@ -118,6 +139,48 @@ function OrderStatusPicker({
             {statusLabel[option]}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        {status === "pagado" ? (
+          <DropdownMenuItem disabled className="text-xs font-semibold">
+            Cobrado en caja
+          </DropdownMenuItem>
+        ) : orderTipo === "pickup" ? (
+          <DropdownMenuItem
+            className="text-xs"
+            onSelect={(e) => {
+              e.preventDefault()
+              void handleConfirmPayment("tarjeta")
+            }}
+          >
+            Cobrar · tarjeta
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="text-xs">
+              Cobrar en caja
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem
+                className="text-xs"
+                onSelect={(e) => {
+                  e.preventDefault()
+                  void handleConfirmPayment("efectivo")
+                }}
+              >
+                Efectivo
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-xs"
+                onSelect={(e) => {
+                  e.preventDefault()
+                  void handleConfirmPayment("tarjeta")
+                }}
+              >
+                Tarjeta
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -161,6 +224,7 @@ const PortalOrderRow = memo(function PortalOrderRow({
         <OrderStatusPicker
           orderId={order.id}
           status={order.status}
+          orderTipo={order.tipo}
           onStatusChange={onOrderStatusChange}
         />
       </div>
