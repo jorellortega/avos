@@ -52,11 +52,11 @@ export function PortalCashChange({
   }
 
   const quickAmounts = useMemo(() => {
-    const base = [total, 200, 500, 1000]
-    const uniq = [...new Set(base.map((n) => Math.round(n * 100) / 100))].sort(
+    const bills = [50, 100, 200, 500, 1000]
+    const withExact = total > 0 ? [total, ...bills] : bills
+    return [...new Set(withExact.map((n) => Math.round(n * 100) / 100))].sort(
       (a, b) => a - b,
     )
-    return uniq.filter((n) => n >= total).slice(0, 5)
   }, [total])
 
   return (
