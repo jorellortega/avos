@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 import type {
   StaffScheduleEmployeeRow,
@@ -45,10 +45,25 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Copy, Link2, Plus, Trash2 } from "lucide-react"
+import { Brain, Copy, Link2, Plus, Trash2 } from "lucide-react"
+import { ScheduleAiAssistant } from "@/components/schedule-ai-assistant"
+import { ScheduleRowAiDialog } from "@/components/schedule-row-ai-dialog"
+import { ScheduleFullViewDialog } from "@/components/schedule-full-view-dialog"
+import {
+  findDuplicateEmployeeIds,
+  findEmployeesByNameAndShift,
+  findScheduleEmployee,
+  pickBestScheduleEmployee,
+  resolveUpdateShift,
+  type ScheduleAiResult,
+} from "@/lib/schedule-ai"
 
 function employeeSharePath(token: string) {
   return `/horario/e/${token}`
+}
+
+function employeeFieldKey(id: string, field: string) {
+  return `${id}:${field}`
 }
 
 export function ScheduleEditDashboard() {
@@ -59,6 +74,9 @@ export function ScheduleEditDashboard() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [savedHeader, setSavedHeader] = useState(false)
+  const [rowAiEmployeeId, setRowAiEmployeeId] = useState<string | null>(null)
+  /** Values when a field gained focus — compared on blur so we don't skip save after onChange updated local state. */
+  const fieldFocusRef = useRef<Record<string, string>>({})
 
   const ensureSchedule = useCallback(async (): Promise<StaffScheduleRow | null> => {
     const { data: existing, error: listErr } = await supabase
@@ -141,20 +159,38 @@ export function ScheduleEditDashboard() {
     window.setTimeout(() => setSavedHeader(false), 1500)
   }
 
-  async function addEmployee(shift: ScheduleShiftKey) {
-    if (!schedule) return
+  async function addEmployee(
+    shift: ScheduleShiftKey,
+    initial?: Partial<StaffScheduleEmployeeRow>,
+  ): Promise<StaffScheduleEmployeeRow | null> {
+    if (!schedule) return null
     setBusyId(`new-${shift}`)
-    const inShift = employees.filter((e) => e.shift === shift)
-    const sortOrder =
-      inShift.length > 0 ? Math.max(...inShift.map((e) => e.sort_order)) + 1 : 0
+
+    let sortOrder = 0
+    setEmployees((prev) => {
+      const inShift = prev.filter((e) => e.shift === shift)
+      sortOrder =
+        inShift.length > 0 ? Math.max(...inShift.map((e) => e.sort_order)) + 1 : 0
+      return prev
+    })
+
+    const dayPatch = initial
+      ? Object.fromEntries(
+          SCHEDULE_DAY_KEYS.filter((d) => initial[d] !== undefined).map((d) => [
+            d,
+            initial[d],
+          ]),
+        )
+      : {}
 
     const { data, error } = await supabase
       .from("staff_schedule_employees")
       .insert({
         schedule_id: schedule.id,
-        name: "",
+        name: initial?.name ?? "",
         shift,
         sort_order: sortOrder,
+        ...dayPatch,
       })
       .select("*")
       .single()
@@ -162,9 +198,11 @@ export function ScheduleEditDashboard() {
     setBusyId(null)
     if (error) {
       setLoadError(error.message)
-      return
+      return null
     }
-    setEmployees((prev) => [...prev, data as StaffScheduleEmployeeRow])
+    const row = data as StaffScheduleEmployeeRow
+    setEmployees((prev) => [...prev, row])
+    return row
   }
 
   async function updateEmployee(
@@ -228,13 +266,160 @@ export function ScheduleEditDashboard() {
     )
   }
 
+  async function dedupeNamedEmployees(
+    roster: StaffScheduleEmployeeRow[],
+  ): Promise<StaffScheduleEmployeeRow[]> {
+    let next = roster
+    for (const { removeIds } of findDuplicateEmployeeIds(next)) {
+      for (const id of removeIds) {
+        await deleteEmployee(id)
+        next = next.filter((row) => row.id !== id)
+      }
+    }
+    return next
+  }
+
+  async function applyScheduleAiRowPlan(
+    employee: StaffScheduleEmployeeRow,
+    plan: ScheduleAiResult,
+  ): Promise<string | null> {
+    const update = plan.employee_updates?.[0]
+    if (!update) return null
+
+    const patch: Partial<StaffScheduleEmployeeRow> = {}
+    const resolvedName =
+      update.name?.trim() || update.match.name?.trim() || ""
+    if (resolvedName) patch.name = resolvedName
+    if (update.days) Object.assign(patch, update.days)
+
+    if (Object.keys(patch).length === 0) return null
+
+    await updateEmployee(employee.id, patch)
+    return null
+  }
+
+  const rowAiEmployee =
+    rowAiEmployeeId != null
+      ? employees.find((e) => e.id === rowAiEmployeeId) ?? null
+      : null
+
+  async function applyScheduleAiPlan(
+    plan: ScheduleAiResult,
+  ): Promise<string | null> {
+    if (!schedule) return "Horario no cargado."
+    const warnings: string[] = []
+    let roster = await dedupeNamedEmployees(employees)
+
+    if (plan.schedule) {
+      const headerPatch: Partial<StaffScheduleRow> = {}
+      if (plan.schedule.title) headerPatch.title = plan.schedule.title
+      if (plan.schedule.week_start !== undefined) {
+        headerPatch.week_start = plan.schedule.week_start
+      }
+      if (Object.keys(headerPatch).length > 0) {
+        await saveScheduleHeader(headerPatch)
+      }
+    }
+
+    if (plan.employee_updates_all?.days) {
+      for (const emp of roster) {
+        await updateEmployee(emp.id, plan.employee_updates_all.days)
+      }
+      roster = roster.map((emp) => ({
+        ...emp,
+        ...plan.employee_updates_all!.days,
+      }))
+    }
+
+    for (const update of plan.employee_updates ?? []) {
+      const shift = resolveUpdateShift(update, roster)
+      const emp = findScheduleEmployee(roster, update.match, shift)
+      if (!emp) {
+        const label =
+          update.match.name ?? update.match.id ?? "empleado desconocido"
+        warnings.push(`No encontré a «${label}».`)
+        continue
+      }
+      const patch: Partial<StaffScheduleEmployeeRow> = {}
+      const resolvedName =
+        update.name?.trim() || update.match.name?.trim() || ""
+      if (resolvedName && resolvedName !== emp.name.trim()) {
+        patch.name = resolvedName
+      }
+      if (update.days) Object.assign(patch, update.days)
+      if (Object.keys(patch).length > 0) {
+        await updateEmployee(emp.id, patch)
+        roster = roster.map((row) =>
+          row.id === emp.id ? { ...row, ...patch } : row,
+        )
+      }
+    }
+
+    roster = await dedupeNamedEmployees(roster)
+
+    for (const add of plan.add_employees ?? []) {
+      const shift = add.shift ?? "manana"
+      const existing = pickBestScheduleEmployee(
+        findEmployeesByNameAndShift(roster, add.name, shift),
+      )
+      if (existing) {
+        const patch: Partial<StaffScheduleEmployeeRow> = {
+          name: add.name.trim(),
+          ...(add.days ?? {}),
+        }
+        await updateEmployee(existing.id, patch)
+        roster = roster.map((row) =>
+          row.id === existing.id ? { ...row, ...patch } : row,
+        )
+        continue
+      }
+
+      const row = await addEmployee(shift, {
+        name: add.name,
+        ...add.days,
+      })
+      if (!row) {
+        warnings.push(`No se pudo agregar a «${add.name}».`)
+      } else {
+        roster = [...roster, row]
+      }
+    }
+
+    roster = await dedupeNamedEmployees(roster)
+
+    for (const remove of plan.remove ?? []) {
+      const emp = findScheduleEmployee(roster, remove)
+      if (!emp) {
+        const label = remove.name ?? remove.id ?? "empleado"
+        warnings.push(`No encontré a «${label}» para quitar.`)
+        continue
+      }
+      await deleteEmployee(emp.id)
+      roster = roster.filter((row) => row.id !== emp.id)
+    }
+
+    const hasEdits =
+      plan.schedule ||
+      plan.employee_updates?.length ||
+      plan.employee_updates_all?.days ||
+      plan.add_employees?.length ||
+      plan.remove?.length
+
+    if (!hasEdits) {
+      return null
+    }
+
+    return warnings.length > 0 ? warnings.join(" ") : null
+  }
+
   function handleDayBlur(
-    emp: StaffScheduleEmployeeRow,
+    id: string,
     day: ScheduleDayKey,
     value: string,
+    valueAtFocus: string,
   ) {
-    if (emp[day] === value) return
-    void updateEmployee(emp.id, { [day]: value })
+    if (value === valueAtFocus) return
+    void updateEmployee(id, { [day]: value })
   }
 
   if (!schedule) {
@@ -251,12 +436,15 @@ export function ScheduleEditDashboard() {
       )}
 
       <Card>
-        <CardHeader>
-          <CardTitle>Semana</CardTitle>
-          <CardDescription>
-            Pon el título y publica cuando esté listo. Cada empleado tendrá su
-            propio enlace para ver solo su horario.
-          </CardDescription>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+          <div className="space-y-1">
+            <CardTitle>Semana</CardTitle>
+            <CardDescription>
+              Pon el título y publica cuando esté listo. Cada empleado tendrá su
+              propio enlace para ver solo su horario.
+            </CardDescription>
+          </div>
+          <ScheduleFullViewDialog schedule={schedule} employees={employees} />
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -323,6 +511,11 @@ export function ScheduleEditDashboard() {
         </CardContent>
       </Card>
 
+      <ScheduleAiAssistant
+        schedule={schedule}
+        employees={employees}
+        onApply={applyScheduleAiPlan}
+      />
 
       {SCHEDULE_SHIFT_KEYS.map((shift) => {
         const shiftEmployees = employees.filter(
@@ -387,29 +580,55 @@ export function ScheduleEditDashboard() {
                     shiftEmployees.map((emp) => (
                       <TableRow key={`${shift}-${emp.id}`}>
                         <TableCell className="sticky left-0 bg-card z-10 p-2">
-                          <Input
-                            value={emp.name}
-                            onChange={(e) =>
-                              updateLocalEmployee(
-                                emp.id,
-                                "name",
-                                e.target.value,
-                              )
-                            }
-                            onBlur={(e) => {
-                              const name = e.target.value.trim()
-                              if (name !== emp.name) {
-                                void updateEmployee(emp.id, { name })
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="size-8 shrink-0"
+                              title="IA para esta fila"
+                              onClick={() => setRowAiEmployeeId(emp.id)}
+                            >
+                              <Brain className="size-4 text-primary" />
+                            </Button>
+                            <Input
+                              value={emp.name}
+                              onFocus={() => {
+                                fieldFocusRef.current[
+                                  employeeFieldKey(emp.id, "name")
+                                ] = emp.name
+                              }}
+                              onChange={(e) =>
+                                updateLocalEmployee(
+                                  emp.id,
+                                  "name",
+                                  e.target.value,
+                                )
                               }
-                            }}
-                            placeholder="Nombre"
-                            className="min-w-[120px]"
-                          />
+                              onBlur={(e) => {
+                                const name = e.target.value.trim()
+                                const key = employeeFieldKey(emp.id, "name")
+                                const atFocus =
+                                  fieldFocusRef.current[key] ?? emp.name
+                                delete fieldFocusRef.current[key]
+                                if (name !== atFocus.trim()) {
+                                  void updateEmployee(emp.id, { name })
+                                }
+                              }}
+                              placeholder="Nombre"
+                              className="min-w-[100px] flex-1"
+                            />
+                          </div>
                         </TableCell>
                         {SCHEDULE_DAY_KEYS.map((day) => (
                             <TableCell key={day} className="p-1">
                               <Input
                                 value={emp[day]}
+                                onFocus={() => {
+                                  fieldFocusRef.current[
+                                    employeeFieldKey(emp.id, day)
+                                  ] = emp[day]
+                                }}
                                 onChange={(e) =>
                                   updateLocalEmployee(
                                     emp.id,
@@ -417,9 +636,18 @@ export function ScheduleEditDashboard() {
                                     e.target.value,
                                   )
                                 }
-                                onBlur={(e) =>
-                                  handleDayBlur(emp, day, e.target.value)
-                                }
+                                onBlur={(e) => {
+                                  const key = employeeFieldKey(emp.id, day)
+                                  const atFocus =
+                                    fieldFocusRef.current[key] ?? emp[day]
+                                  delete fieldFocusRef.current[key]
+                                  handleDayBlur(
+                                    emp.id,
+                                    day,
+                                    e.target.value,
+                                    atFocus,
+                                  )
+                                }}
                                 placeholder="—"
                                 className="text-center text-sm min-w-[90px]"
                               />
@@ -489,6 +717,16 @@ export function ScheduleEditDashboard() {
           </Card>
         )
       })}
+
+      <ScheduleRowAiDialog
+        open={rowAiEmployeeId != null}
+        onOpenChange={(open) => {
+          if (!open) setRowAiEmployeeId(null)
+        }}
+        schedule={schedule}
+        employee={rowAiEmployee}
+        onApply={applyScheduleAiRowPlan}
+      />
     </div>
   )
 }

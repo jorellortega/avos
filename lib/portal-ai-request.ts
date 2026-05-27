@@ -81,6 +81,7 @@ export async function callOpenAIJson(
   user: string,
   apiKey: string,
   model: string,
+  maxTokens = 512,
 ): Promise<string | null> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -91,7 +92,7 @@ export async function callOpenAIJson(
     body: JSON.stringify({
       model,
       temperature: 0.2,
-      max_tokens: 512,
+      max_tokens: maxTokens,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
@@ -114,6 +115,7 @@ export async function callAnthropicJson(
   user: string,
   apiKey: string,
   model: string,
+  maxTokens = 512,
 ): Promise<string | null> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -124,7 +126,7 @@ export async function callAnthropicJson(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 512,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
     }),
@@ -160,6 +162,7 @@ export async function callPortalAiJson(
   system: string,
   user: string,
   settings: Record<string, string>,
+  maxTokens = 512,
 ): Promise<string | null> {
   const openaiKey = settings.openai_api_key?.trim()
   const anthropicKey = settings.anthropic_api_key?.trim()
@@ -171,6 +174,7 @@ export async function callPortalAiJson(
       user,
       openaiKey,
       settings.openai_model?.trim() || "gpt-4o-mini",
+      maxTokens,
     )
     if (raw) return raw
   }
@@ -180,6 +184,7 @@ export async function callPortalAiJson(
       user,
       anthropicKey,
       settings.anthropic_model?.trim() || "claude-3-5-sonnet-20241022",
+      maxTokens,
     )
   }
   return null
