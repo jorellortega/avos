@@ -1,6 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -15,7 +22,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { useOrders, type OrderItem, type OrderType } from "@/components/orders-provider"
+import {
+  useOrders,
+  type Order,
+  type OrderItem,
+  type OrderStatus,
+  type OrderType,
+} from "@/components/orders-provider"
 import {
   insertAvosOrderForPortal,
   portalUpdateOrderDelivery,
@@ -87,9 +100,29 @@ type CreatedOrderBanner = {
   synced: boolean
 }
 
+function cloneOrderItems(items: OrderItem[]): OrderItem[] {
+  return items.map((i) => ({ ...i }))
+}
+
+type PortalTodayOrdersPanelProps = ComponentProps<typeof PortalOrdersPanel>
+
+/** Separate instances for sidebar vs sheet (do not reuse one JSX element in two parents). */
+function PortalTodayOrdersPanel({
+  panelKey,
+  ...props
+}: PortalTodayOrdersPanelProps & { panelKey: string }) {
+  return <PortalOrdersPanel key={panelKey} {...props} />
+}
+
 export function PortalPageClient() {
-  const { addOrder, getNextOrderNumber, orders, updateOrder, updateOrderStatus } =
-    useOrders()
+  const {
+    addOrder,
+    getNextOrderNumber,
+    orders,
+    updateOrder,
+    updateOrderStatus,
+    mergeServerOrders,
+  } = useOrders()
   const { catalog } = useMenuCatalogContext()
   const proteinaImgs = useProteinaImagenes()
   const bebidaImgs = useBebidaImagenes()
@@ -97,6 +130,8 @@ export function PortalPageClient() {
   const [profile, setProfile] = useState<StaffProfile | null>(null)
   const [draftItems, setDraftItems] = useState<OrderItem[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [orderEditItems, setOrderEditItems] = useState<OrderItem[] | null>(null)
+  const lastOpenedOrderIdRef = useRef<string | null>(null)
   const [menuTab, setMenuTab] = useState("tacos")
   const [orderCreated, setOrderCreated] = useState<CreatedOrderBanner | null>(null)
   const [stripeLoading, setStripeLoading] = useState(false)
@@ -129,7 +164,8 @@ export function PortalPageClient() {
     [orders, selectedOrderId],
   )
 
-  const activeItems = selectedOrder ? selectedOrder.items : draftItems
+  const activeItems =
+    selectedOrderId && orderEditItems ? orderEditItems : draftItems
   const orderTipo = selectedOrder?.tipo ?? draftOrderTipo
 
   const activeDelivery = useMemo(
@@ -215,19 +251,22 @@ export function PortalPageClient() {
   )
   const setActiveItems = useCallback(
     (items: OrderItem[]) => {
-      if (selectedOrder) {
+      if (selectedOrderId) {
+        const order = orders.find((o) => o.id === selectedOrderId)
+        if (!order) return
+        setOrderEditItems(items)
         const sub = orderItemsTotal(items)
         const newTotal = portalItemsTotalWithDelivery(
           sub,
-          selectedOrder.tipo,
-          portalDeliveryFromOrder(selectedOrder),
+          order.tipo,
+          portalDeliveryFromOrder(order),
         )
-        updateOrder(selectedOrder.id, { items, total: newTotal })
+        updateOrder(selectedOrderId, { items, total: newTotal })
       } else {
         setDraftItems(items)
       }
     },
-    [selectedOrder, updateOrder],
+    [selectedOrderId, orders, updateOrder],
   )
 
   const nextNum = getNextOrderNumber()
@@ -249,6 +288,8 @@ export function PortalPageClient() {
 
   const startNewOrder = useCallback(() => {
     setSelectedOrderId(null)
+    setOrderEditItems(null)
+    lastOpenedOrderIdRef.current = null
     setDraftItems([])
     setDraftOrderTipo("mesa")
     setDraftDelivery({})
@@ -257,6 +298,65 @@ export function PortalPageClient() {
     setPaymentError("")
     chatRef.current?.resetChat()
   }, [])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/portal/today-orders", {
+          credentials: "same-origin",
+        })
+        const data = (await res.json()) as {
+          orders?: Order[]
+          error?: string
+        }
+        if (!res.ok || !data.orders) return
+        const parsed = data.orders.map((o) => ({
+          ...o,
+          createdAt: new Date(o.createdAt),
+          updatedAt: new Date(o.updatedAt),
+        }))
+        mergeServerOrders(parsed)
+      } catch {
+        /* local orders still work */
+      }
+    })()
+  }, [mergeServerOrders])
+
+  useEffect(() => {
+    if (!selectedOrderId) {
+      setOrderEditItems(null)
+      if (lastOpenedOrderIdRef.current !== null) {
+        lastOpenedOrderIdRef.current = null
+        chatRef.current?.resetChat()
+      }
+      return
+    }
+
+    const order = orders.find((o) => o.id === selectedOrderId)
+    if (!order) {
+      setOrderEditItems(null)
+      return
+    }
+
+    setOrderEditItems(cloneOrderItems(order.items))
+
+    if (lastOpenedOrderIdRef.current === selectedOrderId) return
+    lastOpenedOrderIdRef.current = selectedOrderId
+
+    setOrderCreated(null)
+    setPaymentError("")
+    if (order.items.length > 0) {
+      setAddMode(true)
+      requestAnimationFrame(() => {
+        chatRef.current?.openOrder(cloneOrderItems(order.items))
+      })
+    } else {
+      setAddMode(false)
+      requestAnimationFrame(() => chatRef.current?.focusInput())
+    }
+    // Only re-init editor when switching orders — not on every cart line update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrderId])
 
   useEffect(() => {
     if (activeItems.length === 0) {
@@ -571,46 +671,55 @@ export function PortalPageClient() {
     })
   }
 
-  const ordersPanel = (
-    <PortalOrdersPanel
-      orders={orders}
-      selectedOrderId={selectedOrderId}
-      onOrderStatusChange={(orderId, status) => {
-        updateOrderStatus(orderId, status)
-        if (
-          selectedOrderId === orderId &&
-          status !== "pendiente" &&
-          status !== "preparando"
-        ) {
-          setSelectedOrderId(null)
-        }
-      }}
-      onSelectOrder={(id) => {
-        setSelectedOrderId(id)
-        setOrdersSheetOpen(false)
-        setOrderCreated(null)
-        setPaymentError("")
-        if (id) {
-          const order = orders.find((o) => o.id === id)
-          if (order && order.items.length > 0) {
-            setAddMode(true)
-            requestAnimationFrame(() => {
-              chatRef.current?.openOrder(order.items)
-            })
-          } else {
-            requestAnimationFrame(() => chatRef.current?.focusInput())
-          }
-        } else {
-          chatRef.current?.resetChat()
-        }
-      }}
-      onStartNewOrder={() => {
-        startNewOrder()
-        setOrdersSheetOpen(false)
-      }}
-      nextOrderNumber={nextNum}
-    />
+  const handlePanelStatusChange = useCallback(
+    (orderId: string, status: OrderStatus) => {
+      updateOrderStatus(orderId, status)
+    },
+    [updateOrderStatus],
   )
+
+  const handleSelectOrder = useCallback(
+    (id: string) => {
+      if (id === selectedOrderId) return
+      setSelectedOrderId(id)
+    },
+    [selectedOrderId],
+  )
+
+  const handlePanelStartNew = useCallback(() => {
+    startNewOrder()
+  }, [startNewOrder])
+
+  const ordersPanelProps = useMemo(
+    () => ({
+      orders,
+      selectedOrderId,
+      onOrderStatusChange: handlePanelStatusChange,
+      onSelectOrder: handleSelectOrder,
+      onStartNewOrder: handlePanelStartNew,
+      nextOrderNumber: nextNum,
+    }),
+    [
+      orders,
+      selectedOrderId,
+      handlePanelStatusChange,
+      handleSelectOrder,
+      handlePanelStartNew,
+      nextNum,
+    ],
+  )
+
+  const keepSheetOpenOnOutside = useCallback((e: Event) => {
+    const target = e.target
+    if (!(target instanceof Element)) return
+    if (
+      target.closest(
+        '[data-slot="dropdown-menu-content"],[data-radix-popper-content-wrapper]',
+      )
+    ) {
+      e.preventDefault()
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -686,30 +795,36 @@ export function PortalPageClient() {
               className="gap-1.5"
               onClick={() => {
                 startNewOrder()
-                setOrdersSheetOpen(false)
                 requestAnimationFrame(() => chatRef.current?.focusInput())
               }}
             >
               <Plus className="h-4 w-4" />
               Nueva orden
             </Button>
-            <Sheet open={ordersSheetOpen} onOpenChange={setOrdersSheetOpen}>
-              <SheetTrigger asChild>
-                <Button variant="secondary" size="sm" className="gap-1.5">
-                  <PanelLeft className="h-4 w-4" />
-                  Órdenes
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-[min(100%,280px)] p-0">
-                <SheetHeader className="sr-only">
-                  <SheetTitle>Órdenes activas</SheetTitle>
-                  <SheetDescription>
-                    Selecciona una orden o crea una nueva
-                  </SheetDescription>
-                </SheetHeader>
-                {ordersPanel}
-              </SheetContent>
-            </Sheet>
+            <div className="lg:hidden">
+              <Sheet open={ordersSheetOpen} onOpenChange={setOrdersSheetOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="secondary" size="sm" className="gap-1.5">
+                    <PanelLeft className="h-4 w-4" />
+                    Órdenes
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="left"
+                  className="w-[min(100%,280px)] p-0"
+                  onInteractOutside={keepSheetOpenOnOutside}
+                  onPointerDownOutside={keepSheetOpenOnOutside}
+                >
+                  <SheetHeader className="sr-only">
+                    <SheetTitle>Órdenes de hoy</SheetTitle>
+                    <SheetDescription>
+                      Selecciona una orden o crea una nueva
+                    </SheetDescription>
+                  </SheetHeader>
+                  <PortalTodayOrdersPanel panelKey="sheet" {...ordersPanelProps} />
+                </SheetContent>
+              </Sheet>
+            </div>
           </nav>
         </div>
       </header>
@@ -810,7 +925,7 @@ export function PortalPageClient() {
 
       <div className="flex flex-1 min-h-0">
         <aside className="hidden lg:flex w-56 xl:w-64 shrink-0 flex-col">
-          {ordersPanel}
+          <PortalTodayOrdersPanel panelKey="sidebar" {...ordersPanelProps} />
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0 overflow-auto">

@@ -25,3 +25,7 @@ export function isCustomerAppRole(role: AppRole | string | undefined | null): bo
 export function isManagerOrCeo(role: AppRole | string | undefined | null): boolean {
   return role === "manager" || role === "ceo"
 }
+
+export function isCeo(role: AppRole | string | undefined | null): boolean {
+  return role === "ceo"
+}

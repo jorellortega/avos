@@ -238,13 +238,28 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           orderTipo,
           delivery,
         )
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.orderReply
-            ? { ...m, orderReply: { ...m.orderReply, lines, total } }
-            : m,
-        ),
-      )
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.orderReply)
+        if (idx < 0) return prev
+        const current = prev[idx].orderReply
+        if (
+          current &&
+          current.total === total &&
+          current.lines.length === lines.length &&
+          current.lines.every(
+            (line, i) =>
+              line.id === lines[i]?.id &&
+              line.cantidad === lines[i]?.cantidad &&
+              line.subtotal === lines[i]?.subtotal &&
+              line.nombre === lines[i]?.nombre,
+          )
+        ) {
+          return prev
+        }
+        return prev.map((m) =>
+          m.orderReply ? { ...m, orderReply: { ...m.orderReply, lines, total } } : m,
+        )
+      })
     }, [existingItems, cartTotal, orderTipo, delivery])
 
     const lastOrderReplyIndex = (() => {

@@ -10,58 +10,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { StaffSignOutButton } from "@/components/staff-sign-out-button"
-import { StaffConfirmPaymentButton } from "@/components/staff-confirm-payment-button"
+import { StaffOrdenesHistoryTable } from "@/components/staff-ordenes-history-table"
 import { createServerSupabase } from "@/lib/supabase/server"
 import type { StaffProfile } from "@/lib/profile-types"
-import { isStaffOrdersRole } from "@/lib/profile-types"
+import { isCeo, isStaffOrdersRole } from "@/lib/profile-types"
+import type { StaffOrdenesOrderRow } from "@/lib/staff-ordenes-types"
 
 export const dynamic = "force-dynamic"
-
-type AvosOrderRow = {
-  id: string
-  numero: number
-  total: number
-  status: string
-  order_type: string
-  mesa: string | null
-  nombre_cliente: string | null
-  payment_method: string | null
-  paid_at: string | null
-  created_at: string
-  delivery_zone_id: string | null
-  delivery_address: string | null
-  delivery_photo_street_url: string | null
-  delivery_photo_house_url: string | null
-}
-
-function orderTypeLabel(t: string) {
-  if (t === "mesa") return "Mesa"
-  if (t === "domicilio") return "Domicilio"
-  return "Para llevar"
-}
 
 function formatMoney(n: number) {
   return new Intl.NumberFormat("es-MX", {
     style: "currency",
     currency: "MXN",
   }).format(n)
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("es-MX", {
-    dateStyle: "short",
-    timeStyle: "short",
-  })
 }
 
 export default async function StaffOrdenesPage() {
@@ -106,7 +68,8 @@ export default async function StaffOrdenesPage() {
     .order("created_at", { ascending: false })
     .limit(200)
 
-  const list = (rows ?? []) as AvosOrderRow[]
+  const list = (rows ?? []) as StaffOrdenesOrderRow[]
+  const ceo = isCeo(profile.role)
 
   let sumEfectivo = 0
   let sumTarjeta = 0
@@ -191,138 +154,13 @@ export default async function StaffOrdenesPage() {
                   <CardDescription>
                     Hasta 200 órdenes recientes. &quot;En caja&quot; = el cliente va a
                     pagar en mostrador; elige efectivo o tarjeta al cobrar.
+                    {ceo
+                      ? " Como CEO puedes seleccionar varias y eliminarlas, o editar una por una."
+                      : null}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {list.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-8">
-                      Aún no hay órdenes en la base de datos.
-                    </p>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>#</TableHead>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead>Mesa</TableHead>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Pago</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead className="text-right">Caja</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {list.map((r) => (
-                          <TableRow key={r.id}>
-                            <TableCell className="font-medium">
-                              #{r.numero}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              {formatDate(r.created_at)}
-                            </TableCell>
-                            <TableCell>
-                              {orderTypeLabel(r.order_type)}
-                            </TableCell>
-                            <TableCell className="max-w-[140px]">
-                              {r.order_type === "domicilio" ? (
-                                <div className="space-y-1">
-                                  <span className="text-xs block truncate">
-                                    {r.delivery_zone_id ?? "—"}
-                                  </span>
-                                  {r.delivery_address ? (
-                                    <span className="text-[10px] text-muted-foreground line-clamp-2 block">
-                                      {r.delivery_address}
-                                    </span>
-                                  ) : null}
-                                  <div className="flex flex-wrap gap-2">
-                                    {r.delivery_photo_street_url ? (
-                                      <a
-                                        href={r.delivery_photo_street_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs text-primary underline"
-                                      >
-                                        Foto calle
-                                      </a>
-                                    ) : null}
-                                    {r.delivery_photo_house_url ? (
-                                      <a
-                                        href={r.delivery_photo_house_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs text-primary underline"
-                                      >
-                                        Foto casa
-                                      </a>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              ) : (
-                                (r.mesa ?? "—")
-                              )}
-                            </TableCell>
-                            <TableCell className="max-w-[140px] truncate">
-                              {r.nombre_cliente ?? "—"}
-                            </TableCell>
-                            <TableCell>{formatMoney(Number(r.total))}</TableCell>
-                            <TableCell>
-                              {r.paid_at ? (
-                                <div className="flex flex-wrap items-center gap-1">
-                                  {r.payment_method === "efectivo" && (
-                                    <Badge variant="secondary">Efectivo</Badge>
-                                  )}
-                                  {r.payment_method === "tarjeta" && (
-                                    <Badge variant="outline">Tarjeta</Badge>
-                                  )}
-                                  <span className="text-xs text-green-600 ml-1">
-                                    Pagado
-                                  </span>
-                                </div>
-                              ) : r.payment_method === "caja" ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-amber-800 border-amber-300 bg-amber-50 dark:bg-amber-950/30"
-                                >
-                                  En caja (pendiente)
-                                </Badge>
-                              ) : r.payment_method ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-amber-800 border-amber-300 bg-amber-50 dark:bg-amber-950/30"
-                                >
-                                  Pendiente ({r.payment_method})
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground text-xs">
-                                  Sin indicar
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <span className="text-xs text-muted-foreground">
-                                {r.status}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {!r.paid_at ? (
-                                <StaffConfirmPaymentButton
-                                  orderId={r.id}
-                                  intentMethod={r.payment_method}
-                                  orderType={r.order_type}
-                                />
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  —
-                                </span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
+                  <StaffOrdenesHistoryTable orders={list} isCeo={ceo} />
                 </CardContent>
               </Card>
             </>

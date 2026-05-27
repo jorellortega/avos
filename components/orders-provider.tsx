@@ -1,6 +1,13 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react"
 import { Proteina } from "@/lib/menu-data"
 
 export type OrderStatus = "pendiente" | "preparando" | "listo" | "entregado" | "pagado"
@@ -50,6 +57,8 @@ interface OrdersContextType {
   getOrderByNumber: (numero: number) => Order | undefined
   getNextOrderNumber: () => number
   deleteOrder: (orderId: string) => void
+  /** Merge server rows (e.g. today's orders) without wiping local edits. */
+  mergeServerOrders: (incoming: Order[]) => void
 }
 
 const OrdersContext = createContext<OrdersContextType | undefined>(undefined)
@@ -111,21 +120,23 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     return newOrder
   }
 
-  const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders(prev => prev.map(order => 
-      order.id === orderId 
-        ? { ...order, status, updatedAt: new Date() }
-        : order
-    ))
-  }
+  const updateOrderStatus = useCallback((orderId: string, status: OrderStatus) => {
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.id === orderId ? { ...order, status } : order,
+      ),
+    )
+  }, [])
 
-  const updateOrder = (orderId: string, updates: Partial<Order>) => {
-    setOrders(prev => prev.map(order => 
-      order.id === orderId 
-        ? { ...order, ...updates, updatedAt: new Date() }
-        : order
-    ))
-  }
+  const updateOrder = useCallback((orderId: string, updates: Partial<Order>) => {
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.id === orderId
+          ? { ...order, ...updates, updatedAt: new Date() }
+          : order,
+      ),
+    )
+  }, [])
 
   const getOrderByNumber = (numero: number) => {
     return orders.find(o => o.numero === numero)
@@ -135,6 +146,28 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
     setOrders(prev => prev.filter(o => o.id !== orderId))
   }
 
+  const mergeServerOrders = useCallback((incoming: Order[]) => {
+    if (incoming.length === 0) return
+    setOrders((prev) => {
+      const byId = new Map(prev.map((o) => [o.id, o]))
+      for (const row of incoming) {
+        const existing = byId.get(row.id)
+        if (!existing) {
+          byId.set(row.id, row)
+          continue
+        }
+        if (row.updatedAt.getTime() >= existing.updatedAt.getTime()) {
+          byId.set(row.id, row)
+        }
+      }
+      return Array.from(byId.values())
+    })
+    setOrderCounter((prev) => {
+      const maxNum = incoming.reduce((m, o) => Math.max(m, o.numero), 0)
+      return Math.max(prev, maxNum + 1)
+    })
+  }, [])
+
   return (
     <OrdersContext.Provider value={{
       orders,
@@ -143,7 +176,8 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       updateOrder,
       getOrderByNumber,
       getNextOrderNumber,
-      deleteOrder
+      deleteOrder,
+      mergeServerOrders,
     }}>
       {children}
     </OrdersContext.Provider>
