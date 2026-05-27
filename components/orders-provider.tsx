@@ -57,34 +57,44 @@ const OrdersContext = createContext<OrdersContextType | undefined>(undefined)
 export function OrdersProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([])
   const [orderCounter, setOrderCounter] = useState(1)
+  const [hydrated, setHydrated] = useState(false)
 
   // Load orders from localStorage on mount
   useEffect(() => {
     const savedOrders = localStorage.getItem("avos-orders")
     const savedCounter = localStorage.getItem("avos-order-counter")
     if (savedOrders) {
-      const parsed = JSON.parse(savedOrders)
-      setOrders(parsed.map((o: Order) => ({
-        ...o,
-        createdAt: new Date(o.createdAt),
-        updatedAt: new Date(o.updatedAt)
-      })))
+      try {
+        const parsed = JSON.parse(savedOrders) as Order[]
+        if (Array.isArray(parsed)) {
+          setOrders(
+            parsed.map((o) => ({
+              ...o,
+              createdAt: new Date(o.createdAt),
+              updatedAt: new Date(o.updatedAt),
+            })),
+          )
+        }
+      } catch {
+        localStorage.removeItem("avos-orders")
+      }
     }
     if (savedCounter) {
-      setOrderCounter(parseInt(savedCounter))
+      setOrderCounter(parseInt(savedCounter, 10))
     }
+    setHydrated(true)
   }, [])
 
-  // Save orders to localStorage when they change
+  // Persist every change (including empty list after delete)
   useEffect(() => {
-    if (orders.length > 0) {
-      localStorage.setItem("avos-orders", JSON.stringify(orders))
-    }
-  }, [orders])
+    if (!hydrated) return
+    localStorage.setItem("avos-orders", JSON.stringify(orders))
+  }, [orders, hydrated])
 
   useEffect(() => {
+    if (!hydrated) return
     localStorage.setItem("avos-order-counter", orderCounter.toString())
-  }, [orderCounter])
+  }, [orderCounter, hydrated])
 
   const getNextOrderNumber = () => orderCounter
 

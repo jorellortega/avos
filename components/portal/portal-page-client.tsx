@@ -5,7 +5,6 @@ import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -56,9 +55,7 @@ import {
   PanelLeft,
   UserCircle,
 } from "lucide-react"
-import { OrderItemExtrasPicker } from "@/components/order-item-extras-picker"
 import {
-  useCustomizationConfig,
   useOrderCustomizationsContextOptional,
 } from "@/components/order-customizations-provider"
 import {
@@ -74,8 +71,12 @@ import {
 } from "@/components/portal/portal-ai-chat"
 import { PortalOrdersPanel } from "@/components/portal/portal-orders-panel"
 import { PortalOrderSubmitBar } from "@/components/portal/portal-order-submit-bar"
+import { PortalCartLineCustomization } from "@/components/portal/portal-cart-line-customization"
 import { orderItemsTotal } from "@/lib/portal-menu-snapshot"
-import { applyPortalCartItemUpdate } from "@/lib/portal-cart-item"
+import {
+  applyPortalCartItemUpdate,
+  parseCartLineBaseId,
+} from "@/lib/portal-cart-item"
 import { cn } from "@/lib/utils"
 
 type CreatedOrderBanner = {
@@ -93,7 +94,6 @@ export function PortalPageClient() {
   const bebidaImgs = useBebidaImagenes()
 
   const [profile, setProfile] = useState<StaffProfile | null>(null)
-  const [cashierName, setCashierName] = useState("")
   const [draftItems, setDraftItems] = useState<OrderItem[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [menuTab, setMenuTab] = useState("tacos")
@@ -122,15 +122,6 @@ export function PortalPageClient() {
   }, [])
 
   const customizationsCtx = useOrderCustomizationsContextOptional()
-  const pendingPlatilloId =
-    getPlatillosForCategoria(
-      categorias.find((c) => c.id === menuTab) ?? categorias[0],
-    )[0]?.id ?? menuTab
-  const pendingConfig = useCustomizationConfig(menuTab, pendingPlatilloId)
-  const [pendingExtras, setPendingExtras] = useState<string[]>(() =>
-    defaultOrderExtras(pendingConfig),
-  )
-  const [pendingCustomNote, setPendingCustomNote] = useState("")
 
   const selectedOrder = useMemo(
     () => (selectedOrderId ? orders.find((o) => o.id === selectedOrderId) : null),
@@ -285,9 +276,7 @@ export function PortalPageClient() {
         .eq("id", user.id)
         .maybeSingle()
       if (data) {
-        const p = data as StaffProfile
-        setProfile(p)
-        setCashierName(p.full_name?.trim() || p.email?.split("@")[0] || "Staff")
+        setProfile(data as StaffProfile)
       }
     })()
   }, [])
@@ -314,8 +303,9 @@ export function PortalPageClient() {
       customizationsCtx?.customizations?.getConfig(categoria.id, platilloId) ??
       defaultPlatilloCustomizationConfig()
     const baseId = `${categoria.id}-${platilloId}-${proteina || "default"}`
-    const itemId = cartLineKey(baseId, pendingExtras, pendingCustomNote, config)
-    const notas = formatOrderItemNotas(pendingExtras, pendingCustomNote, config)
+    const extras = defaultOrderExtras(config)
+    const itemId = cartLineKey(baseId, extras, "", config)
+    const notas = formatOrderItemNotas(extras, "", config)
     const existingItem = activeItems.find((i) => i.id === itemId)
 
     const next = existingItem
@@ -336,8 +326,6 @@ export function PortalPageClient() {
         ]
     setActiveItems(next)
     setAddMode(true)
-    setPendingExtras(defaultOrderExtras(config))
-    setPendingCustomNote("")
   }
 
   const addBebida = (bebida: (typeof bebidas)[number], tamano: BebidaTamano) => {
@@ -380,6 +368,50 @@ export function PortalPageClient() {
 
   const removeItem = (itemId: string) => {
     setActiveItems(activeItems.filter((item) => item.id !== itemId))
+  }
+
+  const updateItemCustomization = (
+    itemId: string,
+    extras: string[],
+    customNote: string,
+  ) => {
+    const item = activeItems.find((i) => i.id === itemId)
+    if (!item) return
+    const parsed = parseCartLineBaseId(itemId)
+    if (!parsed) return
+
+    const config =
+      customizationsCtx?.customizations?.getConfig(
+        parsed.categoriaId,
+        parsed.platilloId,
+      ) ?? defaultPlatilloCustomizationConfig()
+    const baseId = `${parsed.categoriaId}-${parsed.platilloId}-${parsed.proteina || "default"}`
+    const newId = cartLineKey(baseId, extras, customNote, config)
+    const notas = formatOrderItemNotas(extras, customNote, config)
+
+    if (newId === itemId) {
+      setActiveItems(
+        activeItems.map((i) => (i.id === itemId ? { ...i, notas } : i)),
+      )
+      return
+    }
+
+    const without = activeItems.filter((i) => i.id !== itemId)
+    const existing = without.find((i) => i.id === newId)
+    if (existing) {
+      setActiveItems(
+        without
+          .map((i) =>
+            i.id === newId
+              ? { ...i, cantidad: i.cantidad + item.cantidad, notas }
+              : i,
+          )
+          .filter((i) => i.cantidad > 0),
+      )
+      return
+    }
+
+    setActiveItems([...without, { ...item, id: newId, notas }])
   }
 
   const retrySyncOrder = async () => {
@@ -631,6 +663,15 @@ export function PortalPageClient() {
             className="flex items-center gap-1 shrink-0"
             aria-label="Portal de caja"
           >
+            <Link href="/menu">
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5 bg-black text-white hover:bg-black/90 dark:bg-black dark:hover:bg-black/90"
+              >
+                Menú
+              </Button>
+            </Link>
             <Link href="/cocina">
               <Button variant="secondary" size="sm" className="gap-1.5">
                 <ChefHat className="h-4 w-4" />
@@ -669,16 +710,6 @@ export function PortalPageClient() {
               </SheetContent>
             </Sheet>
           </nav>
-
-          <label className="text-xs flex items-center gap-1.5 shrink-0 ml-auto">
-            <span className="opacity-80 whitespace-nowrap">Cobrando:</span>
-            <Input
-              value={cashierName}
-              onChange={(e) => setCashierName(e.target.value)}
-              className="h-8 w-36 text-sm bg-primary-foreground/10 border-primary-foreground/30 text-primary-foreground placeholder:text-primary-foreground/50"
-              placeholder="Nombre"
-            />
-          </label>
         </div>
       </header>
 
@@ -697,7 +728,7 @@ export function PortalPageClient() {
                   : `Orden #${orderCreated.numero} — no guardada en servidor`}
               </p>
               <p className="text-sm text-white/85">
-                Total ${orderCreated.total.toFixed(2)} · Cobro: {cashierName}
+                Total ${orderCreated.total.toFixed(2)} · Tomando: {takerName}
               </p>
             </div>
             {!orderCreated.synced && (
@@ -835,18 +866,7 @@ export function PortalPageClient() {
                   <CardContent>
                     <Tabs
                       value={menuTab}
-                      onValueChange={(v) => {
-                        setMenuTab(v)
-                        const cat = categorias.find((c) => c.id === v)
-                        const pid = cat
-                          ? (getPlatillosForCategoria(cat)[0]?.id ?? v)
-                          : v
-                        const cfg =
-                          customizationsCtx?.customizations?.getConfig(v, pid) ??
-                          defaultPlatilloCustomizationConfig()
-                        setPendingExtras(defaultOrderExtras(cfg))
-                        setPendingCustomNote("")
-                      }}
+                      onValueChange={setMenuTab}
                     >
                       <TabsList className="grid grid-cols-6 mb-4 h-auto">
                         {categorias.map((cat) => (
@@ -1015,117 +1035,119 @@ export function PortalPageClient() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {!selectedOrder && (
-                      <OrderItemExtrasPicker
-                        config={pendingConfig}
-                        extras={pendingExtras}
-                        customNote={pendingCustomNote}
-                        onExtrasChange={setPendingExtras}
-                        onCustomNoteChange={setPendingCustomNote}
-                        compact
-                      />
-                    )}
-
-                    <div className="border-t pt-3 space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-3 max-h-[min(24rem,50vh)] overflow-y-auto">
                       {activeItems.length === 0 ? (
                         <p className="text-center text-muted-foreground text-sm py-6">
                           Menú manual o escribe en la IA arriba
                         </p>
                       ) : (
-                        activeItems.map((item) => (
-                          <div
-                            key={item.id}
-                            className={cn(
-                              "flex items-center justify-between gap-2 rounded-md -mx-1 px-1",
-                              (item.needsProteina ||
-                                item.needsBebidaTamano ||
-                                item.needsBebidaEleccion) &&
-                                "border border-destructive/50 bg-destructive/5 py-1",
-                            )}
-                          >
-                            <button
-                              type="button"
+                        activeItems.map((item) => {
+                          const needsFix =
+                            item.needsProteina ||
+                            item.needsBebidaTamano ||
+                            item.needsBebidaEleccion
+                          const showCustomization =
+                            !needsFix && parseCartLineBaseId(item.id) != null
+
+                          return (
+                            <div
+                              key={item.id}
                               className={cn(
-                                "min-w-0 flex-1 text-left",
-                                (item.needsProteina ||
-                                item.needsBebidaTamano ||
-                                item.needsBebidaEleccion) &&
-                                  "cursor-pointer",
+                                "rounded-md border border-border/60 px-2 py-2 space-y-2",
+                                needsFix &&
+                                  "border-destructive/50 bg-destructive/5",
                               )}
-                              onClick={() => {
-                                if (
-                                  item.needsProteina ||
-                                  item.needsBebidaTamano ||
-                                  item.needsBebidaEleccion
-                                ) {
-                                  chatRef.current?.openItemFixPicker(item.id)
-                                }
-                              }}
                             >
-                              <p
-                                className={cn(
-                                  "text-sm font-medium truncate",
-                                  (item.needsProteina ||
-                                item.needsBebidaTamano ||
-                                item.needsBebidaEleccion) &&
-                                    "text-destructive",
-                                )}
-                              >
-                                {item.nombre}
-                              </p>
-                              {item.notas && (
-                                <p className="text-xs text-primary/90 line-clamp-1">
-                                  {item.notas}
-                                </p>
-                              )}
-                              <p className="text-xs text-muted-foreground">
-                                ${item.precio} × {item.cantidad}
-                              </p>
-                              {item.needsProteina && (
-                                <p className="text-xs text-destructive">
-                                  Toca para elegir proteína
-                                </p>
-                              )}
-                              {item.needsBebidaEleccion && (
-                                <p className="text-xs text-destructive">
-                                  Toca para elegir bebida
-                                </p>
-                              )}
-                              {item.needsBebidaTamano && (
-                                <p className="text-xs text-destructive">
-                                  Toca para elegir tamaño (chico / grande)
-                                </p>
-                              )}
-                            </button>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => updateQuantity(item.id, -1)}
-                              >
-                                <Minus className="h-3 w-3" />
-                              </Button>
-                              <span className="w-5 text-center text-sm">{item.cantidad}</span>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => updateQuantity(item.id, 1)}
-                              >
-                                <Plus className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-destructive"
-                                onClick={() => removeItem(item.id)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
+                              <div className="flex items-start justify-between gap-2">
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    "min-w-0 flex-1 text-left",
+                                    needsFix && "cursor-pointer",
+                                  )}
+                                  onClick={() => {
+                                    if (needsFix) {
+                                      chatRef.current?.openItemFixPicker(item.id)
+                                    }
+                                  }}
+                                >
+                                  <p
+                                    className={cn(
+                                      "text-sm font-medium truncate",
+                                      needsFix && "text-destructive",
+                                    )}
+                                  >
+                                    {item.nombre}
+                                  </p>
+                                  {item.notas && !showCustomization && (
+                                    <p className="text-xs text-primary/90 line-clamp-1">
+                                      {item.notas}
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-muted-foreground">
+                                    ${item.precio} × {item.cantidad}
+                                  </p>
+                                  {item.needsProteina && (
+                                    <p className="text-xs text-destructive">
+                                      Toca para elegir proteína
+                                    </p>
+                                  )}
+                                  {item.needsBebidaEleccion && (
+                                    <p className="text-xs text-destructive">
+                                      Toca para elegir bebida
+                                    </p>
+                                  )}
+                                  {item.needsBebidaTamano && (
+                                    <p className="text-xs text-destructive">
+                                      Toca para elegir tamaño (chico / grande)
+                                    </p>
+                                  )}
+                                </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => updateQuantity(item.id, -1)}
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                  <span className="w-5 text-center text-sm">
+                                    {item.cantidad}
+                                  </span>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => updateQuantity(item.id, 1)}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive"
+                                    onClick={() => removeItem(item.id)}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                              {showCustomization ? (
+                                <PortalCartLineCustomization
+                                  itemId={item.id}
+                                  onChange={(extras, customNote) =>
+                                    updateItemCustomization(
+                                      item.id,
+                                      extras,
+                                      customNote,
+                                    )
+                                  }
+                                />
+                              ) : null}
                             </div>
-                          </div>
-                        ))
+                          )
+                        })
                       )}
                     </div>
 

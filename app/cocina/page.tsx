@@ -7,7 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useOrders, OrderStatus } from "@/components/orders-provider"
 import { useManagerOrCeoNavAccess } from "@/hooks/use-manager-or-ceo-nav-access"
-import { ChefHat, Users, Clock, Check, Play, ArrowLeft, RefreshCw, Trash2 } from "lucide-react"
+import {
+  ChefHat,
+  Users,
+  Clock,
+  Check,
+  Play,
+  RefreshCw,
+  Trash2,
+  Home,
+  CreditCard,
+} from "lucide-react"
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   pendiente: { label: "Pendiente", color: "text-yellow-700", bg: "bg-yellow-100 border-yellow-300" },
@@ -78,12 +88,16 @@ export default function CocinaPage() {
         body: JSON.stringify({ orderId }),
       })
       const data = (await res.json()) as { ok?: boolean; error?: string; status?: string }
-      if (!res.ok || !data.ok) {
-        console.error("[cocina]", data.error)
-        alert(data.error ?? "No se pudo actualizar en el servidor. Revisa la consola.")
+      if (res.ok && data.ok) {
+        updateOrderStatus(orderId, (data.status as OrderStatus) ?? next)
         return
       }
-      updateOrderStatus(orderId, (data.status as OrderStatus) ?? next)
+      if (res.status === 404) {
+        updateOrderStatus(orderId, next)
+        return
+      }
+      console.error("[cocina]", data.error)
+      alert(data.error ?? "No se pudo actualizar en el servidor.")
     } catch (e) {
       console.error("[cocina]", e)
       alert("Error de red al guardar el estado.")
@@ -121,12 +135,16 @@ export default function CocinaPage() {
         body: JSON.stringify({ orderId }),
       })
       const data = (await res.json()) as { ok?: boolean; error?: string }
-      if (!res.ok || !data.ok) {
-        console.error("[cocina] delete", data.error)
-        alert(data.error ?? "No se pudo eliminar la orden.")
+      if (res.ok && data.ok) {
+        deleteOrder(orderId)
         return
       }
-      deleteOrder(orderId)
+      if (res.status === 404) {
+        deleteOrder(orderId)
+        return
+      }
+      console.error("[cocina] delete", data.error)
+      alert(data.error ?? "No se pudo eliminar la orden.")
     } catch (e) {
       console.error("[cocina] delete", e)
       alert("Error de red al eliminar la orden.")
@@ -150,41 +168,103 @@ export default function CocinaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      {/* Header */}
-      <header className="bg-foreground text-background py-4 px-4">
-        <div className="container mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/staff">
-              <Button variant="ghost" size="icon" className="text-background hover:bg-background/10">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <ChefHat className="h-6 w-6" />
-              <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>
-                Pantalla de Cocina
+    <div className="min-h-screen bg-muted/30 flex flex-col">
+      <div className="border-b bg-card shrink-0">
+        <div className="px-4 py-2 flex items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-foreground hover:opacity-80 transition-opacity"
+          >
+            <Home className="h-4 w-4 text-primary shrink-0" aria-hidden />
+            <span
+              className="font-bold text-primary text-sm sm:text-base"
+              style={{ fontFamily: "var(--font-heading)" }}
+            >
+              AVOS
+            </span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              Inicio
+            </span>
+          </Link>
+          <Link
+            href="/staff/dashboard"
+            className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+          >
+            Panel de personal
+          </Link>
+        </div>
+      </div>
+
+      <header className="bg-primary text-primary-foreground shrink-0">
+        <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <ChefHat className="h-7 w-7 shrink-0 opacity-90" aria-hidden />
+            <div className="min-w-0">
+              <h1
+                className="text-lg font-bold truncate"
+                style={{ fontFamily: "var(--font-heading)" }}
+              >
+                Pantalla de cocina
               </h1>
+              <p className="text-xs opacity-90">
+                {activeOrders.length}{" "}
+                {activeOrders.length === 1 ? "orden activa" : "órdenes activas"}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-              {pendingCount} pendientes
-            </Badge>
-            <Badge variant="outline" className="bg-blue-500/20 text-blue-300 border-blue-500/30">
-              {preparingCount} preparando
-            </Badge>
-            <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
-              {readyCount} listos
-            </Badge>
-            <Button 
-              variant="ghost" 
+
+          <nav
+            className="flex items-center gap-1 shrink-0"
+            aria-label="Cocina"
+          >
+            <Link href="/cocina" aria-current="page">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-1.5 ring-2 ring-primary-foreground/40"
+              >
+                <ChefHat className="h-4 w-4" />
+                Cocina
+              </Button>
+            </Link>
+            <Link href="/portal">
+              <Button variant="secondary" size="sm" className="gap-1.5">
+                <CreditCard className="h-4 w-4" />
+                Portal
+              </Button>
+            </Link>
+            <Button
+              type="button"
+              variant="secondary"
               size="icon"
-              className="text-background hover:bg-background/10"
+              className="h-8 w-8"
+              title="Actualizar"
+              aria-label="Actualizar"
               onClick={() => setCurrentTime(new Date())}
             >
-              <RefreshCw className="h-5 w-5" />
+              <RefreshCw className="h-4 w-4" />
             </Button>
+          </nav>
+
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
+            <Badge
+              variant="outline"
+              className="bg-primary-foreground/10 text-primary-foreground border-primary-foreground/25"
+            >
+              {pendingCount} pendientes
+            </Badge>
+            <Badge
+              variant="outline"
+              className="bg-primary-foreground/10 text-primary-foreground border-primary-foreground/25"
+            >
+              {preparingCount} preparando
+            </Badge>
+            <Badge
+              variant="outline"
+              className="bg-primary-foreground/10 text-primary-foreground border-primary-foreground/25"
+            >
+              {readyCount} listos
+            </Badge>
           </div>
         </div>
       </header>

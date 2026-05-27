@@ -40,27 +40,27 @@ export function MenuCategoryBlock({
 
   return (
     <div
-      className={`mb-16 ${sectionIndex > 0 ? "pt-8 border-t border-border" : ""}`}
+      className={`mb-8 ${sectionIndex > 0 ? "pt-6 border-t border-border" : ""}`}
       id={categoriaId}
     >
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex-1">
-          <h2
-            className="text-2xl md:text-3xl font-bold text-foreground"
-            style={{ fontFamily: "var(--font-heading)" }}
+      <div className="mb-3">
+        <h2
+          className="text-xl md:text-2xl font-bold text-foreground"
+          style={{ fontFamily: "var(--font-heading)" }}
+        >
+          <Link
+            href={`/menu/${categoriaId}`}
+            className="hover:text-primary transition-colors"
           >
-            <Link
-              href={`/menu/${categoriaId}`}
-              className="hover:text-primary transition-colors"
-            >
-              {categoriaNombre}
-            </Link>
-          </h2>
-          <p className="text-muted-foreground mt-1">{descripcion}</p>
-        </div>
+            {categoriaNombre}
+          </Link>
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">
+          {descripcion}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
         {platillos
           .filter(
             (platillo) =>
@@ -69,6 +69,7 @@ export function MenuCategoryBlock({
           .map((platillo) => (
           <MenuItemCard
             key={platillo.id}
+            collapsible
             categoriaId={categoriaId}
             platilloId={platillo.id}
             categoria={categoriaNombre}

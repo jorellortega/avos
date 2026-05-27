@@ -20,6 +20,9 @@ type Props = {
   onCustomNoteChange: (note: string) => void
   className?: string
   compact?: boolean
+  /** Per cart line: only pills, no section heading */
+  inline?: boolean
+  noteInputId?: string
 }
 
 export function OrderItemExtrasPicker({
@@ -30,6 +33,8 @@ export function OrderItemExtrasPicker({
   onCustomNoteChange,
   className,
   compact,
+  inline,
+  noteInputId = "order-extra-note",
 }: Props) {
   const config = configProp ?? defaultPlatilloCustomizationConfig()
   const defaultId = config.defaultId
@@ -76,16 +81,20 @@ export function OrderItemExtrasPicker({
   }
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn(inline ? "space-y-2" : "space-y-3", className)}>
       <div>
-        <Label className={cn("text-sm font-medium", compact && "text-xs")}>
-          ¿Cómo lo quieres?
-        </Label>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Por defecto va {config.defaultLabel.toLowerCase()}. Toca personalizar
-          si quieres quitar algo.
-        </p>
-        <div className="flex flex-wrap gap-2 mt-2">
+        {!inline ? (
+          <>
+            <Label className={cn("text-sm font-medium", compact && "text-xs")}>
+              ¿Cómo lo quieres?
+            </Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Por defecto va {config.defaultLabel.toLowerCase()}. Toca personalizar
+              si quieres quitar algo.
+            </p>
+          </>
+        ) : null}
+        <div className={cn("flex flex-wrap gap-2", !inline && "mt-2")}>
           <button
             type="button"
             onClick={selectDefault}
@@ -147,13 +156,13 @@ export function OrderItemExtrasPicker({
       {showCustomize ? (
         <div>
           <Label
-            htmlFor="order-extra-note"
+            htmlFor={noteInputId}
             className={cn("text-sm font-medium", compact && "text-xs")}
           >
             Otra instrucción
           </Label>
           <Textarea
-            id="order-extra-note"
+            id={noteInputId}
             value={customNote}
             onChange={(e) => onCustomNoteChange(e.target.value)}
             placeholder="Ej. poco picante, sin crema…"

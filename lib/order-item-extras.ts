@@ -1,5 +1,6 @@
 import {
   CON_TODO_EXTRA_ID,
+  defaultOrderExtras,
   defaultPlatilloCustomizationConfig,
   type CustomizeOptionDef,
   type PlatilloCustomizationConfig,
@@ -70,6 +71,27 @@ export function cartLineKey(
     extras.length === 0 && !custom ? [defaultId] : extras
   const sorted = [...normalized].sort().join(",")
   return `${baseId}::${sorted}::${custom}`
+}
+
+export function parseCartLineCustomization(
+  itemId: string,
+  config: PlatilloCustomizationConfig = defaultPlatilloCustomizationConfig(),
+): { baseId: string; extras: string[]; customNote: string } {
+  const parts = itemId.split("::")
+  const baseId = parts[0]
+  if (parts.length < 3) {
+    return {
+      baseId,
+      extras: defaultOrderExtras(config),
+      customNote: "",
+    }
+  }
+  const extrasRaw = parts[1]
+  const customNote = parts.slice(2).join("::")
+  const extras = extrasRaw
+    ? extrasRaw.split(",").filter(Boolean)
+    : defaultOrderExtras(config)
+  return { baseId, extras, customNote }
 }
 
 export type { CustomizeOptionDef, PlatilloCustomizationConfig }

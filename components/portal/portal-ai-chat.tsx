@@ -75,12 +75,6 @@ type PortalAiChatProps = {
   disabled?: boolean
 }
 
-const INITIAL: ChatMessage = {
-  role: "assistant",
-  content:
-    'Escribe el pedido en español o inglés. Ej: "2 tacos asada sin salsa, agua chica, burrito pastor".',
-}
-
 export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
   function PortalAiChat(
     {
@@ -102,7 +96,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
     },
     ref,
   ) {
-    const [messages, setMessages] = useState<ChatMessage[]>([INITIAL])
+    const [messages, setMessages] = useState<ChatMessage[]>([])
     const [input, setInput] = useState("")
     const [isSending, setIsSending] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -165,7 +159,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
 
     const resetChat = useCallback(() => {
       skipCartSyncRef.current = true
-      setMessages([INITIAL])
+      setMessages([])
       setInput("")
       setError(null)
       setItemFixItemId(null)
@@ -190,7 +184,6 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
         const lines = buildPortalOrderLineBreakdown(items)
         const total = orderItemsTotal(items)
         setMessages([
-          INITIAL,
           { role: "assistant", content: "", orderReply: { lines, total } },
         ])
         setInput("")
@@ -439,7 +432,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
         setError(
           e instanceof Error
             ? e.message
-            : "No se pudo dictar con el navegador.",
+            : "No se pudo dictar el pedido.",
         )
       } finally {
         browserSpeechRef.current = null
@@ -478,9 +471,6 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
               ...voiceBusyRef.current,
               transcribing: false,
             }
-            setError(
-              "ElevenLabs sin permiso STT. Usando dictado del navegador…",
-            )
             await startBrowserDictation({ force: true })
             return
           }
@@ -591,6 +581,8 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
 
     const voiceBusy = isRecording || isTranscribing
     const hasOrderReply = messages.some((m) => m.orderReply)
+    const showMessageLog =
+      messages.length > 0 || isSending || isTranscribing || isRecording
 
     return (
       <div ref={cardRef} className="scroll-mt-4">
@@ -623,11 +615,6 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                   <span className="text-green-700 dark:text-green-400 font-medium">
                     Agregando a orden #{displayNum} — escribe más artículos
                   </span>
-                ) : useBrowserStt ? (
-                  <>
-                    Dictado del navegador (sin ElevenLabs STT) · Orden #
-                    {displayNum}
-                  </>
                 ) : (
                   <>
                     Escribe o usa el micrófono · La IA arma el carrito · Orden #
@@ -639,82 +626,88 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           </div>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-0 space-y-3">
-          <div
-            ref={scrollRef}
-            className={cn(
-              "rounded-md border bg-muted/40 p-3 space-y-2 text-sm",
-              hasOrderReply
-                ? "overflow-visible"
-                : "max-h-36 overflow-y-auto",
-            )}
-            role="log"
-          >
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "rounded-lg px-2.5 py-1.5 break-words",
-                  m.role === "user"
-                    ? "ml-6 bg-primary text-primary-foreground whitespace-pre-wrap"
-                    : "mr-6 bg-card border text-foreground",
-                )}
-              >
-                {m.orderReply ? (
-                <PortalAiOrderReply
-                  lines={m.orderReply.lines}
-                  total={m.orderReply.total}
-                  orderNumero={displayNum}
-                  warnings={m.orderReply.warnings}
-                  onUpdateItem={onUpdateItem}
-                  onDeleteItem={onDeleteItem}
-                  onAiCustomize={onUpdateItem ? handleAiCustomize : undefined}
-                  onAddItem={
-                    i === lastOrderReplyIndex && hasActiveCart
-                      ? onRequestAddItem
-                      : undefined
-                  }
-                  itemFixItemId={i === lastOrderReplyIndex ? itemFixItemId : null}
-                  onItemFixHandled={() => setItemFixItemId(null)}
-                  orderTipo={orderTipo}
-                  onOrderTipoChange={
-                    i === lastOrderReplyIndex ? onOrderTipoChange : undefined
-                  }
-                  delivery={delivery}
-                  needsDelivery={
-                    i === lastOrderReplyIndex ? needsDelivery : false
-                  }
-                  onDeliverySave={
-                    i === lastOrderReplyIndex ? onDeliverySave : undefined
-                  }
-                />
-                ) : (
-                  <span className="whitespace-pre-wrap text-sm">{m.content}</span>
-                )}
-              </div>
-            ))}
-            {(isSending || isTranscribing) && (
-              <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {isTranscribing ? "Transcribiendo…" : "Calculando…"}
-              </div>
-            )}
-            {isRecording && (
-              <div className="flex items-center gap-2 text-destructive text-xs font-medium">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
-                </span>
-                {useBrowserStt
-                  ? "Escuchando… toca el micrófono para enviar"
-                  : "Grabando… toca el micrófono para terminar"}
-              </div>
-            )}
-          </div>
-          {error && (
+          {showMessageLog ? (
+            <div
+              ref={scrollRef}
+              className={cn(
+                "rounded-md border bg-muted/40 p-3 space-y-2 text-sm",
+                hasOrderReply
+                  ? "overflow-visible"
+                  : "max-h-36 overflow-y-auto",
+              )}
+              role="log"
+            >
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "rounded-lg px-2.5 py-1.5 break-words",
+                    m.role === "user"
+                      ? "ml-6 bg-primary text-primary-foreground whitespace-pre-wrap"
+                      : "mr-6 bg-card border text-foreground",
+                  )}
+                >
+                  {m.orderReply ? (
+                    <PortalAiOrderReply
+                      lines={m.orderReply.lines}
+                      total={m.orderReply.total}
+                      orderNumero={displayNum}
+                      warnings={m.orderReply.warnings}
+                      onUpdateItem={onUpdateItem}
+                      onDeleteItem={onDeleteItem}
+                      onAiCustomize={
+                        onUpdateItem ? handleAiCustomize : undefined
+                      }
+                      onAddItem={
+                        i === lastOrderReplyIndex && hasActiveCart
+                          ? onRequestAddItem
+                          : undefined
+                      }
+                      itemFixItemId={
+                        i === lastOrderReplyIndex ? itemFixItemId : null
+                      }
+                      onItemFixHandled={() => setItemFixItemId(null)}
+                      orderTipo={orderTipo}
+                      onOrderTipoChange={
+                        i === lastOrderReplyIndex ? onOrderTipoChange : undefined
+                      }
+                      delivery={delivery}
+                      needsDelivery={
+                        i === lastOrderReplyIndex ? needsDelivery : false
+                      }
+                      onDeliverySave={
+                        i === lastOrderReplyIndex ? onDeliverySave : undefined
+                      }
+                    />
+                  ) : (
+                    <span className="whitespace-pre-wrap text-sm">
+                      {m.content}
+                    </span>
+                  )}
+                </div>
+              ))}
+              {(isSending || isTranscribing) && (
+                <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {isTranscribing ? "Transcribiendo…" : "Calculando…"}
+                </div>
+              )}
+              {isRecording && (
+                <div className="flex items-center gap-2 text-destructive text-xs font-medium">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
+                  </span>
+                  Escuchando… toca el micrófono para enviar
+                </div>
+              )}
+            </div>
+          ) : null}
+          {error ? (
             <p className="text-xs text-destructive" role="alert">
               {error}
             </p>
-          )}
+          ) : null}
           <div className="flex gap-2">
             <Textarea
               ref={inputRef}
@@ -748,11 +741,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
               className="shrink-0 self-end"
               disabled={isSending || disabled || isTranscribing}
               title={
-                isRecording
-                  ? "Detener y enviar pedido"
-                  : useBrowserStt
-                    ? "Dictar pedido (navegador)"
-                    : "Dictar pedido con voz"
+                isRecording ? "Detener y enviar pedido" : "Dictar pedido con voz"
               }
               aria-label={
                 isRecording ? "Detener y enviar pedido" : "Dictar pedido con voz"

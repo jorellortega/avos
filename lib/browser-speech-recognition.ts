@@ -32,7 +32,7 @@ export function startBrowserSpeechSession(
       stop: () => {},
       done: Promise.reject(
         new Error(
-          "Dictado del navegador no disponible. Usa Chrome o Safari, o habilita speech_to_text en tu clave de ElevenLabs.",
+          "El dictado por voz no está disponible en este navegador. Usa Chrome o Safari.",
         ),
       ),
     }
@@ -115,7 +115,7 @@ export function startBrowserSpeechSession(
         recognition.start()
       } catch {
         finish(() =>
-          rejectDone(new Error("No se pudo iniciar el dictado del navegador.")),
+          rejectDone(new Error("No se pudo iniciar el dictado por voz.")),
         )
       }
       return
@@ -129,7 +129,7 @@ export function startBrowserSpeechSession(
       } else if (code === "no-speech") {
         rejectDone(new Error("No se escuchó nada. Intenta de nuevo."))
       } else if (code !== "aborted") {
-        rejectDone(new Error("Error de dictado del navegador."))
+        rejectDone(new Error("Error al dictar el pedido."))
       }
     })
   }
