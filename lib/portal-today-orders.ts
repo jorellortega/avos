@@ -16,6 +16,7 @@ export type AvosOrderDbRow = {
   delivery_address?: string | null
   delivery_photo_street_url?: string | null
   delivery_photo_house_url?: string | null
+  extra_charge?: number | null
 }
 
 const VALID_STATUS = new Set<OrderStatus>([
@@ -70,5 +71,9 @@ export function mapAvosOrderRowToOrder(row: AvosOrderDbRow): Order | null {
     deliveryAddress: row.delivery_address ?? undefined,
     deliveryPhotoStreetUrl: row.delivery_photo_street_url ?? undefined,
     deliveryPhotoHouseUrl: row.delivery_photo_house_url ?? undefined,
+    extraCharge:
+      row.extra_charge != null && Number(row.extra_charge) > 0
+        ? Number(row.extra_charge)
+        : undefined,
   }
 }

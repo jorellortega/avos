@@ -210,8 +210,13 @@ export const bebidas = [
 
 export type BebidaMenu = (typeof bebidas)[number]
 
+export type BebidaPrecios = {
+  precioChico: number
+  precioGrande: number
+}
+
 export function getBebidaPrecioDefault(
-  bebida: BebidaMenu,
+  bebida: BebidaPrecios,
   tamano: BebidaTamano,
 ): number {
   return tamano === "chico" ? bebida.precioChico : bebida.precioGrande

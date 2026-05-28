@@ -47,6 +47,8 @@ export interface Order {
   deliveryAddress?: string
   deliveryPhotoStreetUrl?: string
   deliveryPhotoHouseUrl?: string
+  /** Optional surcharge / tip added at register (included in total). */
+  extraCharge?: number
 }
 
 interface OrdersContextType {

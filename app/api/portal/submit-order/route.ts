@@ -40,6 +40,7 @@ export async function POST(req: Request) {
     orderId?: string
     items?: OrderItem[]
     total?: number
+    extraCharge?: number
   }
   try {
     body = await req.json()
@@ -51,6 +52,10 @@ export async function POST(req: Request) {
     const orderId = body.orderId
     const items = body.items
     const total = body.total
+    const extraCharge =
+      typeof body.extraCharge === "number" && body.extraCharge >= 0
+        ? body.extraCharge
+        : 0
     if (!orderId || !Array.isArray(items) || typeof total !== "number") {
       return NextResponse.json({ error: "Datos incompletos." }, { status: 400 })
     }
@@ -58,6 +63,7 @@ export async function POST(req: Request) {
       p_id: orderId,
       p_items: items,
       p_total: total,
+      p_extra_charge: extraCharge,
     })
     if (error) {
       console.error("portal submit-order update_cart", error.message)
@@ -93,6 +99,7 @@ export async function POST(req: Request) {
     p_delivery_address: order.deliveryAddress ?? null,
     p_delivery_photo_street_url: order.deliveryPhotoStreetUrl ?? null,
     p_delivery_photo_house_url: order.deliveryPhotoHouseUrl ?? null,
+    p_extra_charge: order.extraCharge ?? 0,
   }
 
   let { error } = await supabase.rpc("insert_avos_order", payload)

@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react"
 import Link from "next/link"
-import { Loader2, Save } from "lucide-react"
+import { Loader2, Plus, Save, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -30,6 +30,9 @@ import {
 import {
   MENU_CATALOG_KEY,
   catalogPlatilloKey,
+  getCatalogBebidas,
+  slugifyBebidaId,
+  type CatalogBebida,
   type MenuCatalogJson,
   serializeMenuCatalogJson,
 } from "@/lib/menu-catalog-shared"
@@ -70,6 +73,7 @@ function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
     hiddenBebidas: [...j.hiddenBebidas],
     outPlatillos: [...j.outPlatillos],
     hiddenPlatillos: [...j.hiddenPlatillos],
+    customBebidas: j.customBebidas.map((b) => ({ ...b })),
   }
 }
 
@@ -85,6 +89,15 @@ export function MenuCatalogEditor({ initial }: Props) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
     null,
   )
+  const [newBebidaNombre, setNewBebidaNombre] = useState("")
+  const [newBebidaChico, setNewBebidaChico] = useState("25")
+  const [newBebidaGrande, setNewBebidaGrande] = useState("35")
+
+  const allBebidaIds = () => {
+    const taken = new Set<string>(bebidas.map((b) => b.id))
+    for (const b of state.customBebidas) taken.add(b.id)
+    return taken
+  }
 
   const isProteinaHiddenForKey = (catalogKey: string, proteina: Proteina) =>
     state.hiddenProteinas.includes(proteina) ||
@@ -235,9 +248,59 @@ export function MenuCatalogEditor({ initial }: Props) {
   }
 
   const bebidaPrecioPlaceholder = (id: string, tamano: BebidaTamano) => {
-    const b = bebidas.find((beb) => beb.id === id)
+    const b = getCatalogBebidas(state).find((beb) => beb.id === id)
     if (!b) return ""
     return String(tamano === "chico" ? b.precioChico : b.precioGrande)
+  }
+
+  const addCustomBebida = () => {
+    const nombre = newBebidaNombre.trim()
+    if (!nombre) return
+    const chico = parseFloat(newBebidaChico)
+    const grande = parseFloat(newBebidaGrande)
+    if (!Number.isFinite(chico) || chico < 0 || !Number.isFinite(grande) || grande < 0) {
+      setMessage({ ok: false, text: "Precios de bebida no válidos." })
+      return
+    }
+    const id = slugifyBebidaId(nombre, allBebidaIds())
+    setState((s) => {
+      const next = cloneJson(s)
+      next.customBebidas.push({
+        id,
+        nombre,
+        precioChico: chico,
+        precioGrande: grande,
+      })
+      return next
+    })
+    setNewBebidaNombre("")
+    setNewBebidaChico("25")
+    setNewBebidaGrande("35")
+    setMessage(null)
+  }
+
+  const updateCustomBebida = (
+    id: string,
+    patch: Partial<Pick<CatalogBebida, "nombre" | "precioChico" | "precioGrande">>,
+  ) => {
+    setState((s) => {
+      const next = cloneJson(s)
+      next.customBebidas = next.customBebidas.map((b) =>
+        b.id === id ? { ...b, ...patch } : b,
+      )
+      return next
+    })
+  }
+
+  const removeCustomBebida = (id: string) => {
+    setState((s) => {
+      const next = cloneJson(s)
+      next.customBebidas = next.customBebidas.filter((b) => b.id !== id)
+      delete next.bebidaPrecios[id]
+      next.outBebidas = next.outBebidas.filter((x) => x !== id)
+      next.hiddenBebidas = next.hiddenBebidas.filter((x) => x !== id)
+      return next
+    })
   }
 
   const categoriaBase = (id: string) =>
@@ -589,8 +652,8 @@ export function MenuCatalogEditor({ initial }: Props) {
         <CardHeader>
           <CardTitle>Bebidas (aguas)</CardTitle>
           <CardDescription>
-            Precio chico y grande por sabor. Puedes agotar u ocultar toda la
-            categoría desde platillos arriba o solo sabores aquí.
+            Precio chico y grande por sabor. Agrega bebidas nuevas abajo. Puedes
+            agotar u ocultar toda la categoría arriba o solo sabores aquí.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -618,7 +681,7 @@ export function MenuCatalogEditor({ initial }: Props) {
               Toda la categoría Bebidas oculta
             </label>
           </div>
-          {bebidas.map((b) => (
+          {getCatalogBebidas(state).map((b) => (
             <div
               key={b.id}
               className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-border pb-4 last:border-0"
@@ -629,7 +692,14 @@ export function MenuCatalogEditor({ initial }: Props) {
                   alt={b.nombre}
                   className="h-10 w-10"
                 />
-                <span className="font-medium">{b.nombre}</span>
+                <span className="font-medium">
+                  {b.nombre}
+                  {b.isCustom ? (
+                    <span className="ml-1.5 text-xs font-normal text-primary">
+                      (adicional)
+                    </span>
+                  ) : null}
+                </span>
               </div>
               <div className="flex flex-wrap items-center gap-4">
                 {(["chico", "grande"] as const).map((tam) => (
@@ -669,9 +739,134 @@ export function MenuCatalogEditor({ initial }: Props) {
                   />
                   Oculto del menú
                 </label>
+                {b.isCustom ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive"
+                    title="Eliminar bebida adicional"
+                    onClick={() => removeCustomBebida(b.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                ) : null}
               </div>
             </div>
           ))}
+
+          <div className="rounded-lg border border-dashed border-primary/40 bg-muted/20 p-4 space-y-3">
+            <p className="text-sm font-medium">Agregar bebida</p>
+            <p className="text-xs text-muted-foreground">
+              Nuevos sabores o productos (refresco embotellado, café, etc.) que
+              no están en la lista base. Aparecen en menú, portal y órdenes.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="sm:col-span-2 space-y-1">
+                <Label htmlFor="new-bebida-nombre">Nombre</Label>
+                <Input
+                  id="new-bebida-nombre"
+                  placeholder="Ej. Coca-Cola, Café americano"
+                  value={newBebidaNombre}
+                  onChange={(e) => setNewBebidaNombre(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="new-bebida-chico">Chico (MXN)</Label>
+                <Input
+                  id="new-bebida-chico"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={newBebidaChico}
+                  onChange={(e) => setNewBebidaChico(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="new-bebida-grande">Grande (MXN)</Label>
+                <Input
+                  id="new-bebida-grande"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={newBebidaGrande}
+                  onChange={(e) => setNewBebidaGrande(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="gap-2"
+              onClick={addCustomBebida}
+              disabled={!newBebidaNombre.trim()}
+            >
+              <Plus className="h-4 w-4" />
+              Agregar bebida
+            </Button>
+          </div>
+
+          {state.customBebidas.length > 0 ? (
+            <div className="space-y-3 pt-2 border-t border-border">
+              <p className="text-sm font-medium">Editar bebidas adicionales</p>
+              {state.customBebidas.map((b) => (
+                <div
+                  key={`edit-${b.id}`}
+                  className="grid grid-cols-1 sm:grid-cols-[1fr_5rem_5rem_auto] gap-2 items-end"
+                >
+                  <div className="space-y-1">
+                    <Label className="text-xs" htmlFor={`custom-nombre-${b.id}`}>
+                      {b.id}
+                    </Label>
+                    <Input
+                      id={`custom-nombre-${b.id}`}
+                      value={b.nombre}
+                      onChange={(e) =>
+                        updateCustomBebida(b.id, { nombre: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Chico</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={String(b.precioChico)}
+                      onChange={(e) => {
+                        const n = parseFloat(e.target.value)
+                        if (Number.isFinite(n) && n >= 0) {
+                          updateCustomBebida(b.id, { precioChico: n })
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Grande</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={String(b.precioGrande)}
+                      onChange={(e) => {
+                        const n = parseFloat(e.target.value)
+                        if (Number.isFinite(n) && n >= 0) {
+                          updateCustomBebida(b.id, { precioGrande: n })
+                        }
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="text-destructive"
+                    onClick={() => removeCustomBebida(b.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

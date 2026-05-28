@@ -191,12 +191,14 @@ export async function updateAvosOrderCartForPortal(
   orderId: string,
   items: OrderItem[],
   total: number,
+  extraCharge = 0,
 ): Promise<{ ok: boolean; error?: string }> {
   return portalOrderFetch({
     action: "update_cart",
     orderId,
     items,
     total,
+    extraCharge,
   })
 }
 
@@ -233,6 +235,7 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
       p_delivery_address: order.deliveryAddress ?? null,
       p_delivery_photo_street_url: order.deliveryPhotoStreetUrl ?? null,
       p_delivery_photo_house_url: order.deliveryPhotoHouseUrl ?? null,
+      p_extra_charge: order.extraCharge ?? 0,
       ...(customerUserId ? { p_customer_user_id: customerUserId } : {}),
     }
 

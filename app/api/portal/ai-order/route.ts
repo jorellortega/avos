@@ -298,6 +298,7 @@ ${menuSnapshot}`
   const sanitizedItems = sanitizePortalAiLinesFromMessage(
     parsed.items as PortalAiLineInput[],
     message,
+    catalog.json,
   )
   const { items: resolved, errors } = resolvePortalAiLines(sanitizedItems, catalog)
   if (resolved.length === 0) {

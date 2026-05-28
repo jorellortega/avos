@@ -33,7 +33,7 @@ export async function GET() {
   const { data: rows, error } = await supabase
     .from("avos_orders")
     .select(
-      "id,numero,total,status,order_type,mesa,nombre_cliente,items,created_at,updated_at,delivery_zone_id,delivery_fee,delivery_address,delivery_photo_street_url,delivery_photo_house_url",
+      "id,numero,total,status,order_type,mesa,nombre_cliente,items,created_at,updated_at,delivery_zone_id,delivery_fee,delivery_address,delivery_photo_street_url,delivery_photo_house_url,extra_charge",
     )
     .gte("created_at", from)
     .lt("created_at", to)

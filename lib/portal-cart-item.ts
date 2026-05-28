@@ -65,7 +65,7 @@ export function parseBebidaItemId(itemId: string): {
   for (const tam of ["chico", "grande"] as const) {
     if (base.endsWith(`-${tam}`)) {
       const bebidaId = base.slice(0, -`-${tam}`.length)
-      if (bebidas.some((b) => b.id === bebidaId)) {
+      if (bebidas.some((b) => b.id === bebidaId) || bebidaId.length > 0) {
         return { bebidaId, tamano: tam }
       }
     }
@@ -118,16 +118,23 @@ function precioConProteina(
   )
 }
 
+function findBebidaForCart(
+  catalog: MenuCatalogHelpers | null,
+  bebidaId: string,
+) {
+  return catalog?.findBebida(bebidaId) ?? bebidas.find((b) => b.id === bebidaId)
+}
+
 function precioBebida(
   catalog: MenuCatalogHelpers | null,
   bebidaId: string,
   tamano: BebidaTamano,
 ): number {
-  const bebida = bebidas.find((b) => b.id === bebidaId)
+  const fromCatalog = catalog?.getBebidaPrecio(bebidaId, tamano)
+  if (fromCatalog != null && fromCatalog > 0) return fromCatalog
+  const bebida = findBebidaForCart(catalog, bebidaId)
   if (!bebida) return 0
-  return (
-    catalog?.getBebidaPrecio(bebidaId, tamano) ?? getBebidaPrecioDefault(bebida, tamano)
-  )
+  return getBebidaPrecioDefault(bebida, tamano)
 }
 
 export type PortalCartItemUpdate = {
@@ -175,7 +182,7 @@ export function applyPortalCartItemUpdate(
     update.bebidaId != null &&
     (item.needsBebidaEleccion || item.categoria === "bebidas")
   ) {
-    const bebida = bebidas.find((b) => b.id === update.bebidaId)
+    const bebida = findBebidaForCart(catalog, update.bebidaId)
     if (!bebida) return items
 
     const parsed = parseBebidaItemId(item.id)
@@ -237,7 +244,7 @@ export function applyPortalCartItemUpdate(
     if (!bebidaId) {
       return items.map((i) => (i.id === itemId ? { ...i, cantidad } : i))
     }
-    const bebida = bebidas.find((b) => b.id === bebidaId)
+    const bebida = findBebidaForCart(catalog, bebidaId)
     if (!bebida) return items
 
     const tam = update.bebidaTamano

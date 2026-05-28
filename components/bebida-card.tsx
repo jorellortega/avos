@@ -17,15 +17,20 @@ import { MENU_COLLAGE_TILE_CLASS } from "@/components/menu-collage-tile"
 import {
   bebidaTamanoLabels,
   getBebidaPrecioDefault,
-  type BebidaMenu,
   type BebidaTamano,
 } from "@/lib/menu-data"
+import type { BebidaCatalogEntry } from "@/lib/menu-catalog-shared"
+
+type BebidaForCard = Pick<
+  BebidaCatalogEntry,
+  "id" | "nombre" | "precioChico" | "precioGrande"
+>
 import { BebidaThumb } from "@/components/bebida-thumb"
 import { useBebidaImagenes } from "@/lib/use-bebida-imagenes"
 import { cn } from "@/lib/utils"
 
 type Props = {
-  bebida: BebidaMenu
+  bebida: BebidaForCard
   collapsible?: boolean
 }
 

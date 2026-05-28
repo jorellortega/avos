@@ -3,7 +3,6 @@ import {
   bebidaTamanoLabels,
   bebidas,
   categorias,
-  getBebidaPrecioDefault,
   getPlatillosForCategoria,
   proteinas,
   type BebidaTamano,
@@ -78,7 +77,7 @@ export function buildPortalMenuSnapshot(catalog: MenuCatalogHelpers): string {
   }
 
   lines.push("\nBebidas (bebidaTamano: chico | grande):")
-  for (const bebida of bebidas) {
+  for (const bebida of catalog.getBebidas()) {
     if (catalog.isBebidaHidden(bebida.id) || catalog.isBebidaOut(bebida.id)) continue
     for (const tam of ["chico", "grande"] as const) {
       const precio = catalog.getBebidaPrecio(bebida.id, tam)
@@ -157,7 +156,7 @@ export function resolvePortalAiLines(
         }
         continue
       }
-      const bebida = bebidas.find((b) => b.id === bebidaId)
+      const bebida = catalog.findBebida(bebidaId)
       if (!bebida) {
         const tamPreset =
           line.bebidaTamano === "grande"
@@ -198,9 +197,7 @@ export function resolvePortalAiLines(
 
       if (tam == null) {
         const itemId = `${bebidaId}-${PORTAL_INCOMPLETE_BEBIDA_SUFFIX}`
-        const precio =
-          catalog.getBebidaPrecio(bebidaId, "chico") ??
-          getBebidaPrecioDefault(bebida, "chico")
+        const precio = catalog.getBebidaPrecio(bebidaId, "chico")
         const existing = byId.get(itemId)
         if (existing) {
           existing.cantidad += qty
@@ -219,9 +216,7 @@ export function resolvePortalAiLines(
         continue
       }
 
-      const precio =
-        catalog.getBebidaPrecio(bebidaId, tam) ??
-        getBebidaPrecioDefault(bebida, tam)
+      const precio = catalog.getBebidaPrecio(bebidaId, tam)
       const itemId = `${bebidaId}-${tam}`
       const nombre = `${bebida.nombre} (${bebidaTamanoLabels[tam]})`
       const existing = byId.get(itemId)

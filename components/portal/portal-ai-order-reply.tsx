@@ -21,7 +21,6 @@ import {
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
   bebidaTamanoLabels,
-  bebidas,
   proteinas,
   type BebidaTamano,
   type Proteina,
@@ -486,7 +485,7 @@ export function PortalAiOrderReply({
                   Elige bebida (requerido)
                 </p>
                 <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
-                  {bebidas.map((b) => {
+                  {(catalog?.getBebidas() ?? []).map((b) => {
                     if (catalog?.isBebidaOut(b.id) || catalog?.isBebidaHidden(b.id)) {
                       return null
                     }

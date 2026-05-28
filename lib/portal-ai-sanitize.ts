@@ -1,5 +1,10 @@
 import { bebidas, categorias, getPlatillosForCategoria, proteinas } from "@/lib/menu-data"
 import type { BebidaTamano } from "@/lib/menu-data"
+import {
+  findBebidaInCatalog,
+  getCatalogBebidas,
+  type MenuCatalogJson,
+} from "@/lib/menu-catalog-shared"
 import type { PortalAiLineInput } from "@/lib/portal-menu-snapshot"
 
 const SEGMENT_SPLIT = /[,;]|\s+\by\b|\s+\band\b/i
@@ -69,9 +74,18 @@ export function segmentMentionsProtein(segment: string): boolean {
   return proteinas.some((p) => s.includes(normalizeText(p)))
 }
 
-function segmentMentionsBebidaFlavor(segment: string): boolean {
+function bebidasForSanitize(catalogJson?: MenuCatalogJson) {
+  return catalogJson
+    ? getCatalogBebidas(catalogJson)
+    : bebidas.map((b) => ({ ...b, isCustom: false as const }))
+}
+
+function segmentMentionsBebidaFlavor(
+  segment: string,
+  catalogJson?: MenuCatalogJson,
+): boolean {
   const s = normalizeText(segment)
-  for (const b of bebidas) {
+  for (const b of bebidasForSanitize(catalogJson)) {
     if (s.includes(normalizeText(b.id))) return true
     const flavor = normalizeText(b.nombre).replace(/^agua de\s+/, "")
     if (flavor.length > 2 && s.includes(flavor)) return true
@@ -79,17 +93,20 @@ function segmentMentionsBebidaFlavor(segment: string): boolean {
   return BEBIDA_FLAVOR_KEYWORDS.some((k) => s.includes(normalizeText(k)))
 }
 
-function isKnownBebidaId(bebidaId: string): boolean {
+function isKnownBebidaId(bebidaId: string, catalogJson?: MenuCatalogJson): boolean {
+  if (catalogJson) return findBebidaInCatalog(bebidaId, catalogJson) != null
   return bebidas.some((b) => b.id === bebidaId)
 }
 
 /** AI often returns bebidaId "agua" — not a real menu id; treat as pick-a-flavor. */
 export function coerceUnknownBebidaLines(
   lines: PortalAiLineInput[],
+  catalogJson?: MenuCatalogJson,
 ): PortalAiLineInput[] {
+  const all = catalogJson ? getCatalogBebidas(catalogJson) : null
   return lines.map((line) => {
     if (!line.bebidaId) return line
-    if (isKnownBebidaId(line.bebidaId)) return line
+    if (isKnownBebidaId(line.bebidaId, catalogJson)) return line
 
     const id = normalizeText(line.bebidaId)
     if (GENERIC_BEBIDA_IDS.has(id)) {
@@ -97,7 +114,7 @@ export function coerceUnknownBebidaLines(
       return { ...rest, categoriaId: "bebidas" }
     }
 
-    const fuzzy = bebidas.find(
+    const fuzzy = (all ?? bebidas).find(
       (b) => id.includes(normalizeText(b.id)) || normalizeText(b.id).includes(id),
     )
     if (fuzzy) return { ...line, bebidaId: fuzzy.id }
@@ -110,17 +127,18 @@ export function coerceUnknownBebidaLines(
 function attachBebidaTamanoFromSegments(
   lines: PortalAiLineInput[],
   segments: string[],
+  catalogJson?: MenuCatalogJson,
 ): PortalAiLineInput[] {
   return lines.map((line) => {
     if (line.bebidaTamano) return line
     if (line.categoriaId !== "bebidas" && !line.bebidaId) return line
-    if (line.bebidaId && isKnownBebidaId(line.bebidaId)) return line
+    if (line.bebidaId && isKnownBebidaId(line.bebidaId, catalogJson)) return line
 
     const seg = segments.find((s) => {
       const n = normalizeText(s)
       return (
         /\b(agua|bebida|drink|refresco|horchata|jamaica)\b/.test(n) ||
-        bebidas.some((b) => n.includes(normalizeText(b.id)))
+        bebidasForSanitize(catalogJson).some((b) => n.includes(normalizeText(b.id)))
       )
     })
     if (!seg) return line
@@ -203,10 +221,13 @@ function assignPlatilloSegments(
 function segmentMatchesBebidaLine(
   segment: string,
   line: PortalAiLineInput,
+  catalogJson?: MenuCatalogJson,
 ): boolean {
   if (!line.bebidaId) return false
   const s = normalizeText(segment)
-  const bebida = bebidas.find((b) => b.id === line.bebidaId)
+  const bebida = catalogJson
+    ? findBebidaInCatalog(line.bebidaId, catalogJson)
+    : bebidas.find((b) => b.id === line.bebidaId)
   if (!bebida) return false
   return (
     s.includes(normalizeText(bebida.id)) ||
@@ -254,6 +275,7 @@ function findMissingGenericDrinkLines(
 export function sanitizePortalAiLinesFromMessage(
   lines: PortalAiLineInput[],
   message: string,
+  catalogJson?: MenuCatalogJson,
 ): PortalAiLineInput[] {
   const segments = splitMessageSegments(message)
   if (segments.length === 0) return lines
@@ -263,8 +285,10 @@ export function sanitizePortalAiLinesFromMessage(
   const sanitized = lines.map((line, index) => {
     if (line.bebidaId || line.categoriaId === "bebidas") {
       if (!line.bebidaId) return line
-      const seg = segments.find((s) => segmentMatchesBebidaLine(s, line))
-      if (seg && !segmentMentionsBebidaFlavor(seg) && line.bebidaTamano) {
+      const seg = segments.find((s) =>
+        segmentMatchesBebidaLine(s, line, catalogJson),
+      )
+      if (seg && !segmentMentionsBebidaFlavor(seg, catalogJson) && line.bebidaTamano) {
         const { bebidaTamano, ...rest } = line
         return rest
       }
@@ -292,7 +316,7 @@ export function sanitizePortalAiLinesFromMessage(
   })
 
   let result = [...sanitized, ...findMissingGenericDrinkLines(segments, sanitized)]
-  result = coerceUnknownBebidaLines(result)
-  result = attachBebidaTamanoFromSegments(result, segments)
+  result = coerceUnknownBebidaLines(result, catalogJson)
+  result = attachBebidaTamanoFromSegments(result, segments, catalogJson)
   return result
 }

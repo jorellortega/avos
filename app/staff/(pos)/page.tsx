@@ -14,7 +14,6 @@ import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
   bebidaTamanoLabels,
   categorias,
-  bebidas,
   getBebidaPrecioDefault,
   getPlatillosForCategoria,
   proteinas,
@@ -122,7 +121,15 @@ export default function StaffPage() {
     setPendingCustomNote("")
   }
 
-  const addBebida = (bebida: (typeof bebidas)[number], tamano: BebidaTamano) => {
+  const addBebida = (
+    bebida: {
+      id: string
+      nombre: string
+      precioChico: number
+      precioGrande: number
+    },
+    tamano: BebidaTamano,
+  ) => {
     const itemId = `${bebida.id}-${tamano}`
     const unit =
       catalog?.getBebidaPrecio(bebida.id, tamano) ??
@@ -494,7 +501,7 @@ export default function StaffPage() {
 
                   <TabsContent value="bebidas">
                     <div className="space-y-4">
-                      {bebidas.map((bebida) => (
+                      {(catalog?.getBebidas() ?? []).map((bebida) => (
                         <div key={bebida.id} className="space-y-2">
                           <div className="flex items-center gap-2">
                             <BebidaThumb

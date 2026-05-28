@@ -32,12 +32,23 @@ export function portalDeliveryFromOrder(
   }
 }
 
+export function portalOrderTotal(
+  itemsSubtotal: number,
+  tipo: OrderType,
+  delivery: PortalDeliveryInfo,
+  extraCharge = 0,
+): number {
+  const fee = tipo === "domicilio" ? Math.max(0, delivery.deliveryFee ?? 0) : 0
+  const extra = Math.max(0, extraCharge ?? 0)
+  return Math.round((itemsSubtotal + fee + extra) * 100) / 100
+}
+
+/** @deprecated Use portalOrderTotal — kept for existing call sites. */
 export function portalItemsTotalWithDelivery(
   itemsSubtotal: number,
   tipo: OrderType,
   delivery: PortalDeliveryInfo,
+  extraCharge = 0,
 ): number {
-  if (tipo !== "domicilio") return itemsSubtotal
-  const fee = delivery.deliveryFee ?? 0
-  return itemsSubtotal + fee
+  return portalOrderTotal(itemsSubtotal, tipo, delivery, extraCharge)
 }

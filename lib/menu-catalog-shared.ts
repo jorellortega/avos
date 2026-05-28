@@ -24,11 +24,29 @@ export type BebidaPreciosPorTamano = Partial<
   Record<string, Partial<Record<BebidaTamano, number>>>
 >
 
+/** Staff-added drinks stored in the public menu catalog (not in menu-data.ts). */
+export type CatalogBebida = {
+  id: string
+  nombre: string
+  precioChico: number
+  precioGrande: number
+}
+
+export type BebidaCatalogEntry = {
+  id: string
+  nombre: string
+  precioChico: number
+  precioGrande: number
+  isCustom: boolean
+}
+
 export type MenuCatalogJson = {
   categoriaPrecios: Partial<Record<string, number>>
   /** Per-category, per-protein absolute prices (override base + camarón extra) */
   proteinaPreciosPorCategoria: ProteinaPreciosPorCategoria
   bebidaPrecios: BebidaPreciosPorTamano
+  /** Extra drinks added in /staff/menu-catalog */
+  customBebidas: CatalogBebida[]
   /** null/omit = use default 20 */
   camarónExtra: number | null
   outCategorias: string[]
@@ -69,11 +87,86 @@ export function catalogLookupKeys(
   return key === categoriaId ? [categoriaId] : [key, categoriaId]
 }
 
+export function slugifyBebidaId(nombre: string, taken: Set<string>): string {
+  const base =
+    nombre
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "bebida"
+  let id = base
+  let n = 2
+  while (taken.has(id)) {
+    id = `${base}-${n}`
+    n += 1
+  }
+  return id
+}
+
+function asCatalogBebidas(v: unknown): CatalogBebida[] {
+  if (!Array.isArray(v)) return []
+  const out: CatalogBebida[] = []
+  const seen = new Set<string>()
+  for (const row of v) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue
+    const o = row as Record<string, unknown>
+    const nombre = typeof o.nombre === "string" ? o.nombre.trim() : ""
+    if (!nombre) continue
+    let id =
+      typeof o.id === "string" && o.id.trim()
+        ? o.id.trim().toLowerCase()
+        : slugifyBebidaId(nombre, seen)
+    if (bebidas.some((b) => b.id === id) || seen.has(id)) {
+      id = slugifyBebidaId(nombre, seen)
+    }
+    const precioChico =
+      typeof o.precioChico === "number" && o.precioChico >= 0
+        ? o.precioChico
+        : 25
+    const precioGrande =
+      typeof o.precioGrande === "number" && o.precioGrande >= 0
+        ? o.precioGrande
+        : 35
+    seen.add(id)
+    out.push({ id, nombre, precioChico, precioGrande })
+  }
+  return out
+}
+
+export function getCatalogBebidas(json: MenuCatalogJson): BebidaCatalogEntry[] {
+  const base: BebidaCatalogEntry[] = bebidas.map((b) => ({
+    id: b.id,
+    nombre: b.nombre,
+    precioChico: b.precioChico,
+    precioGrande: b.precioGrande,
+    isCustom: false,
+  }))
+  const custom: BebidaCatalogEntry[] = (json.customBebidas ?? []).map((b) => ({
+    ...b,
+    isCustom: true,
+  }))
+  return [...base, ...custom]
+}
+
+export function findBebidaInCatalog(
+  bebidaId: string,
+  json: MenuCatalogJson,
+): BebidaCatalogEntry | undefined {
+  const custom = json.customBebidas?.find((b) => b.id === bebidaId)
+  if (custom) return { ...custom, isCustom: true }
+  const base = bebidas.find((b) => b.id === bebidaId)
+  if (base) return { ...base, isCustom: false }
+  return undefined
+}
+
 export function defaultMenuCatalogJson(): MenuCatalogJson {
   return {
     categoriaPrecios: {},
     proteinaPreciosPorCategoria: {},
     bebidaPrecios: {},
+    customBebidas: [],
     camarónExtra: null,
     outCategorias: [],
     outProteinas: [],
@@ -166,6 +259,7 @@ export function parseMenuCatalogJson(raw: string | null | undefined): MenuCatalo
         o.proteinaPreciosPorCategoria,
       ),
       bebidaPrecios: asBebidaPreciosPorTamano(o.bebidaPrecios),
+      customBebidas: asCatalogBebidas(o.customBebidas),
       camarónExtra:
         typeof ce === "number" && Number.isFinite(ce) ? ce : ce === null ? null : null,
       outCategorias: asStringArray(o.outCategorias),
@@ -200,6 +294,8 @@ export type MenuCatalogHelpers = {
     platilloId?: string,
   ) => number
   getBebidaPrecio: (bebidaId: string, tamano: BebidaTamano) => number
+  getBebidas: () => BebidaCatalogEntry[]
+  findBebida: (bebidaId: string) => BebidaCatalogEntry | undefined
   getCamarónExtra: () => number
   isCategoriaOut: (categoriaId: string) => boolean
   isPlatilloOut: (categoriaId: string, platilloId: string) => boolean
@@ -260,10 +356,14 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
   const getBebidaPrecio = (bebidaId: string, tamano: BebidaTamano) => {
     const o = json.bebidaPrecios[bebidaId]?.[tamano]
     if (typeof o === "number" && Number.isFinite(o)) return o
-    const b = bebidas.find((b) => b.id === bebidaId)
+    const b = findBebidaInCatalog(bebidaId, json)
     if (!b) return 0
-    return getBebidaPrecioDefault(b, tamano)
+    return tamano === "chico" ? b.precioChico : b.precioGrande
   }
+
+  const getBebidas = () => getCatalogBebidas(json)
+
+  const findBebida = (bebidaId: string) => findBebidaInCatalog(bebidaId, json)
 
   const getCamarónExtra = () => {
     const e = json.camarónExtra
@@ -340,6 +440,8 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     getPlatilloPrecio,
     getPrecioConProteina,
     getBebidaPrecio,
+    getBebidas,
+    findBebida,
     getCamarónExtra,
     isCategoriaOut,
     isPlatilloOut,

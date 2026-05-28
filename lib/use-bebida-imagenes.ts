@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { createBrowserSupabase } from "@/lib/supabase/client"
-import { bebidas } from "@/lib/menu-data"
 import { SITE_MEDIA_KEYS } from "@/lib/site-media-shared"
 
 /**
@@ -25,9 +24,9 @@ export function useBebidaImagenes() {
         if (cancelled || !data?.setting_value?.trim()) return
         const parsed = JSON.parse(data.setting_value) as Record<string, string>
         const next: Record<string, string> = {}
-        for (const b of bebidas) {
-          const u = parsed[b.id]?.trim()
-          if (u) next[b.id] = u
+        for (const [id, url] of Object.entries(parsed)) {
+          const u = typeof url === "string" ? url.trim() : ""
+          if (id && u) next[id] = u
         }
         setMap(next)
       } catch {

@@ -39,15 +39,14 @@ import {
 import {
   type PortalDeliveryInfo,
   portalDeliveryFromOrder,
-  portalItemsTotalWithDelivery,
   portalOrderNeedsDeliveryInfo,
+  portalOrderTotal,
 } from "@/lib/portal-delivery"
 import { cartItemNeedsCompletion } from "@/lib/portal-cart-item"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
   bebidaTamanoLabels,
   categorias,
-  bebidas,
   getBebidaPrecioDefault,
   getPlatillosForCategoria,
   proteinas,
@@ -143,6 +142,7 @@ export function PortalPageClient() {
   const [addMode, setAddMode] = useState(false)
   const [draftOrderTipo, setDraftOrderTipo] = useState<OrderType>("mesa")
   const [draftDelivery, setDraftDelivery] = useState<PortalDeliveryInfo>({})
+  const [draftExtraCharge, setDraftExtraCharge] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<PortalAiChatHandle>(null)
 
@@ -176,18 +176,41 @@ export function PortalPageClient() {
     [selectedOrder, draftDelivery],
   )
 
+  const activeExtraCharge = selectedOrder?.extraCharge ?? draftExtraCharge
   const itemsSubtotal = orderItemsTotal(activeItems)
-  const total = portalItemsTotalWithDelivery(
+  const deliveryFeeForTotal =
+    orderTipo === "domicilio" ? (activeDelivery.deliveryFee ?? 0) : 0
+  const total = portalOrderTotal(
     itemsSubtotal,
     orderTipo,
     activeDelivery,
+    activeExtraCharge,
   )
   const needsDelivery = portalOrderNeedsDeliveryInfo(orderTipo, activeDelivery)
+
+  const applyExtraCharge = useCallback(
+    (amount: number) => {
+      const extra = Math.max(0, Math.round(amount * 100) / 100)
+      const sub = orderItemsTotal(activeItems)
+      const newTotal = portalOrderTotal(sub, orderTipo, activeDelivery, extra)
+      if (selectedOrder) {
+        updateOrder(selectedOrder.id, { extraCharge: extra, total: newTotal })
+      } else {
+        setDraftExtraCharge(extra)
+      }
+    },
+    [activeItems, orderTipo, activeDelivery, selectedOrder, updateOrder],
+  )
 
   const saveDelivery = useCallback(
     (delivery: PortalDeliveryInfo) => {
       const sub = orderItemsTotal(activeItems)
-      const newTotal = portalItemsTotalWithDelivery(sub, "domicilio", delivery)
+      const newTotal = portalOrderTotal(
+        sub,
+        "domicilio",
+        delivery,
+        selectedOrder?.extraCharge ?? draftExtraCharge,
+      )
       if (selectedOrder) {
         updateOrder(selectedOrder.id, {
           tipo: "domicilio",
@@ -215,7 +238,7 @@ export function PortalPageClient() {
         setDraftOrderTipo("domicilio")
       }
     },
-    [activeItems, selectedOrder, updateOrder],
+    [activeItems, selectedOrder, draftExtraCharge, updateOrder],
   )
 
   const setOrderTipo = useCallback(
@@ -230,7 +253,12 @@ export function PortalPageClient() {
               deliveryFee: undefined,
               deliveryAddress: undefined,
             }
-      const newTotal = portalItemsTotalWithDelivery(sub, tipo, cleared)
+      const newTotal = portalOrderTotal(
+        sub,
+        tipo,
+        cleared,
+        selectedOrder?.extraCharge ?? draftExtraCharge,
+      )
       if (selectedOrder) {
         updateOrder(selectedOrder.id, {
           tipo,
@@ -247,7 +275,7 @@ export function PortalPageClient() {
         if (tipo !== "domicilio") setDraftDelivery({})
       }
     },
-    [activeItems, activeDelivery, selectedOrder, updateOrder],
+    [activeItems, activeDelivery, selectedOrder, draftExtraCharge, updateOrder],
   )
   const setActiveItems = useCallback(
     (items: OrderItem[]) => {
@@ -256,10 +284,11 @@ export function PortalPageClient() {
         if (!order) return
         setOrderEditItems(items)
         const sub = orderItemsTotal(items)
-        const newTotal = portalItemsTotalWithDelivery(
+        const newTotal = portalOrderTotal(
           sub,
           order.tipo,
           portalDeliveryFromOrder(order),
+          order.extraCharge ?? 0,
         )
         updateOrder(selectedOrderId, { items, total: newTotal })
       } else {
@@ -293,6 +322,7 @@ export function PortalPageClient() {
     setDraftItems([])
     setDraftOrderTipo("mesa")
     setDraftDelivery({})
+    setDraftExtraCharge(0)
     setAddMode(false)
     setOrderCreated(null)
     setPaymentError("")
@@ -429,7 +459,15 @@ export function PortalPageClient() {
     setAddMode(true)
   }
 
-  const addBebida = (bebida: (typeof bebidas)[number], tamano: BebidaTamano) => {
+  const addBebida = (
+    bebida: {
+      id: string
+      nombre: string
+      precioChico: number
+      precioGrande: number
+    },
+    tamano: BebidaTamano,
+  ) => {
     const itemId = `${bebida.id}-${tamano}`
     const unit =
       catalog?.getBebidaPrecio(bebida.id, tamano) ??
@@ -558,7 +596,12 @@ export function PortalPageClient() {
 
     if (selectedOrder) {
       const promises: Promise<{ ok: boolean; error?: string }>[] = [
-        updateAvosOrderCartForPortal(selectedOrder.id, activeItems, total),
+        updateAvosOrderCartForPortal(
+          selectedOrder.id,
+          activeItems,
+          total,
+          activeExtraCharge,
+        ),
         portalUpdateOrderTipo(selectedOrder.id, orderTipo),
       ]
       if (
@@ -594,6 +637,7 @@ export function PortalPageClient() {
       deliveryZoneLabel: activeDelivery.deliveryZoneLabel,
       deliveryFee: activeDelivery.deliveryFee,
       deliveryAddress: activeDelivery.deliveryAddress,
+      extraCharge: activeExtraCharge > 0 ? activeExtraCharge : undefined,
     })
     const result = await insertAvosOrderForPortal(order)
     if (result.ok) {
@@ -966,6 +1010,10 @@ export function PortalPageClient() {
             {activeItems.length > 0 && (
               <PortalOrderSubmitBar
                 total={total}
+                itemsSubtotal={itemsSubtotal}
+                deliveryFee={deliveryFeeForTotal}
+                extraCharge={activeExtraCharge}
+                onExtraChargeChange={applyExtraCharge}
                 submitLabel={submitLabel}
                 loadingLabel={submitLoadingLabel}
                 disabled={activeItems.length === 0}
@@ -1080,7 +1128,7 @@ export function PortalPageClient() {
 
                       <TabsContent value="bebidas">
                         <div className="space-y-4">
-                          {bebidas.map((bebida) => (
+                          {(catalog?.getBebidas() ?? []).map((bebida) => (
                             <div key={bebida.id} className="space-y-2">
                               <div className="flex items-center gap-2">
                                 <BebidaThumb
@@ -1276,6 +1324,10 @@ export function PortalPageClient() {
 
                     <PortalOrderSubmitBar
                       total={total}
+                      itemsSubtotal={itemsSubtotal}
+                      deliveryFee={deliveryFeeForTotal}
+                      extraCharge={activeExtraCharge}
+                      onExtraChargeChange={applyExtraCharge}
                       submitLabel={submitLabel}
                       loadingLabel={submitLoadingLabel}
                       disabled={activeItems.length === 0}

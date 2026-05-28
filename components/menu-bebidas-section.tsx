@@ -42,7 +42,10 @@ export function MenuBebidasSection() {
       </div>
 
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-        {bebidas
+        {(
+          catalog?.getBebidas() ??
+          bebidas.map((b) => ({ ...b, isCustom: false as const }))
+        )
           .filter((bebida) => !catalog?.isBebidaHidden(bebida.id))
           .map((bebida) => (
             <BebidaCard key={bebida.id} bebida={bebida} collapsible />
