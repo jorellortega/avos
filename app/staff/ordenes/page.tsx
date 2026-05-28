@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/card"
 import { StaffSignOutButton } from "@/components/staff-sign-out-button"
 import { StaffOrdenesHistoryTable } from "@/components/staff-ordenes-history-table"
+import { StaffOrdenesCajaSummary } from "@/components/staff-ordenes-caja-summary"
+import { parseCajaSummary } from "@/lib/register-change-float"
 import { createServerSupabase } from "@/lib/supabase/server"
 import type { StaffProfile } from "@/lib/profile-types"
 import { isCeo, isStaffOrdersRole } from "@/lib/profile-types"
@@ -71,6 +73,9 @@ export default async function StaffOrdenesPage() {
   const list = (rows ?? []) as StaffOrdenesOrderRow[]
   const ceo = isCeo(profile.role)
 
+  const { data: cajaRaw } = await supabase.rpc("staff_get_caja_summary")
+  const initialCajaSummary = parseCajaSummary(cajaRaw)
+
   let sumEfectivo = 0
   let sumTarjeta = 0
   let sumPendienteCaja = 0
@@ -127,6 +132,11 @@ export default async function StaffOrdenesPage() {
 
           {!error && (
             <>
+              <StaffOrdenesCajaSummary
+                isCeo={ceo}
+                initialSummary={initialCajaSummary}
+              />
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
                   <CardHeader className="pb-2">

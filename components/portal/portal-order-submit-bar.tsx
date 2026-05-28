@@ -18,6 +18,8 @@ type PortalOrderSubmitBarProps = {
   loading: boolean
   onSubmit: () => void
   showReadyHint?: boolean
+  /** Show efectivo / cambio calculator (default true). */
+  showCashChange?: boolean
 }
 
 export function PortalOrderSubmitBar({
@@ -32,6 +34,7 @@ export function PortalOrderSubmitBar({
   loading,
   onSubmit,
   showReadyHint,
+  showCashChange = true,
 }: PortalOrderSubmitBarProps) {
   const showDelivery = deliveryFee > 0
   const showExtra = extraCharge > 0
@@ -72,7 +75,7 @@ export function PortalOrderSubmitBar({
           <span className="tabular-nums">${total.toFixed(2)}</span>
         </div>
 
-        <PortalCashChange total={total} />
+        {showCashChange ? <PortalCashChange total={total} /> : null}
 
         <Button
           className="w-full"

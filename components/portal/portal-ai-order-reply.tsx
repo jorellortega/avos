@@ -486,23 +486,31 @@ export function PortalAiOrderReply({
                 </p>
                 <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
                   {(catalog?.getBebidas() ?? []).map((b) => {
-                    if (catalog?.isBebidaOut(b.id) || catalog?.isBebidaHidden(b.id)) {
-                      return null
-                    }
+                    if (catalog?.isBebidaHidden(b.id)) return null
+                    const agotada = catalog?.isBebidaOut(b.id) ?? false
                     const selected = editBebidaId === b.id
+                    const stock = catalog?.bebidaTracksStock(b.id)
+                      ? catalog.getBebidaStockQty(b.id)
+                      : null
                     return (
                       <Button
                         key={b.id}
                         type="button"
                         variant={selected ? "default" : "outline"}
+                        disabled={agotada}
                         className={cn(
-                          "h-10 justify-start",
+                          "h-auto min-h-10 py-2 justify-start flex-col items-start",
                           selected && "ring-2 ring-primary ring-offset-2",
-                          !selected && "border-destructive/40",
+                          !selected && !agotada && "border-destructive/40",
                         )}
                         onClick={() => setEditBebidaId(b.id)}
                       >
-                        {b.nombre}
+                        <span>{b.nombre}</span>
+                        {stock != null ? (
+                          <span className="text-[10px] opacity-80">
+                            {agotada ? "Agotado" : `Quedan ${stock}`}
+                          </span>
+                        ) : null}
                       </Button>
                     )
                   })}

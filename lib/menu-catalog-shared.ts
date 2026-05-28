@@ -38,6 +38,9 @@ export type BebidaCatalogEntry = {
   precioChico: number
   precioGrande: number
   isCustom: boolean
+  /** Optional inventory count (aguas frescas usually off). */
+  tracksStock: boolean
+  stockQty: number | null
 }
 
 export type MenuCatalogJson = {
@@ -47,6 +50,10 @@ export type MenuCatalogJson = {
   bebidaPrecios: BebidaPreciosPorTamano
   /** Extra drinks added in /staff/menu-catalog */
   customBebidas: CatalogBebida[]
+  /** Drink ids with optional inventory tracking */
+  bebidaTrackStock: string[]
+  /** Units on hand when tracking is enabled */
+  bebidaStockQty: Partial<Record<string, number>>
   /** null/omit = use default 20 */
   camarónExtra: number | null
   outCategorias: string[]
@@ -135,17 +142,42 @@ function asCatalogBebidas(v: unknown): CatalogBebida[] {
   return out
 }
 
+export function bebidaTracksStock(json: MenuCatalogJson, bebidaId: string): boolean {
+  return (json.bebidaTrackStock ?? []).includes(bebidaId)
+}
+
+export function getBebidaStockQty(json: MenuCatalogJson, bebidaId: string): number {
+  if (!bebidaTracksStock(json, bebidaId)) return 0
+  const q = json.bebidaStockQty?.[bebidaId]
+  if (typeof q !== "number" || !Number.isFinite(q)) return 0
+  return Math.max(0, Math.floor(q))
+}
+
+export function getBebidaStockEntry(
+  json: MenuCatalogJson,
+  bebidaId: string,
+): Pick<BebidaCatalogEntry, "tracksStock" | "stockQty"> {
+  const tracksStock = bebidaTracksStock(json, bebidaId)
+  return {
+    tracksStock,
+    stockQty: tracksStock ? getBebidaStockQty(json, bebidaId) : null,
+  }
+}
+
 export function getCatalogBebidas(json: MenuCatalogJson): BebidaCatalogEntry[] {
+  const stockFor = (id: string) => getBebidaStockEntry(json, id)
   const base: BebidaCatalogEntry[] = bebidas.map((b) => ({
     id: b.id,
     nombre: b.nombre,
     precioChico: b.precioChico,
     precioGrande: b.precioGrande,
     isCustom: false,
+    ...stockFor(b.id),
   }))
   const custom: BebidaCatalogEntry[] = (json.customBebidas ?? []).map((b) => ({
     ...b,
     isCustom: true,
+    ...stockFor(b.id),
   }))
   return [...base, ...custom]
 }
@@ -154,10 +186,11 @@ export function findBebidaInCatalog(
   bebidaId: string,
   json: MenuCatalogJson,
 ): BebidaCatalogEntry | undefined {
+  const stock = getBebidaStockEntry(json, bebidaId)
   const custom = json.customBebidas?.find((b) => b.id === bebidaId)
-  if (custom) return { ...custom, isCustom: true }
+  if (custom) return { ...custom, isCustom: true, ...stock }
   const base = bebidas.find((b) => b.id === bebidaId)
-  if (base) return { ...base, isCustom: false }
+  if (base) return { ...base, isCustom: false, ...stock }
   return undefined
 }
 
@@ -167,6 +200,8 @@ export function defaultMenuCatalogJson(): MenuCatalogJson {
     proteinaPreciosPorCategoria: {},
     bebidaPrecios: {},
     customBebidas: [],
+    bebidaTrackStock: [],
+    bebidaStockQty: {},
     camarónExtra: null,
     outCategorias: [],
     outProteinas: [],
@@ -260,6 +295,8 @@ export function parseMenuCatalogJson(raw: string | null | undefined): MenuCatalo
       ),
       bebidaPrecios: asBebidaPreciosPorTamano(o.bebidaPrecios),
       customBebidas: asCatalogBebidas(o.customBebidas),
+      bebidaTrackStock: asStringArray(o.bebidaTrackStock),
+      bebidaStockQty: asNumberRecord(o.bebidaStockQty),
       camarónExtra:
         typeof ce === "number" && Number.isFinite(ce) ? ce : ce === null ? null : null,
       outCategorias: asStringArray(o.outCategorias),
@@ -305,6 +342,8 @@ export type MenuCatalogHelpers = {
     platilloId?: string,
   ) => boolean
   isBebidaOut: (bebidaId: string) => boolean
+  bebidaTracksStock: (bebidaId: string) => boolean
+  getBebidaStockQty: (bebidaId: string) => number
   isCategoriaHidden: (categoriaId: string) => boolean
   isPlatilloHidden: (categoriaId: string, platilloId: string) => boolean
   isProteinaHidden: (
@@ -393,7 +432,13 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     return false
   }
 
-  const isBebidaOut = (bebidaId: string) => outBeb.has(bebidaId)
+  const isBebidaOut = (bebidaId: string) => {
+    if (outBeb.has(bebidaId)) return true
+    if (bebidaTracksStock(json, bebidaId) && getBebidaStockQty(json, bebidaId) <= 0) {
+      return true
+    }
+    return false
+  }
 
   const isCategoriaHidden = (categoriaId: string) => hiddenCat.has(categoriaId)
 
@@ -447,6 +492,8 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     isPlatilloOut,
     isProteinaOut,
     isBebidaOut,
+    bebidaTracksStock: (bebidaId: string) => bebidaTracksStock(json, bebidaId),
+    getBebidaStockQty: (bebidaId: string) => getBebidaStockQty(json, bebidaId),
     isCategoriaHidden,
     isPlatilloHidden,
     isProteinaHidden,

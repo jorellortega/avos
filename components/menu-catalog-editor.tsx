@@ -74,6 +74,8 @@ function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
     outPlatillos: [...j.outPlatillos],
     hiddenPlatillos: [...j.hiddenPlatillos],
     customBebidas: j.customBebidas.map((b) => ({ ...b })),
+    bebidaTrackStock: [...(j.bebidaTrackStock ?? [])],
+    bebidaStockQty: { ...(j.bebidaStockQty ?? {}) },
   }
 }
 
@@ -92,6 +94,8 @@ export function MenuCatalogEditor({ initial }: Props) {
   const [newBebidaNombre, setNewBebidaNombre] = useState("")
   const [newBebidaChico, setNewBebidaChico] = useState("25")
   const [newBebidaGrande, setNewBebidaGrande] = useState("35")
+  const [newBebidaTrackStock, setNewBebidaTrackStock] = useState(false)
+  const [newBebidaStockQty, setNewBebidaStockQty] = useState("12")
 
   const allBebidaIds = () => {
     const taken = new Set<string>(bebidas.map((b) => b.id))
@@ -263,6 +267,8 @@ export function MenuCatalogEditor({ initial }: Props) {
       return
     }
     const id = slugifyBebidaId(nombre, allBebidaIds())
+    const trackStock = newBebidaTrackStock
+    const stockN = parseInt(newBebidaStockQty, 10)
     setState((s) => {
       const next = cloneJson(s)
       next.customBebidas.push({
@@ -271,11 +277,18 @@ export function MenuCatalogEditor({ initial }: Props) {
         precioChico: chico,
         precioGrande: grande,
       })
+      if (trackStock) {
+        next.bebidaTrackStock = [...next.bebidaTrackStock, id]
+        next.bebidaStockQty[id] =
+          Number.isFinite(stockN) && stockN >= 0 ? stockN : 0
+      }
       return next
     })
     setNewBebidaNombre("")
     setNewBebidaChico("25")
     setNewBebidaGrande("35")
+    setNewBebidaTrackStock(false)
+    setNewBebidaStockQty("12")
     setMessage(null)
   }
 
@@ -299,6 +312,37 @@ export function MenuCatalogEditor({ initial }: Props) {
       delete next.bebidaPrecios[id]
       next.outBebidas = next.outBebidas.filter((x) => x !== id)
       next.hiddenBebidas = next.hiddenBebidas.filter((x) => x !== id)
+      next.bebidaTrackStock = next.bebidaTrackStock.filter((x) => x !== id)
+      delete next.bebidaStockQty[id]
+      return next
+    })
+  }
+
+  const toggleBebidaTrackStock = (id: string, enabled: boolean) => {
+    setState((s) => {
+      const next = cloneJson(s)
+      const set = new Set(next.bebidaTrackStock)
+      if (enabled) {
+        set.add(id)
+        if (next.bebidaStockQty[id] == null) next.bebidaStockQty[id] = 0
+      } else {
+        set.delete(id)
+        delete next.bebidaStockQty[id]
+      }
+      next.bebidaTrackStock = Array.from(set)
+      return next
+    })
+  }
+
+  const setBebidaStockQty = (id: string, val: string) => {
+    const n = parseInt(val, 10)
+    setState((s) => {
+      const next = cloneJson(s)
+      if (val === "" || !Number.isFinite(n) || n < 0) {
+        delete next.bebidaStockQty[id]
+      } else {
+        next.bebidaStockQty[id] = n
+      }
       return next
     })
   }
@@ -652,8 +696,9 @@ export function MenuCatalogEditor({ initial }: Props) {
         <CardHeader>
           <CardTitle>Bebidas (aguas)</CardTitle>
           <CardDescription>
-            Precio chico y grande por sabor. Agrega bebidas nuevas abajo. Puedes
-            agotar u ocultar toda la categoría arriba o solo sabores aquí.
+            Precio chico y grande por sabor. Las aguas frescas no llevan inventario
+            por defecto; activa &quot;Controlar cantidad&quot; solo en bebidas
+            embotelladas u otros productos con unidades. En cero = agotado.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -721,6 +766,41 @@ export function MenuCatalogEditor({ initial }: Props) {
                     />
                   </div>
                 ))}
+                <div className="flex flex-col gap-1.5 border rounded-md px-2 py-2 bg-muted/30">
+                  <label className="flex items-center gap-2 text-xs cursor-pointer">
+                    <Checkbox
+                      checked={b.tracksStock}
+                      onCheckedChange={(ch) =>
+                        toggleBebidaTrackStock(b.id, ch === true)
+                      }
+                    />
+                    Controlar cantidad
+                  </label>
+                  {b.tracksStock ? (
+                    <div className="space-y-1">
+                      <Label className="text-xs" htmlFor={`stock-${b.id}`}>
+                        Unidades
+                      </Label>
+                      <Input
+                        id={`stock-${b.id}`}
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="w-20 h-8"
+                        value={
+                          b.stockQty != null ? String(b.stockQty) : ""
+                        }
+                        onChange={(e) =>
+                          setBebidaStockQty(b.id, e.target.value)
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Sin inventario (típico aguas frescas)
+                    </p>
+                  )}
+                </div>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <Checkbox
                     checked={state.outBebidas.includes(b.id)}
@@ -793,6 +873,29 @@ export function MenuCatalogEditor({ initial }: Props) {
                   onChange={(e) => setNewBebidaGrande(e.target.value)}
                 />
               </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={newBebidaTrackStock}
+                  onCheckedChange={(ch) => setNewBebidaTrackStock(ch === true)}
+                />
+                Controlar cantidad
+              </label>
+              {newBebidaTrackStock ? (
+                <div className="space-y-1">
+                  <Label htmlFor="new-bebida-stock">Unidades</Label>
+                  <Input
+                    id="new-bebida-stock"
+                    type="number"
+                    min={0}
+                    step={1}
+                    className="w-24"
+                    value={newBebidaStockQty}
+                    onChange={(e) => setNewBebidaStockQty(e.target.value)}
+                  />
+                </div>
+              ) : null}
             </div>
             <Button
               type="button"

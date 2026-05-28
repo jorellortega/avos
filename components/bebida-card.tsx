@@ -96,6 +96,11 @@ export function BebidaCard({ bebida, collapsible = false }: Props) {
         ) : (
           <span className="text-sm text-muted-foreground">
             ${precio(tamano)} · {bebidaTamanoLabels[tamano]}
+            {catalog?.bebidaTracksStock(bebida.id) ? (
+              <span className="block text-xs text-amber-700 dark:text-amber-300">
+                Quedan {catalog.getBebidaStockQty(bebida.id)}
+              </span>
+            ) : null}
           </span>
         )}
         <Button

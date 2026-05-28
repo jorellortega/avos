@@ -76,7 +76,7 @@ import {
 } from "@/lib/order-item-customizations"
 import { cartLineKey, formatOrderItemNotas } from "@/lib/order-item-extras"
 import { createBrowserSupabase } from "@/lib/supabase/client"
-import type { StaffProfile } from "@/lib/profile-types"
+import { isCeo, type StaffProfile } from "@/lib/profile-types"
 import {
   PortalAiChat,
   type PortalAiChatHandle,
@@ -84,8 +84,14 @@ import {
 import { PortalOrdersPanel } from "@/components/portal/portal-orders-panel"
 import { PortalOrderSubmitBar } from "@/components/portal/portal-order-submit-bar"
 import { PortalCashChange } from "@/components/portal/portal-cash-change"
+import { PortalCollectPayment } from "@/components/portal/portal-collect-payment"
+import { PortalRegisterFloat } from "@/components/portal/portal-register-float"
 import { PortalCartLineCustomization } from "@/components/portal/portal-cart-line-customization"
 import { orderItemsTotal } from "@/lib/portal-menu-snapshot"
+import {
+  applyBebidaStockDelta,
+  saveMenuCatalogJson,
+} from "@/lib/menu-catalog-bebida-stock"
 import {
   applyPortalCartItemUpdate,
   parseCartLineBaseId,
@@ -122,7 +128,7 @@ export function PortalPageClient() {
     updateOrderStatus,
     mergeServerOrders,
   } = useOrders()
-  const { catalog } = useMenuCatalogContext()
+  const { catalog, refresh: refreshCatalog } = useMenuCatalogContext()
   const proteinaImgs = useProteinaImagenes()
   const bebidaImgs = useBebidaImagenes()
 
@@ -413,6 +419,7 @@ export function PortalPageClient() {
   }, [])
 
   const takerName = profile?.full_name?.trim() || "Staff"
+  const canEditRegisterFloat = isCeo(profile?.role)
 
   const addItem = (
     categoria: (typeof categorias)[number],
@@ -572,6 +579,20 @@ export function PortalPageClient() {
     }
   }
 
+  const persistBebidaStockAfterSale = useCallback(
+    async (beforeItems: OrderItem[], afterItems: OrderItem[]) => {
+      if (!catalog?.json || afterItems.length === 0) return
+      const nextJson = applyBebidaStockDelta(
+        catalog.json,
+        beforeItems,
+        afterItems,
+      )
+      const saved = await saveMenuCatalogJson(nextJson)
+      if (saved.ok) await refreshCatalog()
+    },
+    [catalog?.json, refreshCatalog],
+  )
+
   const submitOrder = async () => {
     if (activeItems.length === 0) return
 
@@ -624,7 +645,12 @@ export function PortalPageClient() {
       const failed = results.find((r) => !r.ok)
       if (failed) {
         setPaymentError(failed.error ?? "No se pudo guardar en el servidor.")
+        return
       }
+      await persistBebidaStockAfterSale(
+        selectedOrder.items ?? [],
+        activeItems,
+      )
       return
     }
 
@@ -641,6 +667,7 @@ export function PortalPageClient() {
     })
     const result = await insertAvosOrderForPortal(order)
     if (result.ok) {
+      await persistBebidaStockAfterSale([], activeItems)
       setOrderCreated({
         id: order.id,
         numero: order.numero,
@@ -793,8 +820,8 @@ export function PortalPageClient() {
         </div>
       </div>
       <header className="bg-primary text-primary-foreground shrink-0">
-        <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-3">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-3">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="rounded-xl bg-primary-foreground/15 px-4 py-2 text-center shrink-0">
               <p className="text-[10px] uppercase tracking-wide opacity-80">Orden</p>
               <p className="text-3xl font-bold leading-none">#{displayOrderNum}</p>
@@ -813,8 +840,14 @@ export function PortalPageClient() {
             </div>
           </div>
 
+          <PortalRegisterFloat
+            variant="header"
+            className="shrink-0"
+            canEdit={canEditRegisterFloat}
+          />
+
           <nav
-            className="flex items-center gap-1 shrink-0"
+            className="flex items-center gap-1 shrink-0 ml-auto"
             aria-label="Portal de caja"
           >
             <Link href="/menu">
@@ -1020,6 +1053,7 @@ export function PortalPageClient() {
                 loading={submitLoading}
                 onSubmit={() => void submitOrder()}
                 showReadyHint={!selectedOrder}
+                showCashChange={false}
               />
             )}
 
@@ -1128,37 +1162,71 @@ export function PortalPageClient() {
 
                       <TabsContent value="bebidas">
                         <div className="space-y-4">
-                          {(catalog?.getBebidas() ?? []).map((bebida) => (
-                            <div key={bebida.id} className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <BebidaThumb
-                                  src={bebidaImgs[bebida.id]}
-                                  alt={bebida.nombre}
-                                  className="h-10 w-10"
-                                />
-                                <p className="text-sm font-medium">{bebida.nombre}</p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                {(["chico", "grande"] as const).map((tam) => (
-                                  <Button
-                                    key={tam}
-                                    variant="outline"
-                                    className="h-auto py-2 flex-col"
-                                    onClick={() => addBebida(bebida, tam)}
-                                  >
-                                    <span className="font-semibold text-sm">
-                                      {bebidaTamanoLabels[tam]}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      $
-                                      {catalog?.getBebidaPrecio(bebida.id, tam) ??
-                                        getBebidaPrecioDefault(bebida, tam)}
-                                    </span>
-                                  </Button>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
+                          {(catalog?.getBebidas() ?? [])
+                            .filter((b) => !catalog?.isBebidaHidden(b.id))
+                            .map((bebida) => {
+                              const agotada =
+                                catalog?.isBebidaOut(bebida.id) ?? false
+                              const tracksStock =
+                                catalog?.bebidaTracksStock(bebida.id) ?? false
+                              return (
+                                <div key={bebida.id} className="space-y-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <BebidaThumb
+                                      src={bebidaImgs[bebida.id]}
+                                      alt={bebida.nombre}
+                                      className="h-10 w-10"
+                                    />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium">
+                                        {bebida.nombre}
+                                      </p>
+                                      {tracksStock ? (
+                                        <p
+                                          className={cn(
+                                            "text-xs",
+                                            agotada
+                                              ? "text-destructive font-medium"
+                                              : "text-muted-foreground",
+                                          )}
+                                        >
+                                          {agotada
+                                            ? "Agotado"
+                                            : `Quedan ${catalog?.getBebidaStockQty(bebida.id) ?? 0}`}
+                                        </p>
+                                      ) : agotada ? (
+                                        <p className="text-xs text-destructive font-medium">
+                                          Agotado
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {(["chico", "grande"] as const).map((tam) => (
+                                      <Button
+                                        key={tam}
+                                        variant="outline"
+                                        className="h-auto py-2 flex-col"
+                                        disabled={agotada}
+                                        onClick={() => addBebida(bebida, tam)}
+                                      >
+                                        <span className="font-semibold text-sm">
+                                          {bebidaTamanoLabels[tam]}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">
+                                          $
+                                          {catalog?.getBebidaPrecio(
+                                            bebida.id,
+                                            tam,
+                                          ) ??
+                                            getBebidaPrecioDefault(bebida, tam)}
+                                        </span>
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })}
                         </div>
                       </TabsContent>
                     </Tabs>
@@ -1322,6 +1390,26 @@ export function PortalPageClient() {
                       )}
                     </div>
 
+                    <div className="sm:hidden">
+                      <PortalRegisterFloat
+                        className="border-t pt-3"
+                        canEdit={canEditRegisterFloat}
+                      />
+                    </div>
+
+                    {selectedOrder &&
+                    selectedOrder.status !== "pagado" &&
+                    activeItems.length > 0 ? (
+                      <PortalCollectPayment
+                        orderId={selectedOrder.id}
+                        total={total}
+                        disabled={submitLoading}
+                        onPaid={() => {
+                          updateOrderStatus(selectedOrder.id, "pagado")
+                        }}
+                      />
+                    ) : null}
+
                     <PortalOrderSubmitBar
                       total={total}
                       itemsSubtotal={itemsSubtotal}
@@ -1334,6 +1422,7 @@ export function PortalPageClient() {
                       loading={submitLoading}
                       onSubmit={() => void submitOrder()}
                       showReadyHint={!selectedOrder}
+                      showCashChange
                     />
                   </CardContent>
                 </Card>

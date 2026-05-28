@@ -61,9 +61,17 @@ export function PortalCashChange({
 
   return (
     <div className={cn("space-y-3", className)}>
+      <p
+        className={cn(
+          "text-xs font-semibold uppercase tracking-wide",
+          isBanner ? "text-white/80" : "text-muted-foreground",
+        )}
+      >
+        Cambio en caja
+      </p>
       <div className="space-y-2">
         <Label htmlFor="portal-paid-amount" className={labelClass}>
-          Pagaron (efectivo)
+          Efectivo que te dieron
         </Label>
         <div className="relative">
           <span
@@ -110,7 +118,7 @@ export function PortalCashChange({
             isBanner ? "bg-white/15" : "bg-green-500/10 border border-green-500/20",
           )}
         >
-          <span className={cn("font-semibold", changeClass)}>Cambio</span>
+          <span className={cn("font-semibold", changeClass)}>Cambio a entregar</span>
           <span className={cn("text-xl font-bold tabular-nums", changeClass)}>
             ${change.toFixed(2)}
           </span>
