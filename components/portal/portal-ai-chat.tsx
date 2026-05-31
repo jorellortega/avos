@@ -67,6 +67,7 @@ type PortalAiChatProps = {
   delivery?: PortalDeliveryInfo
   needsDelivery?: boolean
   onDeliverySave?: (delivery: PortalDeliveryInfo) => void
+  onDeliveryFeeChange?: (fee: number) => void
   /** Total with envío when domicilio. */
   cartTotal?: number
   onUpdateItem?: (itemId: string, update: PortalCartItemUpdate) => void
@@ -88,6 +89,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
       delivery = {},
       needsDelivery = false,
       onDeliverySave,
+      onDeliveryFeeChange,
       cartTotal,
       onUpdateItem,
       onDeleteItem,
@@ -692,6 +694,9 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                       }
                       onDeliverySave={
                         i === lastOrderReplyIndex ? onDeliverySave : undefined
+                      }
+                      onDeliveryFeeChange={
+                        i === lastOrderReplyIndex ? onDeliveryFeeChange : undefined
                       }
                     />
                   ) : (

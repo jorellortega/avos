@@ -3,13 +3,22 @@
 import { QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import type { OrderType } from "@/components/orders-provider"
 import { PortalCashChange } from "@/components/portal/portal-cash-change"
 import { PortalExtraCharge } from "@/components/portal/portal-extra-charge"
+import { PortalOrderTipoDelivery } from "@/components/portal/portal-order-tipo-delivery"
+import type { PortalDeliveryInfo } from "@/lib/portal-delivery"
 
 type PortalOrderSubmitBarProps = {
   total: number
   itemsSubtotal: number
   deliveryFee?: number
+  orderTipo?: OrderType
+  onOrderTipoChange?: (tipo: OrderType) => void
+  delivery?: PortalDeliveryInfo
+  needsDelivery?: boolean
+  onDeliverySave?: (delivery: PortalDeliveryInfo) => void
+  onDeliveryFeeChange?: (fee: number) => void
   extraCharge: number
   onExtraChargeChange: (amount: number) => void
   submitLabel: string
@@ -26,6 +35,12 @@ export function PortalOrderSubmitBar({
   total,
   itemsSubtotal,
   deliveryFee = 0,
+  orderTipo = "mesa",
+  onOrderTipoChange,
+  delivery = {},
+  needsDelivery = false,
+  onDeliverySave,
+  onDeliveryFeeChange,
   extraCharge,
   onExtraChargeChange,
   submitLabel,
@@ -39,6 +54,8 @@ export function PortalOrderSubmitBar({
   const showDelivery = deliveryFee > 0
   const showExtra = extraCharge > 0
   const showBreakdown = showDelivery || showExtra
+  const showTipoDelivery =
+    onOrderTipoChange && onDeliverySave && onDeliveryFeeChange
 
   return (
     <Card className="border-primary/20 shadow-sm">
@@ -68,6 +85,19 @@ export function PortalOrderSubmitBar({
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {showTipoDelivery ? (
+          <PortalOrderTipoDelivery
+            orderTipo={orderTipo}
+            onOrderTipoChange={onOrderTipoChange}
+            delivery={delivery}
+            needsDelivery={needsDelivery}
+            onDeliverySave={onDeliverySave}
+            onDeliveryFeeChange={onDeliveryFeeChange}
+            disabled={disabled || loading}
+            className="border-t pt-3"
+          />
         ) : null}
 
         <div className="flex items-center justify-between text-lg font-bold">

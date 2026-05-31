@@ -27,8 +27,7 @@ import {
 } from "@/lib/menu-data"
 import type { PortalOrderLineBreakdown } from "@/lib/portal-menu-snapshot"
 import type { OrderType } from "@/components/orders-provider"
-import { PortalDomicilioDelivery } from "@/components/portal/portal-domicilio-delivery"
-import { PortalOrderTipoPicker } from "@/components/portal/portal-order-tipo-picker"
+import { PortalOrderTipoDelivery } from "@/components/portal/portal-order-tipo-delivery"
 import type { PortalDeliveryInfo } from "@/lib/portal-delivery"
 import {
   parseCartLineBaseId,
@@ -58,6 +57,7 @@ type PortalAiOrderReplyProps = {
   delivery?: PortalDeliveryInfo
   needsDelivery?: boolean
   onDeliverySave?: (delivery: PortalDeliveryInfo) => void
+  onDeliveryFeeChange?: (fee: number) => void
 }
 
 export function PortalAiOrderReply({
@@ -76,6 +76,7 @@ export function PortalAiOrderReply({
   delivery = {},
   needsDelivery = false,
   onDeliverySave,
+  onDeliveryFeeChange,
 }: PortalAiOrderReplyProps) {
   const { catalog } = useMenuCatalogContext()
   const [showLinePrices, setShowLinePrices] = useState(false)
@@ -328,21 +329,6 @@ export function PortalAiOrderReply({
           ),
         )}
       </ul>
-      {onOrderTipoChange && (
-        <PortalOrderTipoPicker
-          variant="inline"
-          value={orderTipo}
-          onChange={onOrderTipoChange}
-          className="pt-1"
-        />
-      )}
-      {orderTipo === "domicilio" && onDeliverySave && (
-        <PortalDomicilioDelivery
-          delivery={delivery}
-          needsDelivery={needsDelivery}
-          onSave={onDeliverySave}
-        />
-      )}
       <p className="text-sm font-semibold pt-0.5">
         Total: ${total.toFixed(2)} MXN
         {orderTipo === "domicilio" && delivery.deliveryFee != null && delivery.deliveryFee > 0 ? (
@@ -356,6 +342,18 @@ export function PortalAiOrderReply({
           </span>
         )}
       </p>
+
+      {onOrderTipoChange && onDeliverySave && onDeliveryFeeChange ? (
+        <PortalOrderTipoDelivery
+          orderTipo={orderTipo}
+          onOrderTipoChange={onOrderTipoChange}
+          delivery={delivery}
+          needsDelivery={needsDelivery}
+          onDeliverySave={onDeliverySave}
+          onDeliveryFeeChange={onDeliveryFeeChange}
+          className="pt-2 border-t border-border/60"
+        />
+      ) : null}
 
       <PortalCashChange
         total={total}

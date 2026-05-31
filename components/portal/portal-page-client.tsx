@@ -38,6 +38,7 @@ import {
 } from "@/lib/avos-orders-sync"
 import {
   type PortalDeliveryInfo,
+  portalDeliveryForTipo,
   portalDeliveryFromOrder,
   portalOrderNeedsDeliveryInfo,
   portalOrderTotal,
@@ -247,28 +248,31 @@ export function PortalPageClient() {
     [activeItems, selectedOrder, draftExtraCharge, updateOrder],
   )
 
+  const applyDeliveryFee = useCallback(
+    (fee: number) => {
+      if (orderTipo !== "domicilio") return
+      saveDelivery({
+        ...activeDelivery,
+        deliveryFee: Math.max(0, Math.round(fee * 100) / 100),
+      })
+    },
+    [orderTipo, activeDelivery, saveDelivery],
+  )
+
   const setOrderTipo = useCallback(
     (tipo: OrderType) => {
       const sub = orderItemsTotal(activeItems)
-      const cleared: PortalDeliveryInfo =
-        tipo === "domicilio"
-          ? activeDelivery
-          : {
-              deliveryZoneId: undefined,
-              deliveryZoneLabel: undefined,
-              deliveryFee: undefined,
-              deliveryAddress: undefined,
-            }
+      const deliveryInfo = portalDeliveryForTipo(tipo, activeDelivery)
       const newTotal = portalOrderTotal(
         sub,
         tipo,
-        cleared,
+        deliveryInfo,
         selectedOrder?.extraCharge ?? draftExtraCharge,
       )
       if (selectedOrder) {
         updateOrder(selectedOrder.id, {
           tipo,
-          ...cleared,
+          ...deliveryInfo,
           total: newTotal,
         })
         void portalUpdateOrderTipo(selectedOrder.id, tipo).then((result) => {
@@ -278,7 +282,7 @@ export function PortalPageClient() {
         })
       } else {
         setDraftOrderTipo(tipo)
-        if (tipo !== "domicilio") setDraftDelivery({})
+        setDraftDelivery(tipo === "domicilio" ? deliveryInfo : {})
       }
     },
     [activeItems, activeDelivery, selectedOrder, draftExtraCharge, updateOrder],
@@ -1026,6 +1030,7 @@ export function PortalPageClient() {
               delivery={activeDelivery}
               needsDelivery={needsDelivery}
               onDeliverySave={saveDelivery}
+              onDeliveryFeeChange={applyDeliveryFee}
               onOrderTipoChange={setOrderTipo}
               onItemsResolved={(items) => {
                 setActiveItems(items)
@@ -1045,6 +1050,12 @@ export function PortalPageClient() {
                 total={total}
                 itemsSubtotal={itemsSubtotal}
                 deliveryFee={deliveryFeeForTotal}
+                orderTipo={orderTipo}
+                onOrderTipoChange={setOrderTipo}
+                delivery={activeDelivery}
+                needsDelivery={needsDelivery}
+                onDeliverySave={saveDelivery}
+                onDeliveryFeeChange={applyDeliveryFee}
                 extraCharge={activeExtraCharge}
                 onExtraChargeChange={applyExtraCharge}
                 submitLabel={submitLabel}
@@ -1414,6 +1425,12 @@ export function PortalPageClient() {
                       total={total}
                       itemsSubtotal={itemsSubtotal}
                       deliveryFee={deliveryFeeForTotal}
+                      orderTipo={orderTipo}
+                      onOrderTipoChange={setOrderTipo}
+                      delivery={activeDelivery}
+                      needsDelivery={needsDelivery}
+                      onDeliverySave={saveDelivery}
+                      onDeliveryFeeChange={applyDeliveryFee}
                       extraCharge={activeExtraCharge}
                       onExtraChargeChange={applyExtraCharge}
                       submitLabel={submitLabel}
