@@ -192,6 +192,9 @@ export async function updateAvosOrderCartForPortal(
   items: OrderItem[],
   total: number,
   extraCharge = 0,
+  discountAmount = 0,
+  discountPreset?: string | null,
+  discountPercent?: number | null,
 ): Promise<{ ok: boolean; error?: string }> {
   return portalOrderFetch({
     action: "update_cart",
@@ -199,6 +202,9 @@ export async function updateAvosOrderCartForPortal(
     items,
     total,
     extraCharge,
+    discountAmount,
+    discountPreset: discountPreset ?? null,
+    discountPercent: discountPercent ?? null,
   })
 }
 
@@ -236,6 +242,9 @@ export async function insertAvosOrderToSupabase(order: Order): Promise<boolean> 
       p_delivery_photo_street_url: order.deliveryPhotoStreetUrl ?? null,
       p_delivery_photo_house_url: order.deliveryPhotoHouseUrl ?? null,
       p_extra_charge: order.extraCharge ?? 0,
+      p_discount_amount: order.discountAmount ?? 0,
+      p_discount_preset: order.discountPreset ?? null,
+      p_discount_percent: order.discountPercent ?? null,
       ...(customerUserId ? { p_customer_user_id: customerUserId } : {}),
     }
 

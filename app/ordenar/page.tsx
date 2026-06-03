@@ -31,6 +31,8 @@ import {
   bebidasOrdenar,
   bebidaTamanoLabels,
   categorias,
+  getPlatillosForCategoria,
+  getPlatilloTamanoLabel,
   imagenCategoriaBebidas,
   menuCategories,
   type BebidaOrdenar,
@@ -47,6 +49,7 @@ import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
 import { insertAvosOrderToSupabase } from "@/lib/avos-orders-sync"
 import { logCheckoutClient } from "@/lib/checkout-debug-client"
+import { menuCategoryTabButtonClass } from "@/components/menu-category-tab-styles"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { OrderItemExtrasPicker } from "@/components/order-item-extras-picker"
@@ -60,6 +63,12 @@ import {
   defaultPlatilloCustomizationConfig,
 } from "@/lib/order-item-customizations"
 import { cartLineKey, formatOrderItemNotas } from "@/lib/order-item-extras"
+import {
+  platilloCartSuffix,
+  platilloLineNombre,
+  platilloPickerFlags,
+  type PlatilloPickerFlags,
+} from "@/lib/platillo-config"
 
 interface CartItem {
   id: string
@@ -80,6 +89,8 @@ const categoriaEmoji: Record<string, string> = {
   burritos: "🌯",
   quesadillas: "🧀",
   platillos: "🍽️",
+  "carne-asada-fries": "🍟",
+  "menu-infantil": "🧒",
   bebidas: "🥤",
 }
 
@@ -102,22 +113,216 @@ function OrdenarFixedPlatilloRow({
     categoryId: string,
     extras: string[],
     customNote: string,
+    tamano?: BebidaTamano,
   ) => void
 }) {
   const [qty, setQty] = useState(1)
+  const [selectedTamano, setSelectedTamano] = useState<BebidaTamano>("chico")
   const customizationConfig = useCustomizationConfig(categoryId, item.id)
   const [extras, setExtras] = useState<string[]>(() =>
     defaultOrderExtras(customizationConfig),
   )
   const [customNote, setCustomNote] = useState("")
   const agotado = catalog?.isPlatilloOut(categoryId, item.id) ?? false
-  const price = catalog?.getPlatilloPrecio(categoryId, item.id) ?? item.basePrice
+  const price = item.tieneTamanos
+    ? catalog?.getPlatilloPrecioTamano(categoryId, item.id, selectedTamano) ??
+      (selectedTamano === "chico"
+        ? (item.precioChico ?? item.basePrice)
+        : (item.precioGrande ?? item.basePrice))
+    : catalog?.getPlatilloPrecio(categoryId, item.id) ?? item.basePrice
 
   return (
     <>
       {agotado && (
         <p className="text-sm text-destructive font-medium mb-3">Agotado</p>
       )}
+      <OrderItemExtrasPicker
+        config={customizationConfig}
+        extras={extras}
+        customNote={customNote}
+        onExtrasChange={setExtras}
+        onCustomNoteChange={setCustomNote}
+        className="mb-4"
+      />
+      {item.tieneTamanos ? (
+        <div className="mb-4">
+          <p className="text-sm font-medium mb-2">Tamaño</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["chico", "grande"] as const).map((tam) => {
+              const p =
+                catalog?.getPlatilloPrecioTamano(categoryId, item.id, tam) ??
+                (tam === "chico"
+                  ? (item.precioChico ?? item.basePrice)
+                  : (item.precioGrande ?? item.basePrice))
+              const isSel = selectedTamano === tam
+              return (
+                <button
+                  key={tam}
+                  type="button"
+                  onClick={() => setSelectedTamano(tam)}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                    isSel
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card border-border hover:border-primary/50",
+                  )}
+                >
+                  {getPlatilloTamanoLabel(item, tam)}
+                  <span className="block text-xs opacity-80">${p}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-1">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium shrink-0">Cantidad</span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-9 w-9"
+              disabled={qty <= 1 || agotado}
+              onClick={() => setQty((q) => Math.max(1, q - 1))}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <span className="w-8 text-center tabular-nums font-medium">{qty}</span>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-9 w-9"
+              disabled={agotado}
+              onClick={() => setQty((q) => q + 1)}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <Button
+          type="button"
+          className="sm:ml-auto w-full sm:w-auto"
+          disabled={agotado}
+          onClick={() => {
+            onAdd(
+              item,
+              categoryName,
+              qty,
+              categoryId,
+              extras,
+              customNote,
+              item.tieneTamanos ? selectedTamano : undefined,
+            )
+            setQty(1)
+            setSelectedTamano("chico")
+            setExtras(defaultOrderExtras(customizationConfig))
+            setCustomNote("")
+          }}
+        >
+          Agregar al carrito{item.tieneTamanos ? ` · $${price.toFixed(0)}` : ""}
+        </Button>
+      </div>
+    </>
+  )
+}
+
+function OrdenarOpcionesPlatilloBlock({
+  item,
+  categoryId,
+  categoryName,
+  catalog,
+  onAdd,
+}: {
+  item: OrdenarMenuItem
+  categoryId: string
+  categoryName: string
+  catalog: MenuCatalogHelpers | null
+  onAdd: (
+    item: OrdenarMenuItem,
+    categoria: string,
+    qty: number,
+    categoryId: string,
+    extras: string[],
+    customNote: string,
+    tamano: BebidaTamano,
+    opcionId: string,
+  ) => void
+}) {
+  const [qty, setQty] = useState(1)
+  const [selectedTamano, setSelectedTamano] = useState<BebidaTamano>("chico")
+  const [selectedOpcion, setSelectedOpcion] = useState<string | null>(
+    item.opciones?.[0]?.id ?? null,
+  )
+  const customizationConfig = useCustomizationConfig(categoryId, item.id)
+  const [extras, setExtras] = useState<string[]>(() =>
+    defaultOrderExtras(customizationConfig),
+  )
+  const [customNote, setCustomNote] = useState("")
+  const agotado = catalog?.isPlatilloOut(categoryId, item.id) ?? false
+  const price =
+    catalog?.getPlatilloPrecioTamano(categoryId, item.id, selectedTamano) ??
+    (selectedTamano === "chico"
+      ? (item.precioChico ?? item.basePrice)
+      : (item.precioGrande ?? item.basePrice))
+
+  return (
+    <>
+      {agotado && (
+        <p className="text-sm text-destructive font-medium mb-3">Agotado</p>
+      )}
+      <div className="mb-4">
+        <p className="text-sm font-medium mb-2">Tamaño</p>
+        <div className="grid grid-cols-2 gap-2">
+          {(["chico", "grande"] as const).map((tam) => {
+            const p =
+              catalog?.getPlatilloPrecioTamano(categoryId, item.id, tam) ??
+              (tam === "chico"
+                ? (item.precioChico ?? item.basePrice)
+                : (item.precioGrande ?? item.basePrice))
+            const isSel = selectedTamano === tam
+            return (
+              <button
+                key={tam}
+                type="button"
+                onClick={() => setSelectedTamano(tam)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                  isSel
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card border-border hover:border-primary/50",
+                )}
+              >
+                {getPlatilloTamanoLabel(item, tam)}
+                <span className="block text-xs opacity-80">${p}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <p className="text-sm font-medium mb-2">Elige 1 fruta</p>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {(item.opciones ?? []).map((opcion) => {
+          const isSel = selectedOpcion === opcion.id
+          return (
+            <button
+              key={opcion.id}
+              type="button"
+              onClick={() => setSelectedOpcion(opcion.id)}
+              className={cn(
+                "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                isSel
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card border-border hover:border-primary/50",
+              )}
+            >
+              {opcion.label}
+            </button>
+          )
+        })}
+      </div>
       <OrderItemExtrasPicker
         config={customizationConfig}
         extras={extras}
@@ -156,15 +361,27 @@ function OrdenarFixedPlatilloRow({
         <Button
           type="button"
           className="sm:ml-auto w-full sm:w-auto"
-          disabled={agotado}
+          disabled={agotado || !selectedOpcion}
           onClick={() => {
-            onAdd(item, categoryName, qty, categoryId, extras, customNote)
+            if (!selectedOpcion) return
+            onAdd(
+              item,
+              categoryName,
+              qty,
+              categoryId,
+              extras,
+              customNote,
+              selectedTamano,
+              selectedOpcion,
+            )
             setQty(1)
+            setSelectedTamano("chico")
+            setSelectedOpcion(item.opciones?.[0]?.id ?? null)
             setExtras(defaultOrderExtras(customizationConfig))
             setCustomNote("")
           }}
         >
-          Agregar al carrito
+          Agregar al carrito · ${price.toFixed(0)}
         </Button>
       </div>
     </>
@@ -200,14 +417,22 @@ function OrdenarProteinPlatilloBlock({
     categoryId: string,
     extras: string[],
     customNote: string,
+    tamano?: BebidaTamano,
   ) => void
 }) {
   const customizationConfig = useCustomizationConfig(category.id, item.id)
   const customizationsCtx = useOrderCustomizationsContextOptional()
+  const [selectedTamano, setSelectedTamano] = useState<BebidaTamano>("chico")
   const [extras, setExtras] = useState<string[]>(() =>
     defaultOrderExtras(customizationConfig),
   )
   const [customNote, setCustomNote] = useState("")
+
+  const flags: PlatilloPickerFlags = {
+    tieneProteinas: true,
+    tieneTamanos: item.tieneTamanos === true,
+    tieneOpciones: false,
+  }
 
   const lineNotas = (line: CartItem) => {
     const cfg =
@@ -220,6 +445,37 @@ function OrdenarProteinPlatilloBlock({
 
   return (
     <>
+      {item.tieneTamanos ? (
+        <div className="mb-4">
+          <p className="text-sm font-medium mb-2">Tamaño</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["chico", "grande"] as const).map((tam) => {
+              const p =
+                catalog?.getPlatilloPrecioTamano(category.id, item.id, tam) ??
+                (tam === "chico"
+                  ? (item.precioChico ?? item.basePrice)
+                  : (item.precioGrande ?? item.basePrice))
+              const isSel = selectedTamano === tam
+              return (
+                <button
+                  key={tam}
+                  type="button"
+                  onClick={() => setSelectedTamano(tam)}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                    isSel
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card border-border hover:border-primary/50",
+                  )}
+                >
+                  {getPlatilloTamanoLabel(item, tam)}
+                  <span className="block text-xs opacity-80">${p}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
       <p className="text-sm font-medium mb-2">Proteína</p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         {item.proteins
@@ -232,7 +488,12 @@ function OrdenarProteinPlatilloBlock({
             const agotada =
               catalog?.isProteinaOut(category.id, protein, item.id) ?? false
             const proteinPrice = catalog
-              ? catalog.getPrecioConProteina(category.id, protein, item.id)
+              ? catalog.getPrecioConProteina(
+                  category.id,
+                  protein,
+                  item.id,
+                  item.tieneTamanos ? selectedTamano : undefined,
+                )
               : item.basePrice +
                 (protein === "Camarón" ? (item.shrimpExtra ?? 20) : 0)
             return (
@@ -386,8 +647,10 @@ function OrdenarProteinPlatilloBlock({
               category.id,
               extras,
               customNote,
+              item.tieneTamanos ? selectedTamano : undefined,
             )
             setPickerQty(1)
+            setSelectedTamano("chico")
             setExtras(defaultOrderExtras(customizationConfig))
             setCustomNote("")
           }}
@@ -528,21 +791,33 @@ export default function OrdenarPage() {
       categoryId: string,
       extras: string[] = [],
       customNote = "",
+      tamano?: BebidaTamano,
+      opcionId?: string,
     ) => {
       const config =
         customizations?.getConfig(categoryId, item.id) ??
         defaultPlatilloCustomizationConfig()
-      const itemId = cartLineKey(
-        `${item.id}-${protein || "none"}`,
-        extras,
-        customNote,
-        config,
-      )
+      const lineKey =
+        item.opciones?.length && tamano && opcionId
+          ? `${item.id}-${tamano}-${opcionId}`
+          : item.tieneTamanos && tamano && protein
+            ? `${item.id}-${tamano}-${protein}`
+            : item.tieneTamanos && tamano
+              ? `${item.id}-${tamano}`
+              : `${item.id}-${protein || "none"}`
+      const itemId = cartLineKey(lineKey, extras, customNote, config)
       setCart((prev) => {
         const existingItem = prev.find((i) => i.id === itemId)
         let price: number
         if (catalog && protein) {
-          price = catalog.getPrecioConProteina(categoryId, protein, item.id)
+          price = catalog.getPrecioConProteina(
+            categoryId,
+            protein,
+            item.id,
+            tamano,
+          )
+        } else if (catalog && item.tieneTamanos && tamano) {
+          price = catalog.getPlatilloPrecioTamano(categoryId, item.id, tamano)
         } else if (catalog && !item.tieneProteinas) {
           price = catalog.getPlatilloPrecio(categoryId, item.id)
         } else if (catalog) {
@@ -553,6 +828,23 @@ export default function OrdenarPage() {
             price += item.shrimpExtra
           }
         }
+        const flags: PlatilloPickerFlags = {
+          tieneProteinas: item.tieneProteinas,
+          tieneTamanos: item.tieneTamanos === true,
+          tieneOpciones: (item.opciones?.length ?? 0) > 0,
+        }
+        const displayName = platilloLineNombre(
+          item.name,
+          flags,
+          tamano,
+          protein,
+          {
+            tamanoLabelChico: item.tamanoLabelChico,
+            tamanoLabelGrande: item.tamanoLabelGrande,
+            opciones: item.opciones,
+          },
+          opcionId,
+        )
         if (existingItem) {
           return prev.map((i) =>
             i.id === itemId ? { ...i, quantity: i.quantity + qty } : i,
@@ -562,7 +854,7 @@ export default function OrdenarPage() {
           ...prev,
           {
             id: itemId,
-            name: item.name,
+            name: displayName,
             categoria,
             protein,
             price,
@@ -751,6 +1043,17 @@ export default function OrdenarPage() {
   const thumbBebidas =
     categoriaImgs[BEBIDAS_CATEGORIA_ID] ?? imagenCategoriaBebidas
 
+  const visibleMenuCategories = menuCategories.filter(
+    (c) =>
+      !catalog?.isCategoriaOut(c.id) && !catalog?.isCategoriaHidden(c.id),
+  )
+  const selectedFoodCategory = selectedCategoryId
+    ? visibleMenuCategories.find((c) => c.id === selectedCategoryId)
+    : undefined
+  const showBebidasTab =
+    !catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID) &&
+    !catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID)
+
   if (!orderType) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -840,113 +1143,99 @@ export default function OrdenarPage() {
               )}
             </div>
 
-            <section className="rounded-2xl bg-secondary/30 p-4 md:p-6">
-              <h2
-                className="text-lg font-semibold text-center mb-4 md:mb-6"
-                style={{ fontFamily: "var(--font-heading)" }}
+            <section className="rounded-2xl bg-secondary/30 p-4 md:p-6 space-y-4">
+              <div
+                data-menu-category-tabs
+                className="flex flex-nowrap gap-2 overflow-x-auto pb-1 -mx-1 px-1 scroll-smooth [scrollbar-width:thin]"
+                role="tablist"
+                aria-label="Categorías del menú"
               >
-                Categorías
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 md:gap-6">
-                {menuCategories
-                  .filter(
-                    (c) =>
-                      !catalog?.isCategoriaOut(c.id) &&
-                      !catalog?.isCategoriaHidden(c.id),
-                  )
-                  .map((category) => {
-                  const catMeta = categorias.find((c) => c.id === category.id)
-                  const thumb =
-                    categoriaImgs[category.id] ?? catMeta?.imagen ?? ""
+                {visibleMenuCategories.map((category) => {
                   const active = selectedCategoryId === category.id
-                  const displayBase = catalog
-                    ? catalog.getCategoriaPrecioBase(category.id)
-                    : category.items[0]?.basePrice ?? 0
-                  const displayShrimp =
-                    catalog?.getCamarónExtra() ??
-                    category.items[0]?.shrimpExtra ??
-                    20
                   return (
-                    <div key={category.id} className="contents">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedCategoryId((prev) =>
-                            prev === category.id ? null : category.id,
-                          )
-                        }
-                        className={cn(
-                          "cursor-pointer bg-card rounded-2xl p-4 md:p-6 text-center shadow-sm transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-hidden touch-manipulation",
-                          active
-                            ? "ring-2 ring-primary shadow-md"
-                            : "hover:shadow-md",
-                        )}
-                      >
-                        <div className="relative aspect-[4/3] w-full max-w-[140px] mx-auto mb-3 rounded-xl overflow-hidden bg-muted pointer-events-none">
-                          {thumb ? (
-                            <Image
-                              src={thumb}
-                              alt=""
-                              fill
-                              className="object-cover pointer-events-none select-none"
-                              sizes="(max-width: 768px) 40vw, 140px"
-                              draggable={false}
-                            />
-                          ) : null}
-                        </div>
-                        <div className="text-3xl mb-2" aria-hidden>
-                          {categoriaEmoji[category.id] ?? "🍴"}
-                        </div>
-                        <h3 className="font-semibold text-foreground text-sm md:text-base">
-                          {category.name}
-                        </h3>
-                        {category.items.length > 1 && (
-                          <p className="text-[11px] text-muted-foreground mt-1 leading-tight px-1">
-                            {category.items
-                              .filter(
-                                (item) =>
-                                  !catalog?.isPlatilloHidden(
-                                    category.id,
-                                    item.id,
-                                  ),
-                              )
-                              .map((item) => item.name)
-                              .join(" · ")}
-                          </p>
-                        )}
-                      </button>
+                    <button
+                      key={category.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() =>
+                        setSelectedCategoryId((prev) =>
+                          prev === category.id ? null : category.id,
+                        )
+                      }
+                      className={menuCategoryTabButtonClass(active)}
+                    >
+                      <span className="text-lg leading-none" aria-hidden>
+                        {categoriaEmoji[category.id] ?? "🍴"}
+                      </span>
+                      <span className="whitespace-nowrap">{category.name}</span>
+                    </button>
+                  )
+                })}
+                {showBebidasTab ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedCategoryId === BEBIDAS_CATEGORIA_ID}
+                    onClick={() =>
+                      setSelectedCategoryId((prev) =>
+                        prev === BEBIDAS_CATEGORIA_ID
+                          ? null
+                          : BEBIDAS_CATEGORIA_ID,
+                      )
+                    }
+                    className={menuCategoryTabButtonClass(
+                      selectedCategoryId === BEBIDAS_CATEGORIA_ID,
+                    )}
+                  >
+                    <span className="text-lg leading-none" aria-hidden>
+                      {categoriaEmoji.bebidas}
+                    </span>
+                    <span className="whitespace-nowrap">Bebidas</span>
+                  </button>
+                ) : null}
+              </div>
 
-                      {active && (
-                        <div
-                          ref={expandPanelRef}
-                          className="col-span-2 sm:col-span-3 rounded-xl border border-border bg-card text-card-foreground shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-200"
-                        >
-                          <div className="bg-secondary/40 border-b border-border px-4 py-3 rounded-t-xl">
-                            <h3 className="font-semibold">{category.name}</h3>
-                            <p className="text-sm text-muted-foreground">
-                              {category.description}
-                            </p>
-                          </div>
-                          <div className="p-4 space-y-4">
-                            {category.items
-                              .filter(
-                                (item) =>
-                                  !catalog?.isPlatilloHidden(
-                                    category.id,
-                                    item.id,
-                                  ),
-                              )
-                              .map((item) => {
-                              const linesForItem = cart.filter(
-                                (c) =>
-                                  c.categoria === category.name &&
-                                  c.id.startsWith(`${item.id}-`),
-                              )
-                              const fixedPrice = catalog
-                                ? catalog.getPlatilloPrecio(category.id, item.id)
-                                : item.basePrice
-                              return (
-                              <div key={item.id}>
+              {selectedFoodCategory ? (
+                <div
+                  key={selectedFoodCategory.id}
+                  ref={expandPanelRef}
+                  className="rounded-xl border border-border bg-card text-card-foreground shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-200"
+                >
+                  {(() => {
+                    const category = selectedFoodCategory
+                    const displayBase = catalog
+                      ? catalog.getCategoriaPrecioBase(category.id)
+                      : category.items[0]?.basePrice ?? 0
+                    const displayShrimp =
+                      catalog?.getCamarónExtra() ??
+                      category.items[0]?.shrimpExtra ??
+                      20
+                    return (
+                      <>
+                  <div className="bg-secondary/40 border-b border-border px-4 py-3 rounded-t-xl">
+                    <h3 className="font-semibold">{category.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {category.description}
+                    </p>
+                  </div>
+                  <div className="p-4 space-y-4">
+                    {category.items
+                      .filter(
+                        (item) =>
+                          !catalog?.isPlatilloHidden(category.id, item.id),
+                      )
+                      .map((item) => {
+                      const linesForItem = cart.filter(
+                        (c) =>
+                          c.categoria === category.name &&
+                          c.id.startsWith(`${item.id}-`),
+                      )
+                      const fixedPrice = catalog
+                        ? catalog.getPlatilloPrecio(category.id, item.id)
+                        : item.basePrice
+                      return (
+                      <div key={item.id}>
                                 <div className="flex justify-between items-start mb-3">
                                   <div>
                                     <h4 className="font-semibold">
@@ -961,7 +1250,41 @@ export default function OrdenarPage() {
                                                 ? ` (Camarón +$${displayShrimp})`
                                                 : ""
                                             }`
-                                        : `$${fixedPrice} MXN`}
+                                        : item.tieneTamanos
+                                          ? (() => {
+                                              const cat = categorias.find(
+                                                (x) => x.id === category.id,
+                                              )
+                                              const plat = cat
+                                                ? getPlatillosForCategoria(cat).find(
+                                                    (x) => x.id === item.id,
+                                                  )
+                                                : undefined
+                                              const chico =
+                                                plat?.tamanoLabelChico ??
+                                                "Chico"
+                                              const grande =
+                                                plat?.tamanoLabelGrande ??
+                                                "Grande"
+                                              const pChico =
+                                                catalog?.getPlatilloPrecioTamano(
+                                                  category.id,
+                                                  item.id,
+                                                  "chico",
+                                                ) ??
+                                                item.precioChico ??
+                                                item.basePrice
+                                              const pGrande =
+                                                catalog?.getPlatilloPrecioTamano(
+                                                  category.id,
+                                                  item.id,
+                                                  "grande",
+                                                ) ??
+                                                item.precioGrande ??
+                                                item.basePrice
+                                              return `${chico} $${pChico} · ${grande} $${pGrande} MXN`
+                                            })()
+                                          : `$${fixedPrice} MXN`}
                                     </p>
                                   </div>
                                 </div>
@@ -1012,12 +1335,42 @@ export default function OrdenarPage() {
                                         </ul>
                                       </div>
                                     )}
+                                    {item.opciones?.length ? (
+                                      <OrdenarOpcionesPlatilloBlock
+                                        item={item}
+                                        categoryId={category.id}
+                                        categoryName={category.name}
+                                        catalog={catalog}
+                                        onAdd={(
+                                          it,
+                                          cat,
+                                          qty,
+                                          catId,
+                                          extras,
+                                          note,
+                                          tam,
+                                          opcion,
+                                        ) =>
+                                          addToCart(
+                                            it,
+                                            cat,
+                                            undefined,
+                                            qty,
+                                            catId,
+                                            extras,
+                                            note,
+                                            tam,
+                                            opcion,
+                                          )
+                                        }
+                                      />
+                                    ) : (
                                     <OrdenarFixedPlatilloRow
                                       item={item}
                                       categoryId={category.id}
                                       categoryName={category.name}
                                       catalog={catalog}
-                                      onAdd={(it, cat, qty, catId, extras, note) =>
+                                      onAdd={(it, cat, qty, catId, extras, note, tam) =>
                                         addToCart(
                                           it,
                                           cat,
@@ -1026,9 +1379,11 @@ export default function OrdenarPage() {
                                           catId,
                                           extras,
                                           note,
+                                          tam,
                                         )
                                       }
                                     />
+                                    )}
                                   </>
                                 ) : (
                                   <OrdenarProteinPlatilloBlock
@@ -1048,70 +1403,16 @@ export default function OrdenarPage() {
                             )
                             })}
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                      </>
+                    )
+                  })()}
+                </div>
+              ) : null}
 
-                {!catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID) && (
-                <div className="contents">
-                  {catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) ? (
-                    <div className="rounded-2xl p-4 md:p-6 text-center border border-dashed border-border bg-muted/30 opacity-80">
-                      <div className="text-3xl mb-2" aria-hidden>
-                        {categoriaEmoji.bebidas}
-                      </div>
-                      <h3 className="font-semibold text-foreground text-sm md:text-base">
-                        Bebidas
-                      </h3>
-                      <p className="text-xs text-destructive font-medium mt-2">
-                        Agotado
-                      </p>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedCategoryId((prev) =>
-                          prev === BEBIDAS_CATEGORIA_ID
-                            ? null
-                            : BEBIDAS_CATEGORIA_ID,
-                        )
-                      }
-                      className={cn(
-                        "cursor-pointer bg-card rounded-2xl p-4 md:p-6 text-center shadow-sm transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-hidden touch-manipulation",
-                        selectedCategoryId === BEBIDAS_CATEGORIA_ID
-                          ? "ring-2 ring-primary shadow-md"
-                          : "hover:shadow-md",
-                      )}
-                    >
-                      <div className="relative aspect-[4/3] w-full max-w-[140px] mx-auto mb-3 rounded-xl overflow-hidden bg-muted pointer-events-none">
-                        {thumbBebidas ? (
-                          <Image
-                            src={thumbBebidas}
-                            alt=""
-                            fill
-                            className="object-cover pointer-events-none select-none"
-                            sizes="(max-width: 768px) 40vw, 140px"
-                            draggable={false}
-                          />
-                        ) : null}
-                      </div>
-                      <div className="text-3xl mb-2" aria-hidden>
-                        {categoriaEmoji.bebidas}
-                      </div>
-                      <h3 className="font-semibold text-foreground text-sm md:text-base">
-                        Bebidas
-                      </h3>
-                    </button>
-                  )}
-
-                  {selectedCategoryId === BEBIDAS_CATEGORIA_ID &&
-                    !catalog?.isCategoriaOut(BEBIDAS_CATEGORIA_ID) &&
-                    !catalog?.isCategoriaHidden(BEBIDAS_CATEGORIA_ID) && (
+              {selectedCategoryId === BEBIDAS_CATEGORIA_ID && showBebidasTab ? (
                     <div
                       ref={expandPanelRef}
-                      className="col-span-2 sm:col-span-3 rounded-xl border border-border bg-card text-card-foreground shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-200"
+                      className="rounded-xl border border-border bg-card text-card-foreground shadow-sm animate-in fade-in-0 slide-in-from-top-2 duration-200"
                     >
                       <div className="bg-secondary/40 border-b border-border px-4 py-3 rounded-t-xl">
                         <h3 className="font-semibold">Aguas Frescas</h3>
@@ -1314,10 +1615,7 @@ export default function OrdenarPage() {
                         )}
                       </div>
                     </div>
-                  )}
-                </div>
-                )}
-              </div>
+              ) : null}
 
               {!selectedCategoryId && (
                 <p className="text-center text-muted-foreground pt-4 text-sm">

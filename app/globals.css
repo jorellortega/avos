@@ -124,3 +124,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Menu category tabs: green selected state (Radix TabsTrigger defaults stay white). */
+[data-menu-category-tabs] [role="tab"][aria-selected="true"] {
+  background-color: #059669 !important;
+  border-color: #047857 !important;
+  color: #000000 !important;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}

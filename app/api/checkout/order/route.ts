@@ -73,7 +73,7 @@ export async function POST(request: Request) {
   const { data: row, error } = await supabase
     .from("avos_orders")
     .select(
-      "id,numero,total,status,order_type,paid_at,items,nombre_cliente,delivery_fee,delivery_zone_id",
+      "id,numero,total,status,order_type,paid_at,items,nombre_cliente,delivery_fee,delivery_zone_id,extra_charge,discount_amount",
     )
     .eq("id", orderId)
     .maybeSingle()
@@ -190,12 +190,59 @@ export async function POST(request: Request) {
     })
   }
 
+  const extraCharge = Number(row.extra_charge)
+  if (Number.isFinite(extraCharge) && extraCharge > 0) {
+    const conv = menuPesosMxnToStripeUnitAmount(extraCharge)
+    if (!conv.ok) {
+      return NextResponse.json({ error: "Cargo adicional inválido." }, { status: 400 })
+    }
+    line_items.push({
+      quantity: 1,
+      price_data: {
+        currency: "mxn",
+        product_data: { name: "Cargo adicional" },
+        unit_amount: conv.stripeUnitAmount,
+      },
+    })
+  }
+
   const expectedTotal = Number(row.total)
+  const discountAmount = Number(row.discount_amount)
   const sumCents = line_items.reduce(
     (acc, li) => acc + (li.price_data?.unit_amount ?? 0) * (li.quantity ?? 1),
     0,
   )
-  if (Math.abs(sumCents - Math.round(expectedTotal * 100)) > 1) {
+  const targetCents = Math.round(expectedTotal * 100)
+  const needsConsolidated =
+    (Number.isFinite(discountAmount) && discountAmount > 0.009) ||
+    Math.abs(sumCents - targetCents) > 1
+
+  if (needsConsolidated) {
+    const conv = menuPesosMxnToStripeUnitAmount(expectedTotal)
+    if (!conv.ok || expectedTotal <= 0) {
+      return NextResponse.json(
+        { error: "El total del pedido no es válido para pago en línea." },
+        { status: 400 },
+      )
+    }
+    line_items.length = 0
+    line_items.push({
+      quantity: 1,
+      price_data: {
+        currency: "mxn",
+        product_data: {
+          name: `Orden #${row.numero}`.slice(0, 120),
+        },
+        unit_amount: conv.stripeUnitAmount,
+      },
+    })
+  }
+
+  const finalSumCents = line_items.reduce(
+    (acc, li) => acc + (li.price_data?.unit_amount ?? 0) * (li.quantity ?? 1),
+    0,
+  )
+  if (Math.abs(finalSumCents - targetCents) > 1) {
     checkoutOrderVerbose("total_mismatch_lines", {
       lines: line_items.map((li) => ({
         qty: li.quantity,
@@ -204,10 +251,10 @@ export async function POST(request: Request) {
       })),
     })
     console.error("[checkout/order] total mismatch", {
-      sumCents,
-      sumPesos: sumCents / 100,
+      sumCents: finalSumCents,
+      sumPesos: finalSumCents / 100,
       expectedTotalPesos: expectedTotal,
-      expectedCents: Math.round(expectedTotal * 100),
+      expectedCents: targetCents,
       numero: row.numero,
       orderIdPrefix: orderId.slice(0, 8),
     })
@@ -231,8 +278,8 @@ export async function POST(request: Request) {
       currency: li.price_data.currency,
       name: li.price_data.product_data.name.slice(0, 80),
     })),
-    sumCents,
-    sumPesosFromLines: sumCents / 100,
+    sumCents: finalSumCents,
+    sumPesosFromLines: finalSumCents / 100,
     dbTotalPesos: expectedTotal,
   })
 
@@ -272,7 +319,7 @@ export async function POST(request: Request) {
     console.error("[checkout/order] stripe_error", {
       orderIdPrefix: orderId.slice(0, 8),
       numero: row.numero,
-      sumCents,
+      sumCents: finalSumCents,
       message: e instanceof Error ? e.message : String(e),
     })
     console.error("[checkout/order]", e)

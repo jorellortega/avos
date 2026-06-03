@@ -22,9 +22,20 @@ import { cartLineKey, formatOrderItemNotas } from "@/lib/order-item-extras"
 import { cn } from "@/lib/utils"
 import {
   proteinas,
+  bebidaTamanoLabels,
+  getPlatilloPrecioDefault,
+  getPlatilloPrecioProteinaTamanoDefault,
+  getPlatilloTamanoLabel,
+  getProteinasForPlatillo,
+  type BebidaTamano,
   type Proteina,
   imagenProteinaPorId,
 } from "@/lib/menu-data"
+import {
+  platilloCartSuffix,
+  platilloLineNombre,
+  type PlatilloPickerFlags,
+} from "@/lib/platillo-config"
 
 interface MenuItemCardProps {
   categoriaId: string
@@ -34,6 +45,14 @@ interface MenuItemCardProps {
   descripcion: string
   precioBase: number
   tieneProteinas: boolean
+  tieneTamanos?: boolean
+  precioChico?: number
+  precioGrande?: number
+  tamanoLabelChico?: string
+  tamanoLabelGrande?: string
+  preciosProteinaTamano?: import("@/lib/menu-data").ProteinaTamanoPrecios
+  proteinasPlatillo?: readonly Proteina[]
+  opciones?: readonly { id: string; label: string }[]
   imagen: string
   proteinaImagenes?: Partial<Record<Proteina, string>>
   collapsible?: boolean
@@ -51,6 +70,14 @@ export function MenuItemCard({
   descripcion,
   precioBase,
   tieneProteinas,
+  tieneTamanos = false,
+  precioChico,
+  precioGrande,
+  tamanoLabelChico,
+  tamanoLabelGrande,
+  preciosProteinaTamano,
+  proteinasPlatillo,
+  opciones,
   imagen,
   proteinaImagenes,
   collapsible = false,
@@ -69,6 +96,10 @@ export function MenuItemCard({
     defaultOrderExtras(customizationConfig),
   )
   const [customNote, setCustomNote] = useState("")
+  const [selectedTamano, setSelectedTamano] = useState<BebidaTamano>("chico")
+  const [selectedOpcion, setSelectedOpcion] = useState<string>(
+    opciones?.[0]?.id ?? "",
+  )
   const [showSuccess, setShowSuccess] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -78,7 +109,11 @@ export function MenuItemCard({
   const categoriaFuera = catalog?.isCategoriaOut(categoriaId) ?? false
   const platilloFuera = catalog?.isPlatilloOut(categoriaId, pid) ?? false
 
-  const proteinasEnMenu = proteinas.filter(
+  const proteinasLista = proteinasPlatillo?.length
+    ? proteinasPlatillo
+    : proteinas
+
+  const proteinasEnMenu = proteinasLista.filter(
     (p) => !catalog?.isProteinaHidden(categoriaId, p, pid),
   )
 
@@ -112,14 +147,70 @@ export function MenuItemCard({
 
   if (categoriaOculta || platilloOculto) return null
 
+  const flags: PlatilloPickerFlags = {
+    tieneProteinas,
+    tieneTamanos,
+    tieneOpciones: (opciones?.length ?? 0) > 0,
+  }
+  const platilloMeta = {
+    tamanoLabelChico,
+    tamanoLabelGrande,
+    opciones,
+  }
+
   const precio = tieneProteinas
-    ? catalog?.getPrecioConProteina(categoriaId, selectedProteina, pid) ??
-      (selectedProteina === "Camarón" ? precioBase + 20 : precioBase)
-    : catalog?.getPlatilloPrecio(categoriaId, pid) ?? precioBase
+    ? catalog?.getPrecioConProteina(
+        categoriaId,
+        selectedProteina,
+        pid,
+        tieneTamanos ? selectedTamano : undefined,
+      ) ??
+      (() => {
+        if (tieneTamanos) {
+          return getPlatilloPrecioProteinaTamanoDefault(
+            {
+              preciosProteinaTamano,
+              precioBase,
+              precioChico,
+              precioGrande,
+              tieneTamanos: true,
+            },
+            selectedProteina,
+            selectedTamano,
+          )
+        }
+        return selectedProteina === "Camarón" ? precioBase + 20 : precioBase
+      })()
+    : tieneTamanos
+      ? catalog?.getPlatilloPrecioTamano(categoriaId, pid, selectedTamano) ??
+        (selectedTamano === "chico"
+          ? (precioChico ?? precioBase)
+          : (precioGrande ?? precioBase))
+      : catalog?.getPlatilloPrecio(categoriaId, pid) ?? precioBase
 
   const precioProteina = (p: Proteina) =>
-    catalog?.getPrecioConProteina(categoriaId, p, pid) ??
-    (p === "Camarón" ? precioBase + 20 : precioBase)
+    catalog?.getPrecioConProteina(
+      categoriaId,
+      p,
+      pid,
+      tieneTamanos ? selectedTamano : undefined,
+    ) ??
+    (() => {
+      if (tieneTamanos) {
+        return getPlatilloPrecioProteinaTamanoDefault(
+          {
+            preciosProteinaTamano,
+            precioBase,
+            precioChico,
+            precioGrande,
+            tieneTamanos: true,
+          },
+          p,
+          selectedTamano,
+        )
+      }
+      return p === "Camarón" ? precioBase + 20 : precioBase
+    })()
 
   const sinProteinas = tieneProteinas && proteinasDisponibles.length === 0
 
@@ -127,7 +218,14 @@ export function MenuItemCard({
     ? proteinasDisponibles.length > 0
       ? Math.min(...proteinasDisponibles.map((p) => precioProteina(p)))
       : precioBase
-    : precio
+    : tieneTamanos
+      ? Math.min(
+          catalog?.getPlatilloPrecioTamano(categoriaId, pid, "chico") ??
+            (precioChico ?? precioBase),
+          catalog?.getPlatilloPrecioTamano(categoriaId, pid, "grande") ??
+            (precioGrande ?? precioBase),
+        )
+      : precio
 
   const thumbSrc = tileImagen ?? imagen
   const tilePrice = desdePrecio
@@ -141,16 +239,24 @@ export function MenuItemCard({
     )
       return
 
-    const baseId = tieneProteinas
-      ? `${categoriaId}-${pid}-${selectedProteina}`
-      : `${categoriaId}-${pid}`
+    const tam = tieneTamanos ? selectedTamano : undefined
+    const opcionId = flags.tieneOpciones ? selectedOpcion : undefined
+    const baseId = `${categoriaId}-${pid}-${platilloCartSuffix(flags, tam, tieneProteinas ? selectedProteina : undefined, opcionId)}`
     const itemId = cartLineKey(baseId, extras, customNote, customizationConfig)
     const notas = formatOrderItemNotas(extras, customNote, customizationConfig)
+    const displayNombre = platilloLineNombre(
+      nombre,
+      flags,
+      tam,
+      tieneProteinas ? selectedProteina : undefined,
+      platilloMeta,
+      opcionId,
+    )
 
     for (let i = 0; i < cantidad; i++) {
       addItem({
         id: itemId,
-        nombre: tieneProteinas ? `${nombre} de ${selectedProteina}` : nombre,
+        nombre: displayNombre,
         categoria,
         proteina: tieneProteinas ? selectedProteina : "",
         precio,
@@ -169,6 +275,43 @@ export function MenuItemCard({
 
   const orderForm = (
     <div className="space-y-4">
+      {tieneTamanos ? (
+        <div>
+          <label className="text-sm font-medium text-foreground mb-2 block">
+            Tamaño:
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {(["chico", "grande"] as const).map((tam) => {
+              const p =
+                catalog?.getPlatilloPrecioTamano(categoriaId, pid, tam) ??
+                (tam === "chico"
+                  ? (precioChico ?? precioBase)
+                  : (precioGrande ?? precioBase))
+              const isSel = selectedTamano === tam
+              return (
+                <button
+                  key={tam}
+                  type="button"
+                  onClick={() => setSelectedTamano(tam)}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                    isSel
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card border-border hover:border-primary/50",
+                  )}
+                >
+                  {getPlatilloTamanoLabel(
+                    { tamanoLabelChico, tamanoLabelGrande },
+                    tam,
+                  )}
+                  <span className="block text-xs opacity-80">${p}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {tieneProteinas && !lockProteina ? (
         <div>
           <label className="text-sm font-medium text-foreground mb-2 block">
@@ -231,6 +374,34 @@ export function MenuItemCard({
               })}
             </div>
           )}
+        </div>
+      ) : null}
+
+      {flags.tieneOpciones && opciones?.length ? (
+        <div>
+          <label className="text-sm font-medium text-foreground mb-2 block">
+            Elige 1 fruta:
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {opciones.map((opcion) => {
+              const isSel = selectedOpcion === opcion.id
+              return (
+                <button
+                  key={opcion.id}
+                  type="button"
+                  onClick={() => setSelectedOpcion(opcion.id)}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                    isSel
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card border-border hover:border-primary/50",
+                  )}
+                >
+                  {opcion.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       ) : null}
 

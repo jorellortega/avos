@@ -4,6 +4,8 @@ import {
   bebidas,
   categorias,
   getPlatillosForCategoria,
+  getPlatilloTamanoLabel,
+  getProteinasForPlatillo,
   proteinas,
   type BebidaTamano,
   type Proteina,
@@ -11,6 +13,12 @@ import {
 import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
 import { cartLineKey } from "@/lib/order-item-extras"
 import { defaultPlatilloCustomizationConfig } from "@/lib/order-item-customizations"
+import {
+  platilloCartSuffix,
+  platilloLineNombre,
+  categoriaTieneProteinas,
+  platilloPickerFlags,
+} from "@/lib/platillo-config"
 import {
   PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX,
   PORTAL_INCOMPLETE_BEBIDA_SUFFIX,
@@ -22,6 +30,7 @@ import {
 export type PortalAiLineInput = {
   categoriaId: string
   platilloId?: string
+  platilloTamano?: BebidaTamano
   proteina?: string
   bebidaId?: string
   bebidaTamano?: BebidaTamano
@@ -55,13 +64,46 @@ export function buildPortalMenuSnapshot(catalog: MenuCatalogHelpers): string {
         continue
       }
       if (platillo.tieneProteinas === false) {
-        const precio = catalog.getPlatilloPrecio(categoria.id, platillo.id)
-        lines.push(
-          `- ${platillo.nombre} | categoriaId=${categoria.id} platilloId=${platillo.id} | $${precio} (sin proteína)`,
-        )
+        if (platillo.tieneTamanos) {
+          for (const tam of ["chico", "grande"] as const) {
+            const precio = catalog.getPlatilloPrecioTamano(
+              categoria.id,
+              platillo.id,
+              tam,
+            )
+            lines.push(
+              `- ${platillo.nombre} (${bebidaTamanoLabels[tam]}) | categoriaId=${categoria.id} platilloId=${platillo.id} platilloTamano=${tam} | $${precio} (sin proteína)`,
+            )
+          }
+        } else {
+          const precio = catalog.getPlatilloPrecio(categoria.id, platillo.id)
+          lines.push(
+            `- ${platillo.nombre} | categoriaId=${categoria.id} platilloId=${platillo.id} | $${precio} (sin proteína)`,
+          )
+        }
         continue
       }
-      for (const proteina of proteinas) {
+      if (platillo.tieneTamanos) {
+        for (const tam of ["chico", "grande"] as const) {
+          for (const proteina of getProteinasForPlatillo(platillo, categoria)) {
+            if (catalog.isProteinaOut(categoria.id, proteina, platillo.id)) continue
+            if (catalog.isProteinaHidden(categoria.id, proteina, platillo.id)) {
+              continue
+            }
+            const precio = catalog.getPrecioConProteina(
+              categoria.id,
+              proteina,
+              platillo.id,
+              tam,
+            )
+            lines.push(
+              `- ${platillo.nombre} (${getPlatilloTamanoLabel(platillo, tam)}) ${proteina} | categoriaId=${categoria.id} platilloId=${platillo.id} platilloTamano=${tam} proteina=${proteina} | $${precio}`,
+            )
+          }
+        }
+        continue
+      }
+      for (const proteina of getProteinasForPlatillo(platillo, categoria)) {
         if (catalog.isProteinaOut(categoria.id, proteina, platillo.id)) continue
         if (catalog.isProteinaHidden(categoria.id, proteina, platillo.id)) continue
         const precio = catalog.getPrecioConProteina(
@@ -244,17 +286,28 @@ export function resolvePortalAiLines(
     }
     const platilloId = line.platilloId ?? categoriaId
     const platillo = getPlatillosForCategoria(cat).find((p) => p.id === platilloId)
+    const flags = platillo
+      ? platilloPickerFlags(platillo, cat)
+      : { tieneProteinas: categoriaTieneProteinas(cat), tieneTamanos: false, tieneOpciones: false }
     const proteina = normalizeProteina(line.proteina)
+    const tam =
+      line.platilloTamano === "grande" || line.platilloTamano === "chico"
+        ? line.platilloTamano
+        : flags.tieneTamanos
+          ? "chico"
+          : undefined
 
     let precio: number
     let nombre: string
 
-    if (platillo?.tieneProteinas !== false && !proteina) {
+    if (flags.tieneProteinas && !proteina) {
       const baseName = platilloDisplayName(categoriaId, platilloId)
       const config = defaultPlatilloCustomizationConfig()
       const baseId = `${categoriaId}-${platilloId}-${PORTAL_INCOMPLETE_PROTEIN_SUFFIX}`
       const itemId = cartLineKey(baseId, [], notas ?? "", config)
-      const precio = catalog.getPlatilloPrecio(categoriaId, platilloId)
+      const incompletePrecio = flags.tieneTamanos && tam
+        ? catalog.getPlatilloPrecioTamano(categoriaId, platilloId, tam)
+        : catalog.getPlatilloPrecio(categoriaId, platilloId)
       const existing = byId.get(itemId)
       if (existing) {
         existing.cantidad += qty
@@ -264,7 +317,7 @@ export function resolvePortalAiLines(
           categoria: categoriaId,
           nombre: `${baseName} (elige proteína)`,
           cantidad: qty,
-          precio,
+          precio: incompletePrecio,
           notas,
           needsProteina: true,
         })
@@ -272,16 +325,42 @@ export function resolvePortalAiLines(
       continue
     }
 
-    if (platillo?.tieneProteinas === false || !proteina) {
+    if (!flags.tieneProteinas) {
+      const platilloMeta = platillo ?? undefined
+      if (flags.tieneTamanos && tam) {
+        precio = catalog.getPlatilloPrecioTamano(categoriaId, platilloId, tam)
+        nombre = platilloLineNombre(
+          platilloDisplayName(categoriaId, platilloId),
+          flags,
+          tam,
+          undefined,
+          platilloMeta,
+        )
+      } else {
+        precio = catalog.getPlatilloPrecio(categoriaId, platilloId)
+        nombre = platilloDisplayName(categoriaId, platilloId)
+      }
+    } else if (proteina) {
+      precio = catalog.getPrecioConProteina(
+        categoriaId,
+        proteina,
+        platilloId,
+        flags.tieneTamanos ? tam : undefined,
+      )
+      nombre = platilloLineNombre(
+        platilloDisplayName(categoriaId, platilloId),
+        flags,
+        tam,
+        proteina,
+        platillo,
+      )
+    } else {
       precio = catalog.getPlatilloPrecio(categoriaId, platilloId)
       nombre = platilloDisplayName(categoriaId, platilloId)
-    } else {
-      precio = catalog.getPrecioConProteina(categoriaId, proteina, platilloId)
-      nombre = platilloDisplayName(categoriaId, platilloId, proteina)
     }
 
     const config = defaultPlatilloCustomizationConfig()
-    const baseId = `${categoriaId}-${platilloId}-${proteina || "default"}`
+    const baseId = `${categoriaId}-${platilloId}-${platilloCartSuffix(flags, tam, proteina)}`
     const itemId = cartLineKey(baseId, [], notas ?? "", config)
     const existing = byId.get(itemId)
     if (existing) {

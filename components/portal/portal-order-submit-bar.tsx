@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import type { OrderType } from "@/components/orders-provider"
 import { PortalCashChange } from "@/components/portal/portal-cash-change"
 import { PortalExtraCharge } from "@/components/portal/portal-extra-charge"
+import { PortalOrderDiscount } from "@/components/portal/portal-order-discount"
+import type { OrderDiscountState } from "@/lib/order-discount"
 import { PortalOrderTipoDelivery } from "@/components/portal/portal-order-tipo-delivery"
 import type { PortalDeliveryInfo } from "@/lib/portal-delivery"
 
@@ -21,6 +23,9 @@ type PortalOrderSubmitBarProps = {
   onDeliveryFeeChange?: (fee: number) => void
   extraCharge: number
   onExtraChargeChange: (amount: number) => void
+  discountState: OrderDiscountState
+  discountAmount: number
+  onDiscountChange: (state: OrderDiscountState) => void
   submitLabel: string
   loadingLabel: string
   disabled: boolean
@@ -43,6 +48,9 @@ export function PortalOrderSubmitBar({
   onDeliveryFeeChange,
   extraCharge,
   onExtraChargeChange,
+  discountState,
+  discountAmount,
+  onDiscountChange,
   submitLabel,
   loadingLabel,
   disabled,
@@ -53,7 +61,8 @@ export function PortalOrderSubmitBar({
 }: PortalOrderSubmitBarProps) {
   const showDelivery = deliveryFee > 0
   const showExtra = extraCharge > 0
-  const showBreakdown = showDelivery || showExtra
+  const showDiscount = discountAmount > 0
+  const showBreakdown = showDelivery || showExtra || showDiscount
   const showTipoDelivery =
     onOrderTipoChange && onDeliverySave && onDeliveryFeeChange
 
@@ -84,6 +93,12 @@ export function PortalOrderSubmitBar({
                 <span className="tabular-nums">${extraCharge.toFixed(2)}</span>
               </div>
             ) : null}
+            {showDiscount ? (
+              <div className="flex justify-between text-emerald-700 dark:text-emerald-400">
+                <span>Descuento</span>
+                <span className="tabular-nums">−${discountAmount.toFixed(2)}</span>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -106,6 +121,13 @@ export function PortalOrderSubmitBar({
         </div>
 
         {showCashChange ? <PortalCashChange total={total} /> : null}
+
+        <PortalOrderDiscount
+          state={discountState}
+          discountAmount={discountAmount}
+          onChange={onDiscountChange}
+          disabled={disabled || loading}
+        />
 
         <Button
           className="w-full"

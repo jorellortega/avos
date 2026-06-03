@@ -3,6 +3,8 @@ import {
   categorias,
   getBebidaPrecioDefault,
   getPlatillosForCategoria,
+  getPlatilloPrecioDefault,
+  getPlatilloPrecioProteinaTamanoDefault,
   proteinas,
   type BebidaTamano,
   type Proteina,
@@ -12,6 +14,11 @@ export const MENU_CATALOG_KEY = "public_menu_catalog" as const
 
 export type ProteinaPreciosPorCategoria = Partial<
   Record<string, Partial<Record<Proteina, number>>>
+>
+
+/** Per-platillo protein price by size (key: catalogPlatilloKey) */
+export type ProteinaPreciosPorTamano = Partial<
+  Record<string, Partial<Record<Proteina, Partial<Record<BebidaTamano, number>>>>>
 >
 
 export type ProteinasPorCategoria = Partial<Record<string, Proteina[]>>
@@ -47,7 +54,11 @@ export type MenuCatalogJson = {
   categoriaPrecios: Partial<Record<string, number>>
   /** Per-category, per-protein absolute prices (override base + camarón extra) */
   proteinaPreciosPorCategoria: ProteinaPreciosPorCategoria
+  /** Per-platillo protein price by chico/grande (key: catalogPlatilloKey) */
+  proteinaPreciosPorTamano: ProteinaPreciosPorTamano
   bebidaPrecios: BebidaPreciosPorTamano
+  /** Chico/grande prices for sized platillos (key: catalogPlatilloKey) */
+  platilloPrecios: BebidaPreciosPorTamano
   /** Extra drinks added in /staff/menu-catalog */
   customBebidas: CatalogBebida[]
   /** Drink ids with optional inventory tracking */
@@ -198,7 +209,9 @@ export function defaultMenuCatalogJson(): MenuCatalogJson {
   return {
     categoriaPrecios: {},
     proteinaPreciosPorCategoria: {},
+    proteinaPreciosPorTamano: {},
     bebidaPrecios: {},
+    platilloPrecios: {},
     customBebidas: [],
     bebidaTrackStock: [],
     bebidaStockQty: {},
@@ -250,6 +263,32 @@ function asProteinaPreciosPorCategoria(v: unknown): ProteinaPreciosPorCategoria 
   return out
 }
 
+function asProteinaPreciosPorTamano(v: unknown): ProteinaPreciosPorTamano {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {}
+  const out: ProteinaPreciosPorTamano = {}
+  for (const [catalogKey, val] of Object.entries(v)) {
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue
+    const prot: Partial<Record<Proteina, Partial<Record<BebidaTamano, number>>>> =
+      {}
+    for (const [p, sizesRaw] of Object.entries(val)) {
+      if (!(proteinas as readonly string[]).includes(p)) continue
+      if (!sizesRaw || typeof sizesRaw !== "object" || Array.isArray(sizesRaw)) {
+        continue
+      }
+      const sizes: Partial<Record<BebidaTamano, number>> = {}
+      for (const tam of ["chico", "grande"] as const) {
+        const price = (sizesRaw as Record<string, unknown>)[tam]
+        if (typeof price === "number" && Number.isFinite(price)) {
+          sizes[tam] = price
+        }
+      }
+      if (Object.keys(sizes).length > 0) prot[p as Proteina] = sizes
+    }
+    if (Object.keys(prot).length > 0) out[catalogKey] = prot
+  }
+  return out
+}
+
 function asBebidaPreciosPorTamano(v: unknown): BebidaPreciosPorTamano {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {}
   const out: BebidaPreciosPorTamano = {}
@@ -293,7 +332,11 @@ export function parseMenuCatalogJson(raw: string | null | undefined): MenuCatalo
       proteinaPreciosPorCategoria: asProteinaPreciosPorCategoria(
         o.proteinaPreciosPorCategoria,
       ),
+      proteinaPreciosPorTamano: asProteinaPreciosPorTamano(
+        o.proteinaPreciosPorTamano,
+      ),
       bebidaPrecios: asBebidaPreciosPorTamano(o.bebidaPrecios),
+      platilloPrecios: asBebidaPreciosPorTamano(o.platilloPrecios),
       customBebidas: asCatalogBebidas(o.customBebidas),
       bebidaTrackStock: asStringArray(o.bebidaTrackStock),
       bebidaStockQty: asNumberRecord(o.bebidaStockQty),
@@ -325,10 +368,16 @@ export type MenuCatalogHelpers = {
   json: MenuCatalogJson
   getCategoriaPrecioBase: (categoriaId: string) => number
   getPlatilloPrecio: (categoriaId: string, platilloId: string) => number
+  getPlatilloPrecioTamano: (
+    categoriaId: string,
+    platilloId: string,
+    tamano: BebidaTamano,
+  ) => number
   getPrecioConProteina: (
     categoriaId: string,
     proteina: Proteina,
     platilloId?: string,
+    tamano?: BebidaTamano,
   ) => number
   getBebidaPrecio: (bebidaId: string, tamano: BebidaTamano) => number
   getBebidas: () => BebidaCatalogEntry[]
@@ -387,9 +436,30 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     const c = categorias.find((x) => x.id === categoriaId)
     if (c) {
       const p = getPlatillosForCategoria(c).find((x) => x.id === platilloId)
-      if (p) return p.precioBase
+      if (p) {
+        if (p.tieneTamanos) {
+          return getPlatilloPrecioDefault(p, "chico")
+        }
+        return p.precioBase
+      }
     }
     return getCategoriaPrecioBase(categoriaId)
+  }
+
+  const getPlatilloPrecioTamano = (
+    categoriaId: string,
+    platilloId: string,
+    tamano: BebidaTamano,
+  ) => {
+    const catalogKey = catalogPlatilloKey(categoriaId, platilloId)
+    const override = json.platilloPrecios[catalogKey]?.[tamano]
+    if (typeof override === "number" && Number.isFinite(override)) return override
+    const c = categorias.find((x) => x.id === categoriaId)
+    if (c) {
+      const p = getPlatillosForCategoria(c).find((x) => x.id === platilloId)
+      if (p?.tieneTamanos) return getPlatilloPrecioDefault(p, tamano)
+    }
+    return getPlatilloPrecio(categoriaId, platilloId)
   }
 
   const getBebidaPrecio = (bebidaId: string, tamano: BebidaTamano) => {
@@ -468,14 +538,38 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     categoriaId: string,
     proteina: Proteina,
     platilloId?: string,
+    tamano?: BebidaTamano,
   ) => {
-    for (const key of catalogLookupKeys(categoriaId, platilloId)) {
-      const specific = json.proteinaPreciosPorCategoria[key]?.[proteina]
-      if (typeof specific === "number" && Number.isFinite(specific)) {
-        return specific
+    const pid = platilloId ?? categoriaId
+    const c = categorias.find((x) => x.id === categoriaId)
+    const plat = c ? getPlatillosForCategoria(c).find((p) => p.id === pid) : undefined
+    const sizedPlatillo = Boolean(tamano && plat?.tieneTamanos)
+
+    for (const key of catalogLookupKeys(categoriaId, pid)) {
+      if (sizedPlatillo) {
+        const byTam = json.proteinaPreciosPorTamano[key]?.[proteina]?.[tamano!]
+        if (typeof byTam === "number" && Number.isFinite(byTam)) return byTam
+      }
+      if (!sizedPlatillo) {
+        const specific = json.proteinaPreciosPorCategoria[key]?.[proteina]
+        if (typeof specific === "number" && Number.isFinite(specific)) {
+          return specific
+        }
       }
     }
-    const base = getCategoriaPrecioBase(categoriaId)
+
+    if (sizedPlatillo && plat) {
+      return getPlatilloPrecioProteinaTamanoDefault(
+        plat,
+        proteina,
+        tamano!,
+        getCamarónExtra(),
+      )
+    }
+
+    const base = plat
+      ? getPlatilloPrecio(categoriaId, pid)
+      : getCategoriaPrecioBase(categoriaId)
     return precioItemConProteina(base, proteina, getCamarónExtra())
   }
 
@@ -483,6 +577,7 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     json,
     getCategoriaPrecioBase,
     getPlatilloPrecio,
+    getPlatilloPrecioTamano,
     getPrecioConProteina,
     getBebidaPrecio,
     getBebidas,

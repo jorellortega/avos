@@ -23,6 +23,8 @@ import {
   bebidaTamanoLabels,
   categorias,
   getPlatillosForCategoria,
+  getPlatilloPrecioProteinaTamanoDefault,
+  getProteinasForPlatillo,
   proteinas,
   type BebidaTamano,
   type Proteina,
@@ -58,10 +60,27 @@ function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
   for (const [bebidaId, sizes] of Object.entries(j.bebidaPrecios)) {
     if (sizes) bebidaPrecios[bebidaId] = { ...sizes }
   }
+  const platilloPrecios: MenuCatalogJson["platilloPrecios"] = {}
+  for (const [key, sizes] of Object.entries(j.platilloPrecios ?? {})) {
+    if (sizes) platilloPrecios[key] = { ...sizes }
+  }
+  const proteinaPreciosPorTamano: MenuCatalogJson["proteinaPreciosPorTamano"] = {}
+  for (const [key, map] of Object.entries(j.proteinaPreciosPorTamano ?? {})) {
+    if (!map) continue
+    const prot: NonNullable<
+      MenuCatalogJson["proteinaPreciosPorTamano"][string]
+    > = {}
+    for (const [p, sizes] of Object.entries(map)) {
+      if (sizes) prot[p as Proteina] = { ...sizes }
+    }
+    if (Object.keys(prot).length > 0) proteinaPreciosPorTamano[key] = prot
+  }
   return {
     categoriaPrecios: { ...j.categoriaPrecios },
     proteinaPreciosPorCategoria,
+    proteinaPreciosPorTamano,
     bebidaPrecios,
+    platilloPrecios,
     camarónExtra: j.camarónExtra,
     outCategorias: [...j.outCategorias],
     outProteinas: [...j.outProteinas],
@@ -395,6 +414,99 @@ export function MenuCatalogEditor({ initial }: Props) {
     })
   }
 
+  const setPlatilloTamanoPrecio = (
+    catalogKey: string,
+    tamano: BebidaTamano,
+    val: string,
+  ) => {
+    const n = parseFloat(val)
+    setState((s) => {
+      const next = cloneJson(s)
+      const sizes = { ...(next.platilloPrecios[catalogKey] ?? {}) }
+      if (val === "" || !Number.isFinite(n)) {
+        delete sizes[tamano]
+      } else {
+        sizes[tamano] = n
+      }
+      if (Object.keys(sizes).length === 0) {
+        delete next.platilloPrecios[catalogKey]
+      } else {
+        next.platilloPrecios[catalogKey] = sizes
+      }
+      return next
+    })
+  }
+
+  const platilloTamanoPrecioInput = (catalogKey: string, tamano: BebidaTamano) => {
+    const v = state.platilloPrecios[catalogKey]?.[tamano]
+    return v !== undefined ? String(v) : ""
+  }
+
+  const platilloTamanoPrecioPlaceholder = (
+    platillo: { precioChico?: number; precioGrande?: number; precioBase: number },
+    tamano: BebidaTamano,
+  ) =>
+    String(
+      tamano === "chico"
+        ? (platillo.precioChico ?? platillo.precioBase)
+        : (platillo.precioGrande ?? platillo.precioBase),
+    )
+
+  const proteinaPrecioTamanoInput = (
+    catalogKey: string,
+    proteina: Proteina,
+    tamano: BebidaTamano,
+  ) => {
+    const v = state.proteinaPreciosPorTamano[catalogKey]?.[proteina]?.[tamano]
+    return v !== undefined ? String(v) : ""
+  }
+
+  const setProteinaPrecioTamano = (
+    catalogKey: string,
+    proteina: Proteina,
+    tamano: BebidaTamano,
+    val: string,
+  ) => {
+    const n = parseFloat(val)
+    setState((s) => {
+      const next = cloneJson(s)
+      const platMap = {
+        ...(next.proteinaPreciosPorTamano[catalogKey] ?? {}),
+      }
+      const sizes = { ...(platMap[proteina] ?? {}) }
+      if (val === "" || !Number.isFinite(n)) {
+        delete sizes[tamano]
+      } else {
+        sizes[tamano] = n
+      }
+      if (Object.keys(sizes).length === 0) {
+        delete platMap[proteina]
+      } else {
+        platMap[proteina] = sizes
+      }
+      if (Object.keys(platMap).length === 0) {
+        delete next.proteinaPreciosPorTamano[catalogKey]
+      } else {
+        next.proteinaPreciosPorTamano[catalogKey] = platMap
+      }
+      return next
+    })
+  }
+
+  const proteinaPrecioTamanoPlaceholder = (
+    categoriaId: string,
+    platilloId: string,
+    proteina: Proteina,
+    tamano: BebidaTamano,
+  ) => {
+    const cat = categorias.find((x) => x.id === categoriaId)
+    const p = cat
+      ? getPlatillosForCategoria(cat).find((x) => x.id === platilloId)
+      : undefined
+    if (!p) return "0"
+    return String(getPlatilloPrecioProteinaTamanoDefault(p, proteina, tamano))
+  }
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto w-full px-1">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -508,6 +620,36 @@ export function MenuCatalogEditor({ initial }: Props) {
                           </div>
                         </div>
                         {platillo.tieneProteinas === false ? (
+                          platillo.tieneTamanos ? (
+                            <div className="flex flex-wrap gap-4">
+                              {(["chico", "grande"] as const).map((tam) => (
+                                <div key={tam} className="space-y-1">
+                                  <Label htmlFor={`plat-${catalogKey}-${tam}`}>
+                                    {bebidaTamanoLabels[tam]} (MXN)
+                                  </Label>
+                                  <Input
+                                    id={`plat-${catalogKey}-${tam}`}
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    className="w-24"
+                                    placeholder={platilloTamanoPrecioPlaceholder(
+                                      platillo,
+                                      tam,
+                                    )}
+                                    value={platilloTamanoPrecioInput(catalogKey, tam)}
+                                    onChange={(e) =>
+                                      setPlatilloTamanoPrecio(
+                                        catalogKey,
+                                        tam,
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
                           <div className="space-y-2 max-w-xs">
                             <Label htmlFor={`plat-precio-${catalogKey}`}>
                               Precio (MXN)
@@ -524,8 +666,144 @@ export function MenuCatalogEditor({ initial }: Props) {
                               }
                             />
                           </div>
+                          )
                         ) : (
                           <>
+                            {platillo.tieneTamanos &&
+                            platillo.preciosProteinaTamano ? (
+                              <>
+                                <p className="text-xs font-medium text-muted-foreground">
+                                  Precio por proteína y tamaño (MXN)
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                                  {getProteinasForPlatillo(platillo, c).map((p) => (
+                                    <div
+                                      key={p}
+                                      className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2 min-w-0"
+                                    >
+                                      <p className="text-xs font-semibold">{p}</p>
+                                      <div className="flex flex-wrap gap-3">
+                                        {(["chico", "grande"] as const).map(
+                                          (tam) => (
+                                            <div key={tam} className="space-y-1">
+                                              <Label
+                                                htmlFor={`precio-${catalogKey}-${p}-${tam}`}
+                                                className="text-xs"
+                                              >
+                                                {platillo.tamanoLabelChico &&
+                                                tam === "chico"
+                                                  ? platillo.tamanoLabelChico
+                                                  : platillo.tamanoLabelGrande &&
+                                                      tam === "grande"
+                                                    ? platillo.tamanoLabelGrande
+                                                    : bebidaTamanoLabels[tam]}
+                                              </Label>
+                                              <Input
+                                                id={`precio-${catalogKey}-${p}-${tam}`}
+                                                type="number"
+                                                min={0}
+                                                step={1}
+                                                className="w-24"
+                                                placeholder={proteinaPrecioTamanoPlaceholder(
+                                                  c.id,
+                                                  platillo.id,
+                                                  p,
+                                                  tam,
+                                                )}
+                                                value={proteinaPrecioTamanoInput(
+                                                  catalogKey,
+                                                  p,
+                                                  tam,
+                                                )}
+                                                onChange={(e) =>
+                                                  setProteinaPrecioTamano(
+                                                    catalogKey,
+                                                    p,
+                                                    tam,
+                                                    e.target.value,
+                                                  )
+                                                }
+                                              />
+                                            </div>
+                                          ),
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                          <Checkbox
+                                            checked={isProteinaOutForKey(
+                                              catalogKey,
+                                              p,
+                                            )}
+                                            disabled={state.outProteinas.includes(
+                                              p,
+                                            )}
+                                            onCheckedChange={(ch) =>
+                                              toggleProteinaOutForKey(
+                                                catalogKey,
+                                                p,
+                                                ch === true,
+                                              )
+                                            }
+                                          />
+                                          Agotado
+                                        </label>
+                                        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                          <Checkbox
+                                            checked={isProteinaHiddenForKey(
+                                              catalogKey,
+                                              p,
+                                            )}
+                                            disabled={state.hiddenProteinas.includes(
+                                              p,
+                                            )}
+                                            onCheckedChange={(ch) =>
+                                              toggleProteinaHiddenForKey(
+                                                catalogKey,
+                                                p,
+                                                ch === true,
+                                              )
+                                            }
+                                          />
+                                          Oculto
+                                        </label>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                            {platillo.tieneTamanos ? (
+                              <div className="flex flex-wrap gap-4 mb-4">
+                                {(["chico", "grande"] as const).map((tam) => (
+                                  <div key={tam} className="space-y-1">
+                                    <Label htmlFor={`plat-${catalogKey}-${tam}`}>
+                                      {bebidaTamanoLabels[tam]} (MXN)
+                                    </Label>
+                                    <Input
+                                      id={`plat-${catalogKey}-${tam}`}
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      className="w-24"
+                                      placeholder={platilloTamanoPrecioPlaceholder(
+                                        platillo,
+                                        tam,
+                                      )}
+                                      value={platilloTamanoPrecioInput(catalogKey, tam)}
+                                      onChange={(e) =>
+                                        setPlatilloTamanoPrecio(
+                                          catalogKey,
+                                          tam,
+                                          e.target.value,
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                             <p className="text-xs font-medium text-muted-foreground">
                               Precio por proteína (MXN)
                             </p>
@@ -611,6 +889,8 @@ export function MenuCatalogEditor({ initial }: Props) {
                                 </div>
                               ))}
                             </div>
+                          </>
+                            )}
                           </>
                         )}
                       </div>

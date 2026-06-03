@@ -38,12 +38,38 @@ export function parseCartLineBaseId(itemId: string): {
         platilloId: tail.slice(0, -"-default".length),
       }
     }
+    for (const tam of ["chico", "grande"] as const) {
+      if (tail.endsWith(`-${tam}`)) {
+        const platilloId = tail.slice(0, -`-${tam}`.length)
+        const catObj = getCategoriaById(cat.id)
+        const plat = catObj
+          ? getPlatillosForCategoria(catObj).find((p) => p.id === platilloId)
+          : undefined
+        if (plat?.tieneTamanos) {
+          return { categoriaId: cat.id, platilloId }
+        }
+      }
+    }
     for (const p of proteinas) {
       const suf = `-${p}`
       if (tail.endsWith(suf)) {
+        const beforeProt = tail.slice(0, -suf.length)
+        for (const tam of ["chico", "grande"] as const) {
+          const tamSuf = `-${tam}`
+          if (beforeProt.endsWith(tamSuf)) {
+            const platilloId = beforeProt.slice(0, -tamSuf.length)
+            const catObj = getCategoriaById(cat.id)
+            const plat = catObj
+              ? getPlatillosForCategoria(catObj).find((x) => x.id === platilloId)
+              : undefined
+            if (plat?.tieneTamanos) {
+              return { categoriaId: cat.id, platilloId, proteina: p }
+            }
+          }
+        }
         return {
           categoriaId: cat.id,
-          platilloId: tail.slice(0, -suf.length),
+          platilloId: beforeProt,
           proteina: p,
         }
       }

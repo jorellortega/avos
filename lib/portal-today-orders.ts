@@ -17,6 +17,9 @@ export type AvosOrderDbRow = {
   delivery_photo_street_url?: string | null
   delivery_photo_house_url?: string | null
   extra_charge?: number | null
+  discount_amount?: number | null
+  discount_preset?: string | null
+  discount_percent?: number | null
 }
 
 const VALID_STATUS = new Set<OrderStatus>([
@@ -74,6 +77,19 @@ export function mapAvosOrderRowToOrder(row: AvosOrderDbRow): Order | null {
     extraCharge:
       row.extra_charge != null && Number(row.extra_charge) > 0
         ? Number(row.extra_charge)
+        : undefined,
+    discountAmount:
+      row.discount_amount != null && Number(row.discount_amount) > 0
+        ? Number(row.discount_amount)
+        : undefined,
+    discountPreset:
+      row.discount_preset === "employee_20" ||
+      row.discount_preset === "employee_meal"
+        ? row.discount_preset
+        : undefined,
+    discountPercent:
+      row.discount_percent != null && Number(row.discount_percent) > 0
+        ? Number(row.discount_percent)
         : undefined,
   }
 }

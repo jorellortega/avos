@@ -49,6 +49,10 @@ export interface Order {
   deliveryPhotoHouseUrl?: string
   /** Optional surcharge / tip added at register (included in total). */
   extraCharge?: number
+  /** Pesos subtracted from items subtotal (staff discounts). */
+  discountAmount?: number
+  discountPreset?: "employee_20" | "employee_meal"
+  discountPercent?: number
 }
 
 interface OrdersContextType {

@@ -23,9 +23,9 @@ export const categorias = [
   {
     id: "tacos",
     nombre: "Tacos",
-    descripcion: "Cebolla asada, aguacate, cilantro",
-    imagen: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/EF86E926-0FA5-43B4-9510-F5D519A6D85E-ucnuQ69jJ38YUSen21k9W930qGkzQO.png",
-    precioBase: 45,
+    descripcion: "Cebolla asada, aguacate, cilantro — elige tamaño y proteína",
+    imagen: "/tacos.png",
+    precioBase: 15,
     tieneProteinas: true,
   },
   {
@@ -47,9 +47,9 @@ export const categorias = [
   {
     id: "quesadillas",
     nombre: "Quesadillas",
-    descripcion: "Queso, cebolla asada, aguacate",
-    imagen: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/EF86E926-0FA5-43B4-9510-F5D519A6D85E-ucnuQ69jJ38YUSen21k9W930qGkzQO.png",
-    precioBase: 75,
+    descripcion: "Queso, cebolla asada, aguacate — elige tamaño y proteína",
+    imagen: "/quesadillas.png",
+    precioBase: 42,
     tieneProteinas: true,
   },
   {
@@ -59,6 +59,22 @@ export const categorias = [
     imagen: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/EF86E926-0FA5-43B4-9510-F5D519A6D85E-ucnuQ69jJ38YUSen21k9W930qGkzQO.png",
     precioBase: 120,
     tieneProteinas: true,
+  },
+  {
+    id: "carne-asada-fries",
+    nombre: "Carne Asada Fries",
+    descripcion: "Papas fritas con guacamole, crema y queso — elige tamaño y proteína",
+    imagen: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/EF86E926-0FA5-43B4-9510-F5D519A6D85E-ucnuQ69jJ38YUSen21k9W930qGkzQO.png",
+    precioBase: 62,
+    tieneProteinas: true,
+  },
+  {
+    id: "menu-infantil",
+    nombre: "Menú Infantil",
+    descripcion: "¡Hecho especialmente para nuestros pequeños!",
+    imagen: "/menu-infantil.png",
+    precioBase: 60,
+    tieneProteinas: false,
   },
 ] as const
 
@@ -83,12 +99,71 @@ export type CategoriaPlatillo = {
   precioBase: number
   /** false = precio fijo, sin selector de proteína */
   tieneProteinas?: boolean
+  /** Chico / Grande (ej. Carne Asada Fries) */
+  tieneTamanos?: boolean
+  precioChico?: number
+  precioGrande?: number
+  /** Override size button labels (ej. Pequeño / Grande, 4 pzs / 8 pzs) */
+  tamanoLabelChico?: string
+  tamanoLabelGrande?: string
+  /** Choose-one options instead of protein (ej. fruta en plato infantil) */
+  opciones?: readonly PlatilloOpcion[]
+  /** Absolute price per protein and size (ej. Carne Asada Fries, Tacos) */
+  preciosProteinaTamano?: ProteinaTamanoPrecios
+  /** Limit protein picker (ej. tacos: sin Pastor) */
+  proteinas?: readonly Proteina[]
 }
+
+export type PlatilloOpcion = {
+  id: string
+  label: string
+}
+
+export type ProteinaTamanoPrecios = Partial<
+  Record<Proteina, Partial<Record<BebidaTamano, number>>>
+>
 
 /** Multiple menu items within one category (e.g. burrito styles). */
 export const platillosPorCategoria: Partial<
   Record<string, readonly CategoriaPlatillo[]>
 > = {
+  tacos: [
+    {
+      id: "tacos",
+      nombre: "Taco",
+      descripcion: "Cebolla asada, aguacate, cilantro",
+      precioBase: 15,
+      tieneProteinas: true,
+      tieneTamanos: true,
+      precioChico: 15,
+      precioGrande: 28,
+      proteinas: ["Asada", "Pollo", "Camarón"],
+      preciosProteinaTamano: {
+        Asada: { chico: 18, grande: 28 },
+        Pollo: { chico: 15, grande: 25 },
+        Camarón: { chico: 25, grande: 35 },
+      },
+    },
+  ],
+  quesadillas: [
+    {
+      id: "quesadillas",
+      nombre: "Quesadilla",
+      descripcion: "Queso, cebolla asada, aguacate",
+      precioBase: 42,
+      tieneProteinas: true,
+      tieneTamanos: true,
+      precioChico: 42,
+      precioGrande: 65,
+      tamanoLabelChico: "Chica",
+      tamanoLabelGrande: "Grande",
+      proteinas: ["Asada", "Pollo"],
+      preciosProteinaTamano: {
+        Asada: { chico: 45, grande: 65 },
+        Pollo: { chico: 42, grande: 62 },
+      },
+    },
+  ],
   burritos: [
     {
       id: "burrito",
@@ -135,6 +210,70 @@ export const platillosPorCategoria: Partial<
       tieneProteinas: false,
     },
   ],
+  "carne-asada-fries": [
+    {
+      id: "carne-asada-fries",
+      nombre: "Carne Asada Fries",
+      descripcion: "Papas fritas con guacamole, crema y queso — elige tamaño y proteína",
+      precioBase: 62,
+      tieneProteinas: true,
+      tieneTamanos: true,
+      precioChico: 62,
+      precioGrande: 90,
+      tamanoLabelChico: "Chicas",
+      tamanoLabelGrande: "Grandes",
+      preciosProteinaTamano: {
+        Asada: { chico: 65, grande: 90 },
+        Pollo: { chico: 62, grande: 87 },
+        Pastor: { chico: 62, grande: 87 },
+        Camarón: { chico: 82, grande: 107 },
+      },
+    },
+  ],
+  "menu-infantil": [
+    {
+      id: "plato-infantil",
+      nombre: "Plato Infantil",
+      descripcion:
+        "Nuggets, papas, 1 fruta y bebida pequeña incluida — elige tamaño y fruta",
+      precioBase: 60,
+      tieneProteinas: false,
+      tieneTamanos: true,
+      precioChico: 60,
+      precioGrande: 100,
+      tamanoLabelChico: "Pequeño",
+      tamanoLabelGrande: "Grande",
+      opciones: [
+        { id: "manzana", label: "Manzana" },
+        { id: "platano", label: "Plátano" },
+        { id: "naranja", label: "Naranja" },
+      ],
+    },
+    {
+      id: "papas-infantil",
+      nombre: "Papas",
+      descripcion: "Papas fritas crujientes",
+      precioBase: 25,
+      tieneProteinas: false,
+      tieneTamanos: true,
+      precioChico: 25,
+      precioGrande: 50,
+      tamanoLabelChico: "Pequeñas",
+      tamanoLabelGrande: "Grandes",
+    },
+    {
+      id: "nuggets-infantil",
+      nombre: "Nuggets de Pollo",
+      descripcion: "Nuggets de pollo empanizados",
+      precioBase: 40,
+      tieneProteinas: false,
+      tieneTamanos: true,
+      precioChico: 40,
+      precioGrande: 80,
+      tamanoLabelChico: "4 pzs",
+      tamanoLabelGrande: "8 pzs",
+    },
+  ],
 }
 
 export function getPlatillosForCategoria(
@@ -153,12 +292,30 @@ export function getPlatillosForCategoria(
   ]
 }
 
+export function getProteinasForPlatillo(
+  platillo: CategoriaPlatillo,
+  categoria: Pick<CategoriaMenu, "tieneProteinas">,
+): readonly Proteina[] {
+  if (platillo.tieneProteinas === false) return []
+  if (platillo.proteinas?.length) return platillo.proteinas
+  if ((categoria as { tieneProteinas?: boolean }).tieneProteinas === false) {
+    return []
+  }
+  return proteinas
+}
+
 export type OrdenarMenuItem = {
   id: string
   name: string
   basePrice: number
   shrimpExtra?: number
   tieneProteinas: boolean
+  tieneTamanos?: boolean
+  precioChico?: number
+  precioGrande?: number
+  tamanoLabelChico?: string
+  tamanoLabelGrande?: string
+  opciones?: readonly PlatilloOpcion[]
   proteins: readonly Proteina[]
 }
 
@@ -179,7 +336,18 @@ export const menuCategories: OrdenarMenuCategory[] = categorias.map((c) => ({
     basePrice: p.precioBase,
     shrimpExtra: 20,
     tieneProteinas: p.tieneProteinas !== false,
-    proteins: p.tieneProteinas === false ? [] : proteinas,
+    tieneTamanos: p.tieneTamanos === true,
+    precioChico: p.precioChico,
+    precioGrande: p.precioGrande,
+    tamanoLabelChico: p.tamanoLabelChico,
+    tamanoLabelGrande: p.tamanoLabelGrande,
+    opciones: p.opciones,
+    proteins:
+      p.tieneProteinas === false
+        ? []
+        : p.proteinas?.length
+          ? [...p.proteinas]
+          : proteinas,
   })),
 }))
 
@@ -222,6 +390,53 @@ export function getBebidaPrecioDefault(
   return tamano === "chico" ? bebida.precioChico : bebida.precioGrande
 }
 
+export function platilloTieneTamanos(p: CategoriaPlatillo): boolean {
+  return p.tieneTamanos === true
+}
+
+export function getPlatilloPrecioDefault(
+  platillo: Pick<CategoriaPlatillo, "precioBase" | "precioChico" | "precioGrande" | "tieneTamanos">,
+  tamano: BebidaTamano,
+): number {
+  if (platillo.tieneTamanos) {
+    return tamano === "chico"
+      ? (platillo.precioChico ?? platillo.precioBase)
+      : (platillo.precioGrande ?? platillo.precioBase)
+  }
+  return platillo.precioBase
+}
+
+export function getPlatilloTamanoLabel(
+  platillo: Pick<CategoriaPlatillo, "tamanoLabelChico" | "tamanoLabelGrande">,
+  tamano: BebidaTamano,
+): string {
+  if (tamano === "chico") {
+    return platillo.tamanoLabelChico ?? bebidaTamanoLabels.chico
+  }
+  return platillo.tamanoLabelGrande ?? bebidaTamanoLabels.grande
+}
+
+export function getPlatilloPrecioProteinaTamanoDefault(
+  platillo: Pick<
+    CategoriaPlatillo,
+    | "preciosProteinaTamano"
+    | "precioBase"
+    | "precioChico"
+    | "precioGrande"
+    | "tieneTamanos"
+  >,
+  proteina: Proteina,
+  tamano: BebidaTamano,
+  camarónExtra = 20,
+): number {
+  const matrix = platillo.preciosProteinaTamano?.[proteina]?.[tamano]
+  if (typeof matrix === "number" && Number.isFinite(matrix)) return matrix
+  const base = platillo.tieneTamanos
+    ? getPlatilloPrecioDefault(platillo, tamano)
+    : platillo.precioBase
+  return getPrecioConProteina(base, proteina, camarónExtra)
+}
+
 export type BebidaOrdenar = {
   id: string
   name: string
@@ -236,9 +451,13 @@ export const bebidasOrdenar: BebidaOrdenar[] = bebidas.map((b) => ({
   priceGrande: b.precioGrande,
 }))
 
-export function getPrecioConProteina(precioBase: number, proteina: Proteina): number {
+export function getPrecioConProteina(
+  precioBase: number,
+  proteina: Proteina,
+  camarónExtra = 20,
+): number {
   if (proteina === "Camarón") {
-    return precioBase + 20
+    return precioBase + camarónExtra
   }
   return precioBase
 }

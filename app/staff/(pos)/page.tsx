@@ -1,24 +1,31 @@
 "use client"
 
-import { useState } from "react"
-import Image from "next/image"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { MenuCategoryTabBar } from "@/components/menu-category-tab-bar"
 import { useOrders, OrderItem } from "@/components/orders-provider"
 import { insertAvosOrderToSupabase, staffConfirmAvosOrderPayment } from "@/lib/avos-orders-sync"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
+import { PlatilloOrderPicker } from "@/components/platillo-order-picker"
+import {
+  platilloCartSuffix,
+  platilloLineNombre,
+  platilloPickerFlags,
+} from "@/lib/platillo-config"
 import {
   bebidaTamanoLabels,
+  getPlatilloPrecioDefault,
+  getPlatilloPrecioProteinaTamanoDefault,
   categorias,
   getBebidaPrecioDefault,
   getPlatillosForCategoria,
-  proteinas,
   Proteina,
   type BebidaTamano,
+  type CategoriaPlatillo,
 } from "@/lib/menu-data"
 import { BebidaThumb } from "@/components/bebida-thumb"
 import { useBebidaImagenes } from "@/lib/use-bebida-imagenes"
@@ -57,6 +64,13 @@ export default function StaffPage() {
   const [cardTerminalLoading, setCardTerminalLoading] = useState(false)
   const [paymentError, setPaymentError] = useState("")
   const [menuTab, setMenuTab] = useState<string>("tacos")
+  const menuCategoryTabs = useMemo(
+    () => [
+      ...categorias.map((c) => ({ id: c.id, label: c.nombre })),
+      { id: "bebidas", label: "Bebidas" },
+    ],
+    [],
+  )
   const customizationsCtx = useOrderCustomizationsContextOptional()
   const pendingPlatilloId =
     getPlatillosForCategoria(
@@ -68,29 +82,51 @@ export default function StaffPage() {
   )
   const [pendingCustomNote, setPendingCustomNote] = useState("")
 
-  const addItem = (
+  const addPlatillo = (
     categoria: (typeof categorias)[number],
+    platillo: CategoriaPlatillo,
     proteina?: Proteina,
-    platillo?: { id: string; nombre: string; precioBase: number },
+    tamano?: BebidaTamano,
+    opcionId?: string,
   ) => {
-    const platilloNombre = platillo?.nombre ?? categoria.nombre
-    const platilloId = platillo?.id ?? categoria.id
-    const precio = proteina
-      ? catalog?.getPrecioConProteina(categoria.id, proteina, platillo?.id) ??
-        (proteina === "Camarón"
-          ? (platillo?.precioBase ?? categoria.precioBase) + 20
-          : platillo?.precioBase ?? categoria.precioBase)
-      : platillo
-        ? catalog?.getPlatilloPrecio(categoria.id, platillo.id) ??
-          platillo.precioBase
-        : catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
+    const flags = platilloPickerFlags(platillo, categoria)
+    const platilloId = platillo.id
+    const tam = flags.tieneTamanos ? (tamano ?? "chico") : undefined
+    const precio = flags.tieneProteinas && proteina
+      ? catalog?.getPrecioConProteina(
+          categoria.id,
+          proteina,
+          platilloId,
+          tam,
+        ) ??
+        (() => {
+          if (tam && proteina) {
+            return getPlatilloPrecioProteinaTamanoDefault(platillo, proteina, tam)
+          }
+          const base = tam
+            ? getPlatilloPrecioDefault(platillo, tam)
+            : platillo.precioBase
+          return proteina === "Camarón" ? base + 20 : base
+        })()
+      : tam
+        ? catalog?.getPlatilloPrecioTamano(categoria.id, platilloId, tam) ??
+          getPlatilloPrecioDefault(platillo, tam)
+        : catalog?.getPlatilloPrecio(categoria.id, platilloId) ?? platillo.precioBase
 
     const config =
       customizationsCtx?.customizations?.getConfig(categoria.id, platilloId) ??
       defaultPlatilloCustomizationConfig()
-    const baseId = `${categoria.id}-${platilloId}-${proteina || "default"}`
+    const baseId = `${categoria.id}-${platilloId}-${platilloCartSuffix(flags, tam, proteina, opcionId)}`
     const itemId = cartLineKey(baseId, pendingExtras, pendingCustomNote, config)
     const notas = formatOrderItemNotas(pendingExtras, pendingCustomNote, config)
+    const displayNombre = platilloLineNombre(
+      platillo.nombre,
+      flags,
+      tam,
+      proteina,
+      platillo,
+      opcionId,
+    )
     const existingItem = currentItems.find((i) => i.id === itemId)
 
     if (existingItem) {
@@ -107,9 +143,7 @@ export default function StaffPage() {
         {
           id: itemId,
           categoria: categoria.id,
-          nombre: proteina
-            ? `${platilloNombre} de ${proteina}`
-            : platilloNombre,
+          nombre: displayNombre,
           proteina,
           cantidad: 1,
           precio,
@@ -119,6 +153,31 @@ export default function StaffPage() {
     }
     setPendingExtras(defaultOrderExtras(config))
     setPendingCustomNote("")
+  }
+
+  const addItem = (
+    categoria: (typeof categorias)[number],
+    proteina?: Proteina,
+    platillo?: CategoriaPlatillo,
+    tamano?: BebidaTamano,
+    opcionId?: string,
+  ) => {
+    if (platillo) {
+      addPlatillo(categoria, platillo, proteina, tamano, opcionId)
+      return
+    }
+    addPlatillo(
+      categoria,
+      {
+        id: categoria.id,
+        nombre: categoria.nombre,
+        descripcion: categoria.descripcion,
+        precioBase: categoria.precioBase,
+      },
+      proteina,
+      tamano,
+      opcionId,
+    )
   }
 
   const addBebida = (
@@ -401,7 +460,7 @@ export default function StaffPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs
+                <MenuCategoryTabBar
                   value={menuTab}
                   onValueChange={(v) => {
                     setMenuTab(v)
@@ -415,18 +474,12 @@ export default function StaffPage() {
                     setPendingExtras(defaultOrderExtras(cfg))
                     setPendingCustomNote("")
                   }}
-                >
-                  <TabsList className="grid grid-cols-6 mb-4">
-                    {categorias.map(cat => (
-                      <TabsTrigger key={cat.id} value={cat.id} className="text-xs sm:text-sm">
-                        {cat.nombre}
-                      </TabsTrigger>
-                    ))}
-                    <TabsTrigger value="bebidas" className="text-xs sm:text-sm">Bebidas</TabsTrigger>
-                  </TabsList>
+                  tabs={menuCategoryTabs}
+                />
 
-                  {categorias.map(categoria => (
-                    <TabsContent key={categoria.id} value={categoria.id}>
+                  {categorias.map((categoria) =>
+                    menuTab === categoria.id ? (
+                    <div key={categoria.id} role="tabpanel">
                       <div className="space-y-6">
                         {getPlatillosForCategoria(categoria)
                           .filter(
@@ -442,64 +495,30 @@ export default function StaffPage() {
                                 {platillo.descripcion}
                               </p>
                             </div>
-                            {platillo.tieneProteinas !== false ? (
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {proteinas.map((proteina) => {
-                                  const precio =
-                                    catalog?.getPrecioConProteina(
-                                      categoria.id,
-                                      proteina,
-                                      platillo.id,
-                                    ) ??
-                                    (proteina === "Camarón"
-                                      ? platillo.precioBase + 20
-                                      : platillo.precioBase)
-                                  return (
-                                    <Button
-                                      key={`${platillo.id}-${proteina}`}
-                                      variant="outline"
-                                      className="h-auto p-0 flex-col gap-0 overflow-hidden"
-                                      onClick={() =>
-                                        addItem(categoria, proteina, platillo)
-                                      }
-                                    >
-                                      <span className="relative block w-full aspect-[4/3] bg-muted">
-                                        <Image
-                                          src={proteinaImgs[proteina]}
-                                          alt=""
-                                          fill
-                                          className="object-cover"
-                                          sizes="140px"
-                                        />
-                                      </span>
-                                      <span className="font-semibold py-2 px-1 text-center">
-                                        {proteina}
-                                      </span>
-                                      <span className="text-sm text-muted-foreground pb-3">
-                                        ${precio}
-                                      </span>
-                                    </Button>
-                                  )
-                                })}
-                              </div>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                className="w-full sm:w-auto"
-                                onClick={() => addItem(categoria, undefined, platillo)}
-                              >
-                                Agregar · $
-                                {catalog?.getPlatilloPrecio(categoria.id, platillo.id) ??
-                                  platillo.precioBase}
-                              </Button>
-                            )}
+                            <PlatilloOrderPicker
+                              categoria={categoria}
+                              platillo={platillo}
+                              catalog={catalog}
+                              proteinaImgs={proteinaImgs}
+                              onAdd={(proteina, tam, opcionId) =>
+                                addItem(
+                                  categoria,
+                                  proteina,
+                                  platillo,
+                                  tam,
+                                  opcionId,
+                                )
+                              }
+                            />
                           </div>
                         ))}
                       </div>
-                    </TabsContent>
-                  ))}
+                    </div>
+                  ) : null,
+                  )}
 
-                  <TabsContent value="bebidas">
+                  {menuTab === "bebidas" ? (
+                    <div role="tabpanel">
                     <div className="space-y-4">
                       {(catalog?.getBebidas() ?? []).map((bebida) => (
                         <div key={bebida.id} className="space-y-2">
@@ -533,8 +552,7 @@ export default function StaffPage() {
                         </div>
                       ))}
                     </div>
-                  </TabsContent>
-                </Tabs>
+                  ) : null}
               </CardContent>
             </Card>
           </div>

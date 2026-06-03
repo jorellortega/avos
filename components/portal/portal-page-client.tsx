@@ -13,7 +13,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { MenuCategoryTabBar } from "@/components/menu-category-tab-bar"
 import {
   Sheet,
   SheetContent,
@@ -43,15 +43,28 @@ import {
   portalOrderNeedsDeliveryInfo,
   portalOrderTotal,
 } from "@/lib/portal-delivery"
+import {
+  computeOrderDiscountAmount,
+  type OrderDiscountState,
+} from "@/lib/order-discount"
 import { cartItemNeedsCompletion } from "@/lib/portal-cart-item"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
+import { PlatilloOrderPicker } from "@/components/platillo-order-picker"
+import {
+  platilloCartSuffix,
+  platilloLineNombre,
+  platilloPickerFlags,
+} from "@/lib/platillo-config"
 import {
   bebidaTamanoLabels,
   categorias,
   getBebidaPrecioDefault,
+  getPlatilloPrecioDefault,
+  getPlatilloPrecioProteinaTamanoDefault,
   getPlatillosForCategoria,
   proteinas,
   type BebidaTamano,
+  type CategoriaPlatillo,
   type Proteina,
 } from "@/lib/menu-data"
 import { BebidaThumb } from "@/components/bebida-thumb"
@@ -139,6 +152,13 @@ export function PortalPageClient() {
   const [orderEditItems, setOrderEditItems] = useState<OrderItem[] | null>(null)
   const lastOpenedOrderIdRef = useRef<string | null>(null)
   const [menuTab, setMenuTab] = useState("tacos")
+  const menuCategoryTabs = useMemo(
+    () => [
+      ...categorias.map((c) => ({ id: c.id, label: c.nombre })),
+      { id: "bebidas", label: "Bebidas" },
+    ],
+    [],
+  )
   const [orderCreated, setOrderCreated] = useState<CreatedOrderBanner | null>(null)
   const [stripeLoading, setStripeLoading] = useState(false)
   const [cashLoading, setCashLoading] = useState(false)
@@ -150,6 +170,7 @@ export function PortalPageClient() {
   const [draftOrderTipo, setDraftOrderTipo] = useState<OrderType>("mesa")
   const [draftDelivery, setDraftDelivery] = useState<PortalDeliveryInfo>({})
   const [draftExtraCharge, setDraftExtraCharge] = useState(0)
+  const [draftDiscount, setDraftDiscount] = useState<OrderDiscountState>({})
   const menuRef = useRef<HTMLDivElement>(null)
   const chatRef = useRef<PortalAiChatHandle>(null)
 
@@ -184,6 +205,17 @@ export function PortalPageClient() {
   )
 
   const activeExtraCharge = selectedOrder?.extraCharge ?? draftExtraCharge
+  const activeDiscountState: OrderDiscountState = selectedOrder
+    ? selectedOrder.discountPreset
+      ? { preset: selectedOrder.discountPreset }
+      : selectedOrder.discountPercent
+        ? { percent: selectedOrder.discountPercent }
+        : {}
+    : draftDiscount
+  const activeDiscountAmount = useMemo(
+    () => computeOrderDiscountAmount(activeItems, activeDiscountState),
+    [activeItems, activeDiscountState],
+  )
   const itemsSubtotal = orderItemsTotal(activeItems)
   const deliveryFeeForTotal =
     orderTipo === "domicilio" ? (activeDelivery.deliveryFee ?? 0) : 0
@@ -192,6 +224,43 @@ export function PortalPageClient() {
     orderTipo,
     activeDelivery,
     activeExtraCharge,
+    activeDiscountAmount,
+  )
+
+  const applyDiscount = useCallback(
+    (state: OrderDiscountState) => {
+      const amount = computeOrderDiscountAmount(activeItems, state)
+      const sub = orderItemsTotal(activeItems)
+      const newTotal = portalOrderTotal(
+        sub,
+        orderTipo,
+        activeDelivery,
+        selectedOrder?.extraCharge ?? draftExtraCharge,
+        amount,
+      )
+      const patch: Partial<Order> = {
+        discountPreset: state.preset,
+        discountPercent:
+          !state.preset && state.percent && state.percent > 0
+            ? state.percent
+            : undefined,
+        discountAmount: amount > 0 ? amount : undefined,
+        total: newTotal,
+      }
+      if (selectedOrder) {
+        updateOrder(selectedOrder.id, patch)
+      } else {
+        setDraftDiscount(state)
+      }
+    },
+    [
+      activeItems,
+      orderTipo,
+      activeDelivery,
+      selectedOrder,
+      draftExtraCharge,
+      updateOrder,
+    ],
   )
   const needsDelivery = portalOrderNeedsDeliveryInfo(orderTipo, activeDelivery)
 
@@ -199,14 +268,20 @@ export function PortalPageClient() {
     (amount: number) => {
       const extra = Math.max(0, Math.round(amount * 100) / 100)
       const sub = orderItemsTotal(activeItems)
-      const newTotal = portalOrderTotal(sub, orderTipo, activeDelivery, extra)
+      const newTotal = portalOrderTotal(
+        sub,
+        orderTipo,
+        activeDelivery,
+        extra,
+        activeDiscountAmount,
+      )
       if (selectedOrder) {
         updateOrder(selectedOrder.id, { extraCharge: extra, total: newTotal })
       } else {
         setDraftExtraCharge(extra)
       }
     },
-    [activeItems, orderTipo, activeDelivery, selectedOrder, updateOrder],
+    [activeItems, orderTipo, activeDelivery, selectedOrder, updateOrder, activeDiscountAmount],
   )
 
   const saveDelivery = useCallback(
@@ -217,6 +292,7 @@ export function PortalPageClient() {
         "domicilio",
         delivery,
         selectedOrder?.extraCharge ?? draftExtraCharge,
+        activeDiscountAmount,
       )
       if (selectedOrder) {
         updateOrder(selectedOrder.id, {
@@ -245,7 +321,7 @@ export function PortalPageClient() {
         setDraftOrderTipo("domicilio")
       }
     },
-    [activeItems, selectedOrder, draftExtraCharge, updateOrder],
+    [activeItems, selectedOrder, draftExtraCharge, updateOrder, activeDiscountAmount],
   )
 
   const applyDeliveryFee = useCallback(
@@ -268,6 +344,16 @@ export function PortalPageClient() {
         tipo,
         deliveryInfo,
         selectedOrder?.extraCharge ?? draftExtraCharge,
+        computeOrderDiscountAmount(
+          activeItems,
+          selectedOrder
+            ? selectedOrder.discountPreset
+              ? { preset: selectedOrder.discountPreset }
+              : selectedOrder.discountPercent
+                ? { percent: selectedOrder.discountPercent }
+                : {}
+            : draftDiscount,
+        ),
       )
       if (selectedOrder) {
         updateOrder(selectedOrder.id, {
@@ -285,7 +371,7 @@ export function PortalPageClient() {
         setDraftDelivery(tipo === "domicilio" ? deliveryInfo : {})
       }
     },
-    [activeItems, activeDelivery, selectedOrder, draftExtraCharge, updateOrder],
+    [activeItems, activeDelivery, selectedOrder, draftExtraCharge, draftDiscount, updateOrder],
   )
   const setActiveItems = useCallback(
     (items: OrderItem[]) => {
@@ -294,13 +380,24 @@ export function PortalPageClient() {
         if (!order) return
         setOrderEditItems(items)
         const sub = orderItemsTotal(items)
+        const discountState: OrderDiscountState = order.discountPreset
+          ? { preset: order.discountPreset }
+          : order.discountPercent
+            ? { percent: order.discountPercent }
+            : {}
+        const discountAmt = computeOrderDiscountAmount(items, discountState)
         const newTotal = portalOrderTotal(
           sub,
           order.tipo,
           portalDeliveryFromOrder(order),
           order.extraCharge ?? 0,
+          discountAmt,
         )
-        updateOrder(selectedOrderId, { items, total: newTotal })
+        updateOrder(selectedOrderId, {
+          items,
+          total: newTotal,
+          discountAmount: discountAmt > 0 ? discountAmt : undefined,
+        })
       } else {
         setDraftItems(items)
       }
@@ -425,29 +522,52 @@ export function PortalPageClient() {
   const takerName = profile?.full_name?.trim() || "Staff"
   const canEditRegisterFloat = isCeo(profile?.role)
 
-  const addItem = (
+  const addPlatillo = (
     categoria: (typeof categorias)[number],
+    platillo: CategoriaPlatillo,
     proteina?: Proteina,
-    platillo?: { id: string; nombre: string; precioBase: number },
+    tamano?: BebidaTamano,
+    opcionId?: string,
   ) => {
-    const platilloNombre = platillo?.nombre ?? categoria.nombre
-    const platilloId = platillo?.id ?? categoria.id
-    const precio = proteina
-      ? catalog?.getPrecioConProteina(categoria.id, proteina, platillo?.id) ??
-        (proteina === "Camarón"
-          ? (platillo?.precioBase ?? categoria.precioBase) + 20
-          : platillo?.precioBase ?? categoria.precioBase)
-      : platillo
-        ? catalog?.getPlatilloPrecio(categoria.id, platillo.id) ?? platillo.precioBase
-        : catalog?.getCategoriaPrecioBase(categoria.id) ?? categoria.precioBase
+    const flags = platilloPickerFlags(platillo, categoria)
+    const platilloId = platillo.id
+    const tam = flags.tieneTamanos ? (tamano ?? "chico") : undefined
+    const precio = flags.tieneProteinas && proteina
+      ? catalog?.getPrecioConProteina(
+          categoria.id,
+          proteina,
+          platilloId,
+          tam,
+        ) ??
+        (() => {
+          if (tam && proteina) {
+            return getPlatilloPrecioProteinaTamanoDefault(platillo, proteina, tam)
+          }
+          const base = tam
+            ? getPlatilloPrecioDefault(platillo, tam)
+            : platillo.precioBase
+          return proteina === "Camarón" ? base + 20 : base
+        })()
+      : tam
+        ? catalog?.getPlatilloPrecioTamano(categoria.id, platilloId, tam) ??
+          getPlatilloPrecioDefault(platillo, tam)
+        : catalog?.getPlatilloPrecio(categoria.id, platilloId) ?? platillo.precioBase
 
     const config =
       customizationsCtx?.customizations?.getConfig(categoria.id, platilloId) ??
       defaultPlatilloCustomizationConfig()
-    const baseId = `${categoria.id}-${platilloId}-${proteina || "default"}`
+    const baseId = `${categoria.id}-${platilloId}-${platilloCartSuffix(flags, tam, proteina, opcionId)}`
     const extras = defaultOrderExtras(config)
     const itemId = cartLineKey(baseId, extras, "", config)
     const notas = formatOrderItemNotas(extras, "", config)
+    const displayNombre = platilloLineNombre(
+      platillo.nombre,
+      flags,
+      tam,
+      proteina,
+      platillo,
+      opcionId,
+    )
     const existingItem = activeItems.find((i) => i.id === itemId)
 
     const next = existingItem
@@ -459,7 +579,7 @@ export function PortalPageClient() {
           {
             id: itemId,
             categoria: categoria.id,
-            nombre: proteina ? `${platilloNombre} de ${proteina}` : platilloNombre,
+            nombre: displayNombre,
             proteina,
             cantidad: 1,
             precio,
@@ -468,6 +588,31 @@ export function PortalPageClient() {
         ]
     setActiveItems(next)
     setAddMode(true)
+  }
+
+  const addItem = (
+    categoria: (typeof categorias)[number],
+    proteina?: Proteina,
+    platillo?: CategoriaPlatillo,
+    tamano?: BebidaTamano,
+    opcionId?: string,
+  ) => {
+    if (platillo) {
+      addPlatillo(categoria, platillo, proteina, tamano, opcionId)
+      return
+    }
+    addPlatillo(
+      categoria,
+      {
+        id: categoria.id,
+        nombre: categoria.nombre,
+        descripcion: categoria.descripcion,
+        precioBase: categoria.precioBase,
+      },
+      proteina,
+      tamano,
+      opcionId,
+    )
   }
 
   const addBebida = (
@@ -626,6 +771,9 @@ export function PortalPageClient() {
           activeItems,
           total,
           activeExtraCharge,
+          activeDiscountAmount,
+          activeDiscountState.preset ?? null,
+          activeDiscountState.percent ?? null,
         ),
         portalUpdateOrderTipo(selectedOrder.id, orderTipo),
       ]
@@ -668,6 +816,13 @@ export function PortalPageClient() {
       deliveryFee: activeDelivery.deliveryFee,
       deliveryAddress: activeDelivery.deliveryAddress,
       extraCharge: activeExtraCharge > 0 ? activeExtraCharge : undefined,
+      discountAmount:
+        activeDiscountAmount > 0 ? activeDiscountAmount : undefined,
+      discountPreset: activeDiscountState.preset,
+      discountPercent:
+        !activeDiscountState.preset && activeDiscountState.percent
+          ? activeDiscountState.percent
+          : undefined,
     })
     const result = await insertAvosOrderForPortal(order)
     if (result.ok) {
@@ -679,6 +834,8 @@ export function PortalPageClient() {
         synced: true,
       })
       setDraftItems([])
+      setDraftDiscount({})
+      setDraftExtraCharge(0)
       setAddMode(false)
       chatRef.current?.resetChat()
       requestAnimationFrame(() => chatRef.current?.focusInput())
@@ -1058,6 +1215,9 @@ export function PortalPageClient() {
                 onDeliveryFeeChange={applyDeliveryFee}
                 extraCharge={activeExtraCharge}
                 onExtraChargeChange={applyExtraCharge}
+                discountState={activeDiscountState}
+                discountAmount={activeDiscountAmount}
+                onDiscountChange={applyDiscount}
                 submitLabel={submitLabel}
                 loadingLabel={submitLoadingLabel}
                 disabled={activeItems.length === 0}
@@ -1080,27 +1240,15 @@ export function PortalPageClient() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <Tabs
+                    <MenuCategoryTabBar
                       value={menuTab}
                       onValueChange={setMenuTab}
-                    >
-                      <TabsList className="grid grid-cols-6 mb-4 h-auto">
-                        {categorias.map((cat) => (
-                          <TabsTrigger
-                            key={cat.id}
-                            value={cat.id}
-                            className="text-xs sm:text-sm"
-                          >
-                            {cat.nombre}
-                          </TabsTrigger>
-                        ))}
-                        <TabsTrigger value="bebidas" className="text-xs sm:text-sm">
-                          Bebidas
-                        </TabsTrigger>
-                      </TabsList>
+                      tabs={menuCategoryTabs}
+                    />
 
-                      {categorias.map((categoria) => (
-                        <TabsContent key={categoria.id} value={categoria.id}>
+                      {categorias.map((categoria) =>
+                        menuTab === categoria.id ? (
+                        <div key={categoria.id} role="tabpanel">
                           <div className="space-y-6">
                             {getPlatillosForCategoria(categoria)
                               .filter(
@@ -1111,67 +1259,31 @@ export function PortalPageClient() {
                               .map((platillo) => (
                                 <div key={platillo.id} className="space-y-3">
                                   <p className="font-medium">{platillo.nombre}</p>
-                                  {platillo.tieneProteinas !== false ? (
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                      {proteinas.map((proteina) => {
-                                        const precio =
-                                          catalog?.getPrecioConProteina(
-                                            categoria.id,
-                                            proteina,
-                                            platillo.id,
-                                          ) ??
-                                          (proteina === "Camarón"
-                                            ? platillo.precioBase + 20
-                                            : platillo.precioBase)
-                                        return (
-                                          <Button
-                                            key={proteina}
-                                            variant="outline"
-                                            className="h-auto p-0 flex-col overflow-hidden"
-                                            onClick={() =>
-                                              addItem(categoria, proteina, platillo)
-                                            }
-                                          >
-                                            <span className="relative block w-full aspect-[4/3] bg-muted">
-                                              <Image
-                                                src={proteinaImgs[proteina]}
-                                                alt=""
-                                                fill
-                                                className="object-cover"
-                                                sizes="120px"
-                                              />
-                                            </span>
-                                            <span className="font-semibold py-1.5 text-sm">
-                                              {proteina}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground pb-2">
-                                              ${precio}
-                                            </span>
-                                          </Button>
-                                        )
-                                      })}
-                                    </div>
-                                  ) : (
-                                    <Button
-                                      variant="outline"
-                                      onClick={() =>
-                                        addItem(categoria, undefined, platillo)
-                                      }
-                                    >
-                                      Agregar · $
-                                      {catalog?.getPlatilloPrecio(
-                                        categoria.id,
-                                        platillo.id,
-                                      ) ?? platillo.precioBase}
-                                    </Button>
-                                  )}
+                                  <PlatilloOrderPicker
+                                    categoria={categoria}
+                                    platillo={platillo}
+                                    catalog={catalog}
+                                    proteinaImgs={proteinaImgs}
+                                    variant="portal"
+                                    onAdd={(proteina, tam, opcionId) =>
+                                      addItem(
+                                        categoria,
+                                        proteina,
+                                        platillo,
+                                        tam,
+                                        opcionId,
+                                      )
+                                    }
+                                  />
                                 </div>
                               ))}
                           </div>
-                        </TabsContent>
-                      ))}
+                        </div>
+                      ) : null,
+                      )}
 
-                      <TabsContent value="bebidas">
+                      {menuTab === "bebidas" ? (
+                        <div role="tabpanel">
                         <div className="space-y-4">
                           {(catalog?.getBebidas() ?? [])
                             .filter((b) => !catalog?.isBebidaHidden(b.id))
@@ -1238,9 +1350,9 @@ export function PortalPageClient() {
                                 </div>
                               )
                             })}
+                          </div>
                         </div>
-                      </TabsContent>
-                    </Tabs>
+                      ) : null}
                   </CardContent>
                 </Card>
               </div>
@@ -1433,6 +1545,9 @@ export function PortalPageClient() {
                       onDeliveryFeeChange={applyDeliveryFee}
                       extraCharge={activeExtraCharge}
                       onExtraChargeChange={applyExtraCharge}
+                      discountState={activeDiscountState}
+                      discountAmount={activeDiscountAmount}
+                      onDiscountChange={applyDiscount}
                       submitLabel={submitLabel}
                       loadingLabel={submitLoadingLabel}
                       disabled={activeItems.length === 0}

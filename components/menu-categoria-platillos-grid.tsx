@@ -38,6 +38,14 @@ export function MenuCategoriaPlatillosGrid({
             descripcion={platillo.descripcion}
             precioBase={platillo.precioBase}
             tieneProteinas={platillo.tieneProteinas !== false}
+            tieneTamanos={platillo.tieneTamanos === true}
+            precioChico={platillo.precioChico}
+            precioGrande={platillo.precioGrande}
+            tamanoLabelChico={platillo.tamanoLabelChico}
+            tamanoLabelGrande={platillo.tamanoLabelGrande}
+            preciosProteinaTamano={platillo.preciosProteinaTamano}
+            proteinasPlatillo={platillo.proteinas}
+            opciones={platillo.opciones}
             imagen={imagen}
             proteinaImagenes={proteinaImagenes}
           />

@@ -41,6 +41,9 @@ export async function POST(req: Request) {
     items?: OrderItem[]
     total?: number
     extraCharge?: number
+    discountAmount?: number
+    discountPreset?: string | null
+    discountPercent?: number | null
   }
   try {
     body = await req.json()
@@ -56,6 +59,19 @@ export async function POST(req: Request) {
       typeof body.extraCharge === "number" && body.extraCharge >= 0
         ? body.extraCharge
         : 0
+    const discountAmount =
+      typeof body.discountAmount === "number" && body.discountAmount >= 0
+        ? body.discountAmount
+        : 0
+    const discountPreset =
+      body.discountPreset === "employee_20" ||
+      body.discountPreset === "employee_meal"
+        ? body.discountPreset
+        : null
+    const discountPercent =
+      typeof body.discountPercent === "number" && body.discountPercent >= 0
+        ? Math.min(100, body.discountPercent)
+        : null
     if (!orderId || !Array.isArray(items) || typeof total !== "number") {
       return NextResponse.json({ error: "Datos incompletos." }, { status: 400 })
     }
@@ -64,6 +80,9 @@ export async function POST(req: Request) {
       p_items: items,
       p_total: total,
       p_extra_charge: extraCharge,
+      p_discount_amount: discountAmount,
+      p_discount_preset: discountPreset,
+      p_discount_percent: discountPercent,
     })
     if (error) {
       console.error("portal submit-order update_cart", error.message)
@@ -100,6 +119,9 @@ export async function POST(req: Request) {
     p_delivery_photo_street_url: order.deliveryPhotoStreetUrl ?? null,
     p_delivery_photo_house_url: order.deliveryPhotoHouseUrl ?? null,
     p_extra_charge: order.extraCharge ?? 0,
+    p_discount_amount: order.discountAmount ?? 0,
+    p_discount_preset: order.discountPreset ?? null,
+    p_discount_percent: order.discountPercent ?? null,
   }
 
   let { error } = await supabase.rpc("insert_avos_order", payload)
