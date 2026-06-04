@@ -282,6 +282,187 @@ export function shoppingNotesFromStock(
   return parts.length ? parts.join(" · ") : "Reabastecer"
 }
 
+/** Read-only context from linked stock (estado, acción, en cocina). */
+export function stockLinkedContextLabel(
+  item: Pick<
+    InventoryItemRow,
+    | "notes"
+    | "stock_action"
+    | "quantity"
+    | "unit"
+    | "cantidad_num"
+    | "bolsas"
+  >,
+): string | null {
+  const parts: string[] = []
+  const status = findStockStatusForNotes(item.notes)
+  if (status) parts.push(`Estado: ${status.label}`)
+  const actionLabel = stockActionLabelForItem(item)
+  if (actionLabel) parts.push(`Acción: ${actionLabel}`)
+  const kilos = stockQuantityLabelForItem(item)
+  if (kilos) parts.push(`En cocina: ${kilos} kg`)
+  if (item.cantidad_num != null && item.cantidad_num > 0) {
+    parts.push(`Cuenta: ${item.cantidad_num}`)
+  }
+  if (item.bolsas != null && item.bolsas > 0) {
+    parts.push(`Bolsas: ${item.bolsas}`)
+  }
+  return parts.length ? parts.join(" · ") : null
+}
+
+/** Legacy rows synced before structured buy quantities existed. */
+export function isAutoSyncedShoppingNotes(notes: string | null | undefined): boolean {
+  const n = (notes ?? "").trim()
+  if (!n) return false
+  if (n === "Reabastecer") return true
+  return n.startsWith("Estado:") || /^Estado:.*En cocina:/.test(n)
+}
+
+/** Suggested buy amounts when stock needs restock. */
+export function suggestedBuyFromStock(
+  stock: Pick<
+    InventoryItemRow,
+    | "notes"
+    | "stock_action"
+    | "quantity"
+    | "unit"
+    | "cantidad_num"
+    | "bolsas"
+    | "par_level"
+  >,
+): Partial<Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">> {
+  if (!stockItemNeedsPurchase(stock)) return {}
+
+  const out: Partial<
+    Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">
+  > = {}
+  const status = findStockStatusForNotes(stock.notes)
+  const unit = (stock.unit ?? "kg").trim().toLowerCase()
+
+  if (stock.par_level != null && stock.par_level > 0) {
+    if (unit === "kg") {
+      const onHand = Number(stock.quantity) || 0
+      const gap = stock.par_level - onHand
+      if (gap > 0) {
+        out.quantity = gap
+        out.unit = "kg"
+      }
+    }
+    if (stock.cantidad_num != null) {
+      const gap = stock.par_level - stock.cantidad_num
+      if (gap > 0) out.cantidad_num = Math.ceil(gap)
+    }
+    if (stock.bolsas != null) {
+      const gap = stock.par_level - stock.bolsas
+      if (gap > 0) out.bolsas = Math.ceil(gap)
+    }
+  }
+
+  const lowOrOut =
+    status?.id === "agotado" ||
+    status?.id === "poco" ||
+    status?.id === "comprar_mas"
+
+  if (out.quantity == null && lowOrOut && unit === "kg") {
+    const onHand = Number(stock.quantity) || 0
+    if (onHand > 0) {
+      out.quantity = onHand
+      out.unit = "kg"
+    }
+  }
+
+  if (
+    out.cantidad_num == null &&
+    lowOrOut &&
+    stock.cantidad_num != null &&
+    stock.cantidad_num > 0
+  ) {
+    out.cantidad_num = stock.cantidad_num
+  }
+
+  if (out.bolsas == null && lowOrOut) {
+    if (status?.id === "agotado") {
+      out.bolsas = Math.max(1, stock.bolsas ?? 1)
+    } else if (stock.bolsas != null && stock.bolsas > 0) {
+      out.bolsas = stock.bolsas
+    }
+  }
+
+  return out
+}
+
+export function shoppingHasBuyQuantity(
+  item: Pick<
+    InventoryItemRow,
+    "quantity" | "unit" | "cantidad_num" | "bolsas"
+  >,
+): boolean {
+  if (Number(item.quantity) > 0) return true
+  if (item.cantidad_num != null && item.cantidad_num > 0) return true
+  if (item.bolsas != null && item.bolsas > 0) return true
+  return false
+}
+
+/** Human-readable buy line for shopping-list rows. */
+export function shoppingBuyQuantityLabel(
+  item: Pick<
+    InventoryItemRow,
+    "quantity" | "unit" | "cantidad_num" | "bolsas"
+  >,
+): string | null {
+  const parts: string[] = []
+  const kg = Number(item.quantity)
+  if (kg > 0 && (item.unit ?? "kg").trim().toLowerCase() === "kg") {
+    const label = stockQuantityLabelForItem(item)
+    parts.push(`${label ?? kg} kg`)
+  }
+  if (item.cantidad_num != null && item.cantidad_num > 0) {
+    parts.push(`${item.cantidad_num} pza`)
+  }
+  if (item.bolsas != null && item.bolsas > 0) {
+    parts.push(
+      `${item.bolsas} ${item.bolsas === 1 ? "bolsa" : "bolsas"}`,
+    )
+  }
+  return parts.length ? parts.join(" · ") : null
+}
+
+export function mergeSuggestedBuyIntoShopping(
+  shopping: InventoryItemRow | undefined,
+  suggested: Partial<
+    Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">
+  >,
+): Partial<
+  Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">
+> {
+  const patch: Partial<
+    Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">
+  > = {}
+  if (
+    suggested.quantity != null &&
+    suggested.quantity > 0 &&
+    (!shopping || Number(shopping.quantity) <= 0)
+  ) {
+    patch.quantity = suggested.quantity
+    patch.unit = suggested.unit ?? "kg"
+  }
+  if (
+    suggested.cantidad_num != null &&
+    suggested.cantidad_num > 0 &&
+    (!shopping || !shopping.cantidad_num)
+  ) {
+    patch.cantidad_num = suggested.cantidad_num
+  }
+  if (
+    suggested.bolsas != null &&
+    suggested.bolsas > 0 &&
+    (!shopping || !shopping.bolsas)
+  ) {
+    patch.bolsas = suggested.bolsas
+  }
+  return patch
+}
+
 export function normalizeInventoryItemName(name: string): string {
   return (name ?? "").trim().toLowerCase()
 }

@@ -30,8 +30,8 @@ import {
   INVENTORY_SELECT_BLANK,
   INVENTORY_SELECT_NONE,
   inventoryCategoryLabel,
+  isAutoSyncedShoppingNotes,
   normalizeStockCategory,
-  shoppingNotesFromStock,
   stockCategoryNames,
   stockItemNeedsPurchase,
   type InventoryStockCategoryRow,
@@ -53,6 +53,7 @@ import {
 import {
   emptyStockRowFromShopping,
   findInventoryByName,
+  shoppingInsertFromStock,
   shoppingPatchFromStock,
   shouldCreateShoppingFromStock,
   shouldCreateStockFromShopping,
@@ -395,29 +396,12 @@ export function InventarioEditDashboard({
     if (shouldCreateShoppingFromStock(stock, catalog)) {
       const name = stock.name.trim()
       if (!name) return "skipped"
-      const notes = shoppingNotesFromStock(stock)
       const maxOrder = catalog
         .filter((i) => i.list_kind === "shopping")
         .reduce((m, r) => Math.max(m, r.sort_order), -1)
       const { data, error } = await supabase
         .from("inventory_items")
-        .insert({
-          name,
-          notes,
-          list_kind: "shopping",
-          unit: "pza",
-          quantity: 0,
-          purchased: false,
-          is_active: true,
-          sort_order: maxOrder + 1,
-          image_url: stock.image_url.trim(),
-          category: "",
-          stock_action: "",
-          bolsas: null,
-          cantidad_num: null,
-          marinated: null,
-          par_level: null,
-        })
+        .insert(shoppingInsertFromStock(stock, maxOrder + 1))
         .select()
         .single()
       if (error) {
@@ -563,10 +547,10 @@ export function InventarioEditDashboard({
           tab === "stock"
             ? inventoryCategoryLabel(draft.category)
             : draft.category.trim(),
-        unit: tab === "stock" ? draft.unit.trim() || "kg" : "pza",
-        quantity: tab === "stock" ? draft.quantity : 0,
-        bolsas: tab === "stock" ? draft.bolsas : null,
-        cantidad_num: tab === "stock" ? draft.cantidad_num : null,
+        unit: tab === "stock" ? draft.unit.trim() || "kg" : draft.unit.trim() || "kg",
+        quantity: draft.quantity,
+        bolsas: draft.bolsas,
+        cantidad_num: draft.cantidad_num,
         marinated:
           tab === "stock" &&
           categoryShowsMarinated(draft.category, categories)
@@ -628,9 +612,11 @@ export function InventarioEditDashboard({
     setLoadError(null)
     patchLocal(item.id, { quantity: preset.quantity, unit: preset.unit })
 
-    const qDelta = preset.quantity - Number(item.quantity)
-    if (qDelta !== 0) {
-      await adjustQuantity(item, qDelta, preset.label)
+    if (item.list_kind === "stock") {
+      const qDelta = preset.quantity - Number(item.quantity)
+      if (qDelta !== 0) {
+        await adjustQuantity(item, qDelta, preset.label)
+      }
     }
 
     const ok = await saveItemFields(item.id, {
@@ -667,9 +653,11 @@ export function InventarioEditDashboard({
     setLoadError(null)
     patchLocal(item.id, { quantity: 0, unit: "kg" })
 
-    const qDelta = 0 - Number(item.quantity)
-    if (qDelta !== 0) {
-      await adjustQuantity(item, qDelta, "Sin cantidad")
+    if (item.list_kind === "stock") {
+      const qDelta = 0 - Number(item.quantity)
+      if (qDelta !== 0) {
+        await adjustQuantity(item, qDelta, "Sin cantidad")
+      }
     }
 
     const ok = await saveItemFields(item.id, { quantity: 0, unit: "kg" })
@@ -790,29 +778,12 @@ export function InventarioEditDashboard({
     if (shouldCreateShoppingFromStock(stock, catalog)) {
       const name = stock.name.trim()
       if (!name) return { result: "skipped", catalog }
-      const notes = shoppingNotesFromStock(stock)
       const maxOrder = catalog
         .filter((i) => i.list_kind === "shopping")
         .reduce((m, r) => Math.max(m, r.sort_order), -1)
       const { data, error } = await supabase
         .from("inventory_items")
-        .insert({
-          name,
-          notes,
-          list_kind: "shopping",
-          unit: "pza",
-          quantity: 0,
-          purchased: false,
-          is_active: true,
-          sort_order: maxOrder + 1,
-          image_url: stock.image_url.trim(),
-          category: "",
-          stock_action: "",
-          bolsas: null,
-          cantidad_num: null,
-          marinated: null,
-          par_level: null,
-        })
+        .insert(shoppingInsertFromStock(stock, maxOrder + 1))
         .select()
         .single()
       if (error || !data) {
@@ -1462,17 +1433,128 @@ export function InventarioEditDashboard({
                     )}
                   </>
                 ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="inv-notes">Cantidad / notas</Label>
-                    <Input
-                      id="inv-notes"
-                      value={draft.notes}
-                      onChange={(e) =>
-                        setDraft({ ...draft, notes: e.target.value })
-                      }
-                      placeholder="Ej. 1 bag, $20, need 3"
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="inv-shop-qty">Cantidad Kilos</Label>
+                      <Select
+                        value={
+                          findStockQuantityPresetForItem(draft)?.id ??
+                          INVENTORY_SELECT_NONE
+                        }
+                        onValueChange={(id) => {
+                          if (id === INVENTORY_SELECT_NONE) {
+                            setDraft({ ...draft, quantity: 0, unit: "kg" })
+                            return
+                          }
+                          const preset = STOCK_QUANTITY_PRESETS.find(
+                            (p) => p.id === id,
+                          )
+                          if (!preset) return
+                          setDraft({
+                            ...draft,
+                            quantity: preset.quantity,
+                            unit: preset.unit,
+                          })
+                        }}
+                      >
+                        <SelectTrigger id="inv-shop-qty" className="w-full">
+                          <SelectValue placeholder={INVENTORY_SELECT_BLANK} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={INVENTORY_SELECT_NONE}>
+                            {INVENTORY_SELECT_BLANK}
+                          </SelectItem>
+                          {STOCK_QUANTITY_PRESETS.map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.label} kg
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="inv-shop-count">Cantidad</Label>
+                      <Select
+                        value={
+                          findStockCountPresetForItem(draft)?.id ??
+                          INVENTORY_SELECT_NONE
+                        }
+                        onValueChange={(id) => {
+                          if (id === INVENTORY_SELECT_NONE) {
+                            setDraft({ ...draft, cantidad_num: null })
+                            return
+                          }
+                          const preset = STOCK_COUNT_PRESETS.find(
+                            (p) => p.id === id,
+                          )
+                          if (!preset) return
+                          setDraft({
+                            ...draft,
+                            cantidad_num: preset.cantidad_num,
+                          })
+                        }}
+                      >
+                        <SelectTrigger id="inv-shop-count" className="w-full">
+                          <SelectValue placeholder={INVENTORY_SELECT_BLANK} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value={INVENTORY_SELECT_NONE}>
+                            {INVENTORY_SELECT_BLANK}
+                          </SelectItem>
+                          {STOCK_COUNT_PRESETS.map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="inv-shop-bolsas">Bottles/Bolsas</Label>
+                      <Select
+                        value={
+                          findStockBolsasPresetForItem(draft)?.id ??
+                          INVENTORY_SELECT_NONE
+                        }
+                        onValueChange={(id) => {
+                          if (id === INVENTORY_SELECT_NONE) {
+                            setDraft({ ...draft, bolsas: null })
+                            return
+                          }
+                          const preset = STOCK_BOLSAS_PRESETS.find(
+                            (p) => p.id === id,
+                          )
+                          if (!preset) return
+                          setDraft({ ...draft, bolsas: preset.bolsas })
+                        }}
+                      >
+                        <SelectTrigger id="inv-shop-bolsas" className="w-full">
+                          <SelectValue placeholder={INVENTORY_SELECT_BLANK} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={INVENTORY_SELECT_NONE}>
+                            {INVENTORY_SELECT_BLANK}
+                          </SelectItem>
+                          {STOCK_BOLSAS_PRESETS.map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="inv-notes">Notas extra</Label>
+                      <Input
+                        id="inv-notes"
+                        value={draft.notes}
+                        onChange={(e) =>
+                          setDraft({ ...draft, notes: e.target.value })
+                        }
+                        placeholder="Ej. marca, proveedor, urgente"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
               <DialogFooter>
@@ -1607,17 +1689,29 @@ export function InventarioEditDashboard({
             <CardHeader>
               <CardTitle>Need to buy / restock</CardTitle>
               <CardDescription>
-                {shoppingPending} pendiente{shoppingPending === 1 ? "" : "s"}. Marca
-                comprado cuando lo tengas.
+                {shoppingPending} pendiente{shoppingPending === 1 ? "" : "s"}.
+                Mismas columnas que inventario: Estado y Acción vienen del stock
+                enlazado; Cantidad Kilos / Cantidad / Bolsas = cuánto comprar.
               </CardDescription>
             </CardHeader>
             <CardContent className="md:overflow-x-auto md:-mx-2 md:px-2">
               <ShoppingTable
                 items={filtered}
                 allCount={shoppingItems.length}
+                stockItems={stockItems}
                 busyId={busyId}
                 onPatch={patchLocal}
                 onSave={saveItemFields}
+                onStatus={applyStockStatus}
+                onClearStatus={clearStockStatus}
+                onQuantityPreset={applyStockQuantityPreset}
+                onClearQuantity={clearStockQuantity}
+                onCountPreset={applyStockCountPreset}
+                onClearCount={clearStockCount}
+                onBolsasPreset={applyStockBolsasPreset}
+                onClearBolsas={clearStockBolsas}
+                onAction={applyStockAction}
+                onClearAction={clearStockAction}
                 onImageUrl={applyInventoryImage}
                 onDelete={deleteItem}
               />
@@ -2298,9 +2392,23 @@ function StockMarinatedMenu({
 type ShoppingTableProps = {
   items: InventoryItemRow[]
   allCount: number
+  stockItems: InventoryItemRow[]
   busyId: string | null
   onPatch: (id: string, patch: Partial<InventoryItemRow>) => void
   onSave: (id: string, patch: Partial<InventoryItemRow>) => Promise<boolean>
+  onStatus: (item: InventoryItemRow, option: StockStatusOption) => void
+  onClearStatus: (item: InventoryItemRow) => void
+  onQuantityPreset: (
+    item: InventoryItemRow,
+    preset: StockQuantityPreset,
+  ) => void
+  onClearQuantity: (item: InventoryItemRow) => void
+  onCountPreset: (item: InventoryItemRow, preset: StockCountPreset) => void
+  onClearCount: (item: InventoryItemRow) => void
+  onBolsasPreset: (item: InventoryItemRow, preset: StockBolsasPreset) => void
+  onClearBolsas: (item: InventoryItemRow) => void
+  onAction: (item: InventoryItemRow, option: StockActionOption) => void
+  onClearAction: (item: InventoryItemRow) => void
   onImageUrl: (item: InventoryItemRow, imageUrl: string) => void | Promise<void>
   onDelete: (id: string) => void
 }
@@ -2308,21 +2416,37 @@ type ShoppingTableProps = {
 function ShoppingTable({
   items,
   allCount,
+  stockItems,
   busyId,
   onPatch,
   onSave,
+  onStatus,
+  onClearStatus,
+  onQuantityPreset,
+  onClearQuantity,
+  onCountPreset,
+  onClearCount,
+  onBolsasPreset,
+  onClearBolsas,
+  onAction,
+  onClearAction,
   onImageUrl,
   onDelete,
 }: ShoppingTableProps) {
   return (
     <Table
       containerClassName="max-md:overflow-visible"
-      className="w-full max-w-2xl md:table-fixed max-md:block"
+      className="w-full max-w-4xl md:table-fixed max-md:block"
     >
         <colgroup className="max-md:hidden">
           <col className="w-11" />
           <col className="w-10" />
-          <col className="w-[10rem]" />
+          <col className="w-[9.5rem]" />
+          <col className="w-[7.5rem]" />
+          <col className="w-[6.5rem]" />
+          <col className="w-[6.5rem]" />
+          <col className="w-[5.5rem]" />
+          <col className="w-[7rem]" />
           <col />
           <col className="w-12" />
         </colgroup>
@@ -2331,7 +2455,12 @@ function ShoppingTable({
             <TableHead className="w-11" />
             <TableHead className="w-10">✓</TableHead>
             <TableHead>Producto</TableHead>
-            <TableHead>Cantidad / notas</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Cantidad Kilos</TableHead>
+            <TableHead>Cantidad</TableHead>
+            <TableHead>Bottles/Bolsas</TableHead>
+            <TableHead>Acción</TableHead>
+            <TableHead>Notas</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -2339,7 +2468,7 @@ function ShoppingTable({
           {items.length === 0 ? (
             <TableRow className={stockRowMobile}>
               <TableCell
-                colSpan={5}
+                colSpan={10}
                 className={cn(stockTableMobile, "text-center text-muted-foreground py-10 max-md:col-span-1")}
               >
                 {allCount === 0
@@ -2350,6 +2479,18 @@ function ShoppingTable({
           ) : (
             items.map((item) => {
               const busy = busyId === item.id
+              const linkedStock = findInventoryByName(
+                stockItems,
+                item.name,
+                "stock",
+              )
+              const stockBusy = linkedStock ? busyId === linkedStock.id : false
+              const notesValue =
+                linkedStock && isAutoSyncedShoppingNotes(item.notes)
+                  ? ""
+                  : isAutoSyncedShoppingNotes(item.notes)
+                    ? ""
+                    : item.notes
               return (
                 <TableRow
                   key={item.id}
@@ -2396,19 +2537,84 @@ function ShoppingTable({
                         item.purchased && "line-through",
                       )}
                     />
+                    {!linkedStock ? (
+                      <p className="mt-1 text-[10px] text-muted-foreground leading-tight">
+                        Sin enlace en inventario
+                      </p>
+                    ) : null}
                   </TableCell>
                   <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel>Cantidad / notas</InventoryCellLabel>
+                    <InventoryCellLabel>Estado</InventoryCellLabel>
+                    {linkedStock ? (
+                      <StockStatusMenu
+                        item={linkedStock}
+                        busy={stockBusy}
+                        onStatus={onStatus}
+                        onClear={onClearStatus}
+                      />
+                    ) : (
+                      <span className="flex h-8 items-center text-xs text-muted-foreground">
+                        {INVENTORY_SELECT_BLANK}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Cantidad Kilos</InventoryCellLabel>
+                    <StockQuantityMenu
+                      item={item}
+                      busy={busy}
+                      onQuantityPreset={onQuantityPreset}
+                      onClear={onClearQuantity}
+                    />
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Cantidad</InventoryCellLabel>
+                    <StockCountMenu
+                      item={item}
+                      busy={busy}
+                      onCountPreset={onCountPreset}
+                      onClear={onClearCount}
+                    />
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Bottles/Bolsas</InventoryCellLabel>
+                    <StockBolsasMenu
+                      item={item}
+                      busy={busy}
+                      onBolsasPreset={onBolsasPreset}
+                      onClear={onClearBolsas}
+                    />
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Acción</InventoryCellLabel>
+                    {linkedStock ? (
+                      <StockActionMenu
+                        item={linkedStock}
+                        busy={stockBusy}
+                        onAction={onAction}
+                        onClear={onClearAction}
+                      />
+                    ) : (
+                      <span className="flex h-8 items-center text-xs text-muted-foreground">
+                        {INVENTORY_SELECT_BLANK}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Notas</InventoryCellLabel>
                     <Input
-                      value={item.notes}
+                      value={notesValue}
                       onChange={(e) =>
                         onPatch(item.id, { notes: e.target.value })
                       }
-                      onBlur={() =>
-                        void onSave(item.id, { notes: item.notes.trim() })
-                      }
-                      placeholder="Ej. 1 bag, need 3"
-                      className="h-8 w-full md:max-w-md text-sm"
+                      onBlur={() => {
+                        const notes = notesValue.trim()
+                        if (notes !== item.notes.trim()) {
+                          void onSave(item.id, { notes })
+                        }
+                      }}
+                      placeholder="Marca, proveedor, etc."
+                      className="h-8 w-full md:max-w-[8rem] text-sm"
                     />
                   </TableCell>
                   <TableCell className={stockTableMobile}>

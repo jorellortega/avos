@@ -1,9 +1,12 @@
 import type { InventoryItemRow, InventoryListKind } from "@/lib/inventario-types"
 import {
   findStockStatusForNotes,
+  mergeSuggestedBuyIntoShopping,
   normalizeInventoryItemName,
+  shoppingHasBuyQuantity,
   shoppingNotesFromStock,
   stockItemNeedsPurchase,
+  suggestedBuyFromStock,
   STOCK_ACTION_OPTIONS,
   STOCK_STATUS_OPTIONS,
 } from "@/lib/inventario-types"
@@ -46,9 +49,19 @@ export function shoppingPatchFromStock(
   }
 
   const notes = shoppingNotesFromStock(stock)
+  const suggested = suggestedBuyFromStock(stock)
   const patch: Partial<InventoryItemRow> = {
-    notes,
     purchased: false,
+    ...mergeSuggestedBuyIntoShopping(shopping, suggested),
+  }
+  // Legacy: keep auto notes only when shopping row has no buy qty yet.
+  if (!shopping) {
+    patch.notes = notes
+  } else if (
+    !shoppingHasBuyQuantity(shopping) &&
+    !shopping.notes.trim()
+  ) {
+    patch.notes = notes
   }
   if (stock.image_url.trim()) {
     patch.image_url = stock.image_url.trim()
@@ -117,7 +130,44 @@ export function shouldCreateStockFromShopping(
   if (shopping.list_kind !== "shopping" || shopping.purchased) return false
   const key = normalizeInventoryItemName(shopping.name)
   if (!key) return false
-  return !items.some((row) => row.list_kind === "stock" && normalizeInventoryItemName(row.name) === key)
+  return !items.some(
+    (row) =>
+      row.list_kind === "stock" &&
+      normalizeInventoryItemName(row.name) === key,
+  )
+}
+
+/** Insert payload when creating a shopping row from stock. */
+export function shoppingInsertFromStock(
+  stock: InventoryItemRow,
+  sortOrder: number,
+): Omit<InventoryItemRow, "id" | "created_at" | "updated_at"> {
+  const suggested = suggestedBuyFromStock(stock)
+  const name = stock.name.trim()
+  return {
+    name,
+    notes: shoppingHasBuyQuantity({
+      quantity: suggested.quantity ?? 0,
+      unit: suggested.unit ?? "kg",
+      cantidad_num: suggested.cantidad_num ?? null,
+      bolsas: suggested.bolsas ?? null,
+    })
+      ? ""
+      : shoppingNotesFromStock(stock),
+    list_kind: "shopping",
+    unit: suggested.unit ?? "kg",
+    quantity: suggested.quantity ?? 0,
+    purchased: false,
+    is_active: true,
+    sort_order: sortOrder,
+    image_url: stock.image_url.trim(),
+    category: "",
+    stock_action: "",
+    bolsas: suggested.bolsas ?? null,
+    cantidad_num: suggested.cantidad_num ?? null,
+    marinated: null,
+    par_level: null,
+  }
 }
 
 export function emptyStockRowFromShopping(
