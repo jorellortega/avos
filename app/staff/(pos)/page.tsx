@@ -552,6 +552,7 @@ export default function StaffPage() {
                         </div>
                       ))}
                     </div>
+                    </div>
                   ) : null}
               </CardContent>
             </Card>
