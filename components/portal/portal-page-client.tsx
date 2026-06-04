@@ -58,6 +58,7 @@ import {
 import {
   bebidaTamanoLabels,
   categorias,
+  formatPlatilloTamanoPrecioRange,
   getBebidaPrecioDefault,
   getPlatilloPrecioDefault,
   getPlatilloPrecioProteinaTamanoDefault,
@@ -1258,7 +1259,26 @@ export function PortalPageClient() {
                               )
                               .map((platillo) => (
                                 <div key={platillo.id} className="space-y-3">
-                                  <p className="font-medium">{platillo.nombre}</p>
+                                  <div>
+                                    <p className="font-medium">{platillo.nombre}</p>
+                                    {platillo.tieneTamanos ? (
+                                      <p className="text-sm text-muted-foreground tabular-nums">
+                                        {formatPlatilloTamanoPrecioRange(
+                                          platillo,
+                                          catalog?.getPlatilloPrecioTamano(
+                                            categoria.id,
+                                            platillo.id,
+                                            "chico",
+                                          ),
+                                          catalog?.getPlatilloPrecioTamano(
+                                            categoria.id,
+                                            platillo.id,
+                                            "grande",
+                                          ),
+                                        )}
+                                      </p>
+                                    ) : null}
+                                  </div>
                                   <PlatilloOrderPicker
                                     categoria={categoria}
                                     platillo={platillo}

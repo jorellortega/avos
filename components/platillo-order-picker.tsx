@@ -219,18 +219,40 @@ export function PlatilloOrderPicker({
   }
 
   if (flags.tieneTamanos) {
+    const unitPrice =
+      catalog?.getPlatilloPrecioTamano(
+        categoria.id,
+        platillo.id,
+        selectedTamano,
+      ) ?? getPlatilloPrecioDefault(platillo, selectedTamano)
+
     return (
-      <PlatilloTamanoButtons
-        categoriaId={categoria.id}
-        platilloId={platillo.id}
-        catalog={catalog}
-        precioChico={platillo.precioChico ?? platillo.precioBase}
-        precioGrande={platillo.precioGrande ?? platillo.precioBase}
-        tamanoLabelChico={platillo.tamanoLabelChico}
-        tamanoLabelGrande={platillo.tamanoLabelGrande}
-        disabled={agotado}
-        onSelect={(tam) => onAdd(undefined, tam)}
-      />
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Tamaño</p>
+          <PlatilloTamanoButtons
+            categoriaId={categoria.id}
+            platilloId={platillo.id}
+            catalog={catalog}
+            precioChico={platillo.precioChico ?? platillo.precioBase}
+            precioGrande={platillo.precioGrande ?? platillo.precioBase}
+            tamanoLabelChico={platillo.tamanoLabelChico}
+            tamanoLabelGrande={platillo.tamanoLabelGrande}
+            disabled={agotado}
+            selectedTamano={selectedTamano}
+            onSelect={setSelectedTamano}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={agotado}
+          className={cn(variant === "portal" && "w-full")}
+          onClick={() => onAdd(undefined, selectedTamano)}
+        >
+          Agregar · ${unitPrice}
+        </Button>
+      </div>
     )
   }
 

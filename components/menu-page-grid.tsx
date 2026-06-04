@@ -2,6 +2,7 @@
 
 import { useMemo, type ReactNode } from "react"
 import { MenuItemCard } from "@/components/menu-item-card"
+import { resolvePlatilloTieneProteinas } from "@/lib/platillo-config"
 import { BebidaCard } from "@/components/bebida-card"
 import { MENU_INSTAGRAM_GRID_CLASS } from "@/components/menu-collage-tile"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
@@ -48,7 +49,7 @@ export function MenuPageGrid({ media }: Props) {
             nombre={platillo.nombre}
             descripcion={platillo.descripcion}
             precioBase={platillo.precioBase}
-            tieneProteinas={platillo.tieneProteinas !== false}
+            tieneProteinas={resolvePlatilloTieneProteinas(platillo, categoria)}
             tieneTamanos={platillo.tieneTamanos === true}
             precioChico={platillo.precioChico}
             precioGrande={platillo.precioGrande}

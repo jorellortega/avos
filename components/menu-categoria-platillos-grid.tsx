@@ -1,6 +1,7 @@
 "use client"
 
 import { MenuItemCard } from "@/components/menu-item-card"
+import { resolvePlatilloTieneProteinas } from "@/lib/platillo-config"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
   getPlatillosForCategoria,
@@ -37,7 +38,7 @@ export function MenuCategoriaPlatillosGrid({
             nombre={platillo.nombre}
             descripcion={platillo.descripcion}
             precioBase={platillo.precioBase}
-            tieneProteinas={platillo.tieneProteinas !== false}
+            tieneProteinas={resolvePlatilloTieneProteinas(platillo, categoria)}
             tieneTamanos={platillo.tieneTamanos === true}
             precioChico={platillo.precioChico}
             precioGrande={platillo.precioGrande}

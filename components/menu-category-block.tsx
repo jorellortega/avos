@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { MenuItemCard } from "@/components/menu-item-card"
+import { resolvePlatilloTieneProteinas } from "@/lib/platillo-config"
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
   getCategoriaById,
@@ -76,7 +77,7 @@ export function MenuCategoryBlock({
             nombre={platillo.nombre}
             descripcion={platillo.descripcion}
             precioBase={platillo.precioBase}
-            tieneProteinas={platillo.tieneProteinas !== false}
+            tieneProteinas={resolvePlatilloTieneProteinas(platillo, categoria)}
             tieneTamanos={platillo.tieneTamanos === true}
             precioChico={platillo.precioChico}
             precioGrande={platillo.precioGrande}

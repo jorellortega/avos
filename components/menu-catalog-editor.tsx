@@ -24,6 +24,7 @@ import {
   categorias,
   getPlatillosForCategoria,
   getPlatilloPrecioProteinaTamanoDefault,
+  getPlatilloTamanoLabel,
   getProteinasForPlatillo,
   proteinas,
   type BebidaTamano,
@@ -39,6 +40,19 @@ import {
   serializeMenuCatalogJson,
 } from "@/lib/menu-catalog-shared"
 import { useMenuCatalogContextOptional } from "@/components/menu-catalog-provider"
+
+function categoriaShowsPlatilloEditor(
+  c: (typeof categorias)[number],
+): boolean {
+  if (c.tieneProteinas !== false) return true
+  return getPlatillosForCategoria(c).some(
+    (p) =>
+      p.tieneTamanos === true ||
+      p.tieneProteinas === false ||
+      (p.opciones?.length ?? 0) > 0 ||
+      p.id !== c.id,
+  )
+}
 
 function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
   const proteinaPreciosPorCategoria: MenuCatalogJson["proteinaPreciosPorCategoria"] =
@@ -551,9 +565,9 @@ export function MenuCatalogEditor({ initial }: Props) {
         <CardHeader>
           <CardTitle>Platillos por categoría</CardTitle>
           <CardDescription>
-            Precio por proteína. Camarón suma el extra si no tiene precio
-            propio. &quot;Agotado&quot; y &quot;Oculto&quot; por proteína
-            aplican solo a ese platillo.
+            Precio por proteína o por tamaño (Menú Infantil, papas, nuggets).
+            Camarón suma el extra si no tiene precio propio. &quot;Agotado&quot; y
+            &quot;Oculto&quot; por platillo o por proteína.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
@@ -587,7 +601,7 @@ export function MenuCatalogEditor({ initial }: Props) {
                 </div>
               </div>
 
-              {c.tieneProteinas ? (
+              {categoriaShowsPlatilloEditor(c) ? (
                 <div className="space-y-6 w-full">
                   {getPlatillosForCategoria(c).map((platillo) => {
                     const catalogKey = catalogPlatilloKey(c.id, platillo.id)
@@ -625,7 +639,7 @@ export function MenuCatalogEditor({ initial }: Props) {
                               {(["chico", "grande"] as const).map((tam) => (
                                 <div key={tam} className="space-y-1">
                                   <Label htmlFor={`plat-${catalogKey}-${tam}`}>
-                                    {bebidaTamanoLabels[tam]} (MXN)
+                                    {getPlatilloTamanoLabel(platillo, tam)} (MXN)
                                   </Label>
                                   <Input
                                     id={`plat-${catalogKey}-${tam}`}
@@ -1009,15 +1023,15 @@ export function MenuCatalogEditor({ initial }: Props) {
           {getCatalogBebidas(state).map((b) => (
             <div
               key={b.id}
-              className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-border pb-4 last:border-0"
+              className="grid grid-cols-1 md:grid-cols-[minmax(12rem,1fr)_minmax(0,2fr)] gap-x-4 gap-y-3 border-b border-border pb-4 last:border-0 items-start md:items-center"
             >
-              <div className="flex flex-1 items-center gap-3 min-w-0">
+              <div className="flex items-center gap-3">
                 <BebidaThumb
                   src={bebidaImgs[b.id]}
                   alt={b.nombre}
-                  className="h-10 w-10"
+                  className="h-10 w-10 shrink-0"
                 />
-                <span className="font-medium">
+                <span className="font-medium leading-snug">
                   {b.nombre}
                   {b.isCustom ? (
                     <span className="ml-1.5 text-xs font-normal text-primary">
@@ -1026,7 +1040,7 @@ export function MenuCatalogEditor({ initial }: Props) {
                   ) : null}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-wrap items-end gap-4 min-w-0">
                 {(["chico", "grande"] as const).map((tam) => (
                   <div key={tam} className="space-y-1">
                     <Label className="text-xs" htmlFor={`beb-${b.id}-${tam}`}>

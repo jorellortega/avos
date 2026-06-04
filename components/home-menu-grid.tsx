@@ -19,6 +19,7 @@ const categoriaEmoji: Record<string, string> = {
   platillos: "🍽️",
   "carne-asada-fries": "🍟",
   "menu-infantil": "🧒",
+  "proteina-extra": "🥩",
   bebidas: "🥤",
 }
 

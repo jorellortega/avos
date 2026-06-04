@@ -91,6 +91,7 @@ const categoriaEmoji: Record<string, string> = {
   platillos: "🍽️",
   "carne-asada-fries": "🍟",
   "menu-infantil": "🧒",
+  "proteina-extra": "🥩",
   bebidas: "🥤",
 }
 
@@ -1231,6 +1232,20 @@ export default function OrdenarPage() {
                           c.categoria === category.name &&
                           c.id.startsWith(`${item.id}-`),
                       )
+                      const catDef = categorias.find((x) => x.id === category.id)
+                      const platDef = catDef
+                        ? getPlatillosForCategoria(catDef).find(
+                            (x) => x.id === item.id,
+                          )
+                        : undefined
+                      const itemFlags =
+                        platDef && catDef
+                          ? platilloPickerFlags(platDef, catDef)
+                          : {
+                              tieneProteinas: item.tieneProteinas,
+                              tieneTamanos: item.tieneTamanos === true,
+                              tieneOpciones: (item.opciones?.length ?? 0) > 0,
+                            }
                       const fixedPrice = catalog
                         ? catalog.getPlatilloPrecio(category.id, item.id)
                         : item.basePrice
@@ -1289,7 +1304,7 @@ export default function OrdenarPage() {
                                   </div>
                                 </div>
 
-                                {!item.tieneProteinas ? (
+                                {!itemFlags.tieneProteinas ? (
                                   <>
                                     {linesForItem.length > 0 && (
                                       <div
@@ -1335,7 +1350,7 @@ export default function OrdenarPage() {
                                         </ul>
                                       </div>
                                     )}
-                                    {item.opciones?.length ? (
+                                    {itemFlags.tieneOpciones ? (
                                       <OrdenarOpcionesPlatilloBlock
                                         item={item}
                                         categoryId={category.id}

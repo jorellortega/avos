@@ -16,6 +16,20 @@ export function categoriaTieneProteinas(categoria: CategoriaMenu): boolean {
   return (categoria as { tieneProteinas?: boolean }).tieneProteinas !== false
 }
 
+/** Whether the UI should show a protein picker (matches platilloPickerFlags). */
+export function resolvePlatilloTieneProteinas(
+  platillo: Pick<
+    CategoriaPlatillo,
+    "tieneProteinas" | "opciones"
+  >,
+  categoria: Pick<CategoriaMenu, "tieneProteinas">,
+): boolean {
+  if ((platillo.opciones?.length ?? 0) > 0) return false
+  if (platillo.tieneProteinas === false) return false
+  if (platillo.tieneProteinas === true) return true
+  return categoriaTieneProteinas(categoria)
+}
+
 export function platilloPickerFlags(
   platillo: CategoriaPlatillo,
   categoria: CategoriaMenu,

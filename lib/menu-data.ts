@@ -76,6 +76,14 @@ export const categorias = [
     precioBase: 60,
     tieneProteinas: false,
   },
+  {
+    id: "proteina-extra",
+    nombre: "Proteína Extra",
+    descripcion: "Orden extra de proteína en vaso",
+    imagen: "/placeholder.svg",
+    precioBase: 35,
+    tieneProteinas: false,
+  },
 ] as const
 
 /** Key used in `public_menu_categoria_imagenes` JSON and ordenar grid */
@@ -274,6 +282,22 @@ export const platillosPorCategoria: Partial<
       tamanoLabelGrande: "8 pzs",
     },
   ],
+  "proteina-extra": [
+    {
+      id: "asada-vaso",
+      nombre: "Asada (Vaso)",
+      descripcion: "Carne asada extra en vaso",
+      precioBase: 45,
+      tieneProteinas: false,
+    },
+    {
+      id: "pollo-vaso",
+      nombre: "Pollo (Vaso)",
+      descripcion: "Pollo extra en vaso",
+      precioBase: 35,
+      tieneProteinas: false,
+    },
+  ],
 }
 
 export function getPlatillosForCategoria(
@@ -335,7 +359,14 @@ export const menuCategories: OrdenarMenuCategory[] = categorias.map((c) => ({
     name: p.nombre,
     basePrice: p.precioBase,
     shrimpExtra: 20,
-    tieneProteinas: p.tieneProteinas !== false,
+    tieneProteinas:
+      (p.opciones?.length ?? 0) > 0
+        ? false
+        : p.tieneProteinas === true
+          ? true
+          : p.tieneProteinas === false
+            ? false
+            : c.tieneProteinas !== false,
     tieneTamanos: p.tieneTamanos === true,
     precioChico: p.precioChico,
     precioGrande: p.precioGrande,
@@ -414,6 +445,28 @@ export function getPlatilloTamanoLabel(
     return platillo.tamanoLabelChico ?? bebidaTamanoLabels.chico
   }
   return platillo.tamanoLabelGrande ?? bebidaTamanoLabels.grande
+}
+
+/** e.g. "Pequeño $60 · Grande $100" */
+export function formatPlatilloTamanoPrecioRange(
+  platillo: Pick<
+    CategoriaPlatillo,
+    | "precioBase"
+    | "precioChico"
+    | "precioGrande"
+    | "tamanoLabelChico"
+    | "tamanoLabelGrande"
+    | "tieneTamanos"
+  >,
+  precioChico?: number,
+  precioGrande?: number,
+): string {
+  if (platillo.tieneTamanos !== true) return `$${platillo.precioBase}`
+  const pChico = precioChico ?? platillo.precioChico ?? platillo.precioBase
+  const pGrande = precioGrande ?? platillo.precioGrande ?? platillo.precioBase
+  const chico = getPlatilloTamanoLabel(platillo, "chico")
+  const grande = getPlatilloTamanoLabel(platillo, "grande")
+  return `${chico} $${pChico} · ${grande} $${pGrande}`
 }
 
 export function getPlatilloPrecioProteinaTamanoDefault(
