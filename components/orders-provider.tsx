@@ -27,6 +27,8 @@ export interface OrderItem {
   needsBebidaTamano?: boolean
   /** Drink flavor not specified (e.g. "large drink") (portal). */
   needsBebidaEleccion?: boolean
+  /** Platillo needs chico/grande but size was not specified (portal). */
+  needsPlatilloTamano?: boolean
   bebidaId?: string
 }
 

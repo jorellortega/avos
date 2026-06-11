@@ -1426,6 +1426,7 @@ export function PortalPageClient() {
                         activeItems.map((item) => {
                           const needsFix =
                             item.needsProteina ||
+                            item.needsPlatilloTamano ||
                             item.needsBebidaTamano ||
                             item.needsBebidaEleccion
                           const showCustomization =
@@ -1472,6 +1473,11 @@ export function PortalPageClient() {
                                   {item.needsProteina && (
                                     <p className="text-xs text-destructive">
                                       Toca para elegir proteína
+                                    </p>
+                                  )}
+                                  {item.needsPlatilloTamano && (
+                                    <p className="text-xs text-destructive">
+                                      Toca para elegir tamaño (chico / grande)
                                     </p>
                                   )}
                                   {item.needsBebidaEleccion && (

@@ -22,8 +22,11 @@ import {
 import {
   PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX,
   PORTAL_INCOMPLETE_BEBIDA_SUFFIX,
+  PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX,
   PORTAL_INCOMPLETE_PROTEIN_SUFFIX,
+  cartItemNeedsCompletion,
   cartItemSupportsProtein,
+  parseCartLineBaseId,
 } from "@/lib/portal-cart-item"
 
 /** One line the AI should return (before server resolves prices). */
@@ -293,12 +296,52 @@ export function resolvePortalAiLines(
     const tam =
       line.platilloTamano === "grande" || line.platilloTamano === "chico"
         ? line.platilloTamano
-        : flags.tieneTamanos
-          ? "chico"
-          : undefined
+        : undefined
 
     let precio: number
     let nombre: string
+
+    if (flags.tieneTamanos && !tam) {
+      const baseName = platilloDisplayName(categoriaId, platilloId)
+      const config = defaultPlatilloCustomizationConfig()
+      const needsProteina = flags.tieneProteinas && !proteina
+      const baseId = needsProteina
+        ? `${categoriaId}-${platilloId}-${PORTAL_INCOMPLETE_PROTEIN_SUFFIX}`
+        : proteina
+          ? `${categoriaId}-${platilloId}-${proteina}-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`
+          : `${categoriaId}-${platilloId}-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`
+      const itemId = cartLineKey(baseId, [], notas ?? "", config)
+      const incompletePrecio = proteina
+        ? catalog.getPrecioConProteina(
+            categoriaId,
+            proteina,
+            platilloId,
+            "chico",
+          )
+        : catalog.getPlatilloPrecioTamano(categoriaId, platilloId, "chico")
+      nombre = needsProteina
+        ? `${baseName} (elige proteína y tamaño)`
+        : proteina
+          ? `${baseName} de ${proteina} (elige tamaño)`
+          : `${baseName} (elige tamaño)`
+      const existing = byId.get(itemId)
+      if (existing) {
+        existing.cantidad += qty
+      } else {
+        byId.set(itemId, {
+          id: itemId,
+          categoria: categoriaId,
+          nombre,
+          cantidad: qty,
+          precio: incompletePrecio,
+          notas,
+          proteina: proteina ?? undefined,
+          needsProteina,
+          needsPlatilloTamano: true,
+        })
+      }
+      continue
+    }
 
     if (flags.tieneProteinas && !proteina) {
       const baseName = platilloDisplayName(categoriaId, platilloId)
@@ -378,7 +421,72 @@ export function resolvePortalAiLines(
     }
   }
 
-  return { items: [...byId.values()], errors }
+  return { items: consolidatePlatilloCartLines([...byId.values()]), errors }
+}
+
+function platilloGroupKey(item: OrderItem): string | null {
+  const parsed = parseCartLineBaseId(item.id)
+  if (!parsed) return null
+  return `${parsed.categoriaId}:${parsed.platilloId}`
+}
+
+function lineCompletionScore(item: OrderItem): number {
+  if (!cartItemNeedsCompletion(item)) return 100
+  let score = 0
+  if (!item.needsProteina) score += 50
+  if (item.proteina) score += 5
+  if (!item.needsPlatilloTamano) score += 50
+  if (!item.needsBebidaTamano) score += 40
+  if (!item.needsBebidaEleccion) score += 40
+  return score
+}
+
+/** One cart line per platillo when duplicates differ only by missing protein/size. */
+export function consolidatePlatilloCartLines(items: OrderItem[]): OrderItem[] {
+  const platilloGroups = new Map<string, OrderItem[]>()
+  const others: OrderItem[] = []
+
+  for (const item of items) {
+    const key = platilloGroupKey(item)
+    if (!key) {
+      others.push(item)
+      continue
+    }
+    const group = platilloGroups.get(key) ?? []
+    group.push(item)
+    platilloGroups.set(key, group)
+  }
+
+  const consolidated: OrderItem[] = [...others]
+
+  for (const [, group] of platilloGroups) {
+    if (group.length === 1) {
+      consolidated.push(group[0])
+      continue
+    }
+
+    const complete = group.filter((i) => !cartItemNeedsCompletion(i))
+    if (complete.length > 0) {
+      const byId = new Map<string, OrderItem>()
+      for (const item of complete) {
+        const existing = byId.get(item.id)
+        if (existing) existing.cantidad += item.cantidad
+        else byId.set(item.id, { ...item })
+      }
+      consolidated.push(...byId.values())
+      continue
+    }
+
+    let best = group[0]
+    let maxQty = group[0].cantidad
+    for (const item of group) {
+      maxQty = Math.max(maxQty, item.cantidad)
+      if (lineCompletionScore(item) > lineCompletionScore(best)) best = item
+    }
+    consolidated.push({ ...best, cantidad: maxQty })
+  }
+
+  return consolidated
 }
 
 export function mergeOrderItems(
@@ -386,19 +494,96 @@ export function mergeOrderItems(
   incoming: OrderItem[],
   mode: "replace" | "append",
 ): OrderItem[] {
-  if (mode === "replace") return incoming
-  const byId = new Map<string, OrderItem>()
-  for (const item of base) byId.set(item.id, { ...item })
+  if (mode === "replace") return consolidatePlatilloCartLines(incoming)
+
+  let result = base.map((item) => ({ ...item }))
+
   for (const item of incoming) {
-    const existing = byId.get(item.id)
+    const groupKey = platilloGroupKey(item)
+    let qty = item.cantidad
+
+    if (groupKey) {
+      const priorIncomplete = result.filter(
+        (i) => platilloGroupKey(i) === groupKey && cartItemNeedsCompletion(i),
+      )
+      const priorQty = priorIncomplete.reduce((sum, i) => sum + i.cantidad, 0)
+
+      if (!cartItemNeedsCompletion(item)) {
+        result = result.filter(
+          (i) =>
+            platilloGroupKey(i) !== groupKey || !cartItemNeedsCompletion(i),
+        )
+        if (priorQty > qty) qty = priorQty
+      } else {
+        const itemScore = lineCompletionScore(item)
+        result = result.filter((i) => {
+          if (platilloGroupKey(i) !== groupKey || !cartItemNeedsCompletion(i)) {
+            return true
+          }
+          return lineCompletionScore(i) >= itemScore
+        })
+        if (priorQty > qty) qty = priorQty
+      }
+    }
+
+    const existing = result.find((i) => i.id === item.id)
     if (existing) {
-      existing.cantidad += item.cantidad
+      existing.cantidad += qty
       if (item.notas && !existing.notas) existing.notas = item.notas
+      if (lineCompletionScore(item) > lineCompletionScore(existing)) {
+        Object.assign(existing, item, { cantidad: existing.cantidad })
+      }
     } else {
-      byId.set(item.id, { ...item })
+      result.push({ ...item, cantidad: qty })
     }
   }
-  return [...byId.values()]
+
+  return consolidatePlatilloCartLines(result)
+}
+
+/** Drop stale incomplete lines when a complete line exists for the same platillo/bebida. */
+export function pruneSupersededIncompleteItems(items: OrderItem[]): OrderItem[] {
+  const completePlatillos = new Set<string>()
+  const completeBebidas = new Set<string>()
+
+  for (const item of items) {
+    if (
+      item.needsProteina ||
+      item.needsPlatilloTamano ||
+      item.needsBebidaTamano ||
+      item.needsBebidaEleccion
+    ) {
+      continue
+    }
+    const parsed = parseCartLineBaseId(item.id)
+    if (parsed) {
+      completePlatillos.add(`${parsed.categoriaId}:${parsed.platilloId}`)
+    }
+    if (item.bebidaId && !item.needsBebidaTamano) {
+      completeBebidas.add(item.bebidaId)
+    }
+  }
+
+  const pruned = items.filter((item) => {
+    if (
+      !item.needsProteina &&
+      !item.needsPlatilloTamano &&
+      !item.needsBebidaTamano &&
+      !item.needsBebidaEleccion
+    ) {
+      return true
+    }
+    if (item.bebidaId && completeBebidas.has(item.bebidaId)) {
+      return false
+    }
+    const parsed = parseCartLineBaseId(item.id)
+    if (parsed && completePlatillos.has(`${parsed.categoriaId}:${parsed.platilloId}`)) {
+      return false
+    }
+    return true
+  })
+
+  return consolidatePlatilloCartLines(pruned)
 }
 
 export function orderItemsTotal(items: OrderItem[]): number {
@@ -415,6 +600,7 @@ export type PortalOrderLineBreakdown = {
   proteina?: Proteina
   tieneProteinas: boolean
   needsProteina: boolean
+  needsPlatilloTamano: boolean
   needsBebidaTamano: boolean
   needsBebidaEleccion: boolean
   bebidaId?: string
@@ -433,6 +619,7 @@ export function buildPortalOrderLineBreakdown(
     proteina: i.proteina,
     tieneProteinas: cartItemSupportsProtein(i) || Boolean(i.needsProteina),
     needsProteina: Boolean(i.needsProteina),
+    needsPlatilloTamano: Boolean(i.needsPlatilloTamano),
     needsBebidaTamano: Boolean(i.needsBebidaTamano),
     needsBebidaEleccion: Boolean(i.needsBebidaEleccion),
     bebidaId: i.bebidaId,

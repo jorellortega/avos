@@ -154,9 +154,94 @@ export function segmentIsGenericDrink(segment: string): boolean {
 }
 
 export function segmentBebidaTamano(segment: string): BebidaTamano | undefined {
-  if (/\b(large|grande|big)\b/i.test(segment)) return "grande"
-  if (/\b(small|chico|pequeño|pequeno)\b/i.test(segment)) return "chico"
+  const s = normalizeText(segment)
+  if (/\b(large|grande?s|big)\b/i.test(s)) return "grande"
+  if (/\b(small|chico?s|pequeñ[oa]s|pequen[oa]s)\b/i.test(s)) return "chico"
   return undefined
+}
+
+export function segmentMentionsPlatilloTamano(segment: string): boolean {
+  return segmentBebidaTamano(segment) != null
+}
+
+function matchingSegmentsForPlatilloLine(
+  line: PortalAiLineInput,
+  segments: string[],
+): string[] {
+  return segments.filter((s) => scoreSegmentForPlatilloLine(s, line) >= 10)
+}
+
+function segmentAllowsProteinForLine(
+  line: PortalAiLineInput,
+  segments: string[],
+  assignedSegment?: string,
+): boolean {
+  if (assignedSegment) return segmentMentionsProtein(assignedSegment)
+  const matches = matchingSegmentsForPlatilloLine(line, segments)
+  if (matches.length === 0) return false
+  return matches.some((s) => segmentMentionsProtein(s))
+}
+
+function segmentAllowsPlatilloTamanoForLine(
+  line: PortalAiLineInput,
+  segments: string[],
+  assignedSegment?: string,
+): boolean {
+  if (assignedSegment) return segmentMentionsPlatilloTamano(assignedSegment)
+  const matches = matchingSegmentsForPlatilloLine(line, segments)
+  if (matches.length === 0) return false
+  return matches.some((s) => segmentMentionsPlatilloTamano(s))
+}
+
+function platilloInputKey(line: PortalAiLineInput): string | null {
+  if (line.bebidaId || line.categoriaId === "bebidas") {
+    return line.bebidaId ? `bebida:${line.bebidaId}` : "bebida:generic"
+  }
+  if (!line.categoriaId) return null
+  return `platillo:${line.categoriaId}:${line.platilloId ?? line.categoriaId}`
+}
+
+/** Collapse duplicate AI lines for the same platillo/bebida in one message. */
+export function dedupePortalAiLineInputs(
+  lines: PortalAiLineInput[],
+): PortalAiLineInput[] {
+  const groups = new Map<string, PortalAiLineInput[]>()
+  const others: PortalAiLineInput[] = []
+
+  for (const line of lines) {
+    const key = platilloInputKey(line)
+    if (!key) {
+      others.push(line)
+      continue
+    }
+    const group = groups.get(key) ?? []
+    group.push(line)
+    groups.set(key, group)
+  }
+
+  const out: PortalAiLineInput[] = [...others]
+  for (const [, group] of groups) {
+    if (group.length === 1) {
+      out.push(group[0])
+      continue
+    }
+
+    const withoutProtein = group.filter((l) => !l.proteina)
+    const candidates = withoutProtein.length > 0 ? withoutProtein : group
+    const withoutTamano = candidates.filter((l) => !l.platilloTamano)
+    const pool = withoutTamano.length > 0 ? withoutTamano : candidates
+
+    let best = pool[0]
+    let maxQty = pool[0].cantidad
+    for (const line of pool) {
+      maxQty = Math.max(maxQty, line.cantidad)
+      if (!line.platilloTamano && best.platilloTamano) best = line
+      else if (!line.proteina && best.proteina) best = line
+    }
+    out.push({ ...best, cantidad: maxQty })
+  }
+
+  return out
 }
 
 function scoreSegmentForPlatilloLine(
@@ -304,19 +389,32 @@ export function sanitizePortalAiLinesFromMessage(
     const platillo = cat
       ? getPlatillosForCategoria(cat).find((p) => p.id === platilloId)
       : undefined
-    if (platillo?.tieneProteinas === false || !line.proteina) return line
-
     const segment = assignments.get(index)
-    if (segment && !segmentMentionsProtein(segment)) {
-      const { proteina: _p, ...rest } = line
-      return rest
+    let next = line
+
+    if (
+      platillo?.tieneProteinas !== false &&
+      next.proteina &&
+      !segmentAllowsProteinForLine(next, segments, segment)
+    ) {
+      const { proteina: _p, ...rest } = next
+      next = rest
     }
 
-    return line
+    if (
+      platillo?.tieneTamanos &&
+      next.platilloTamano &&
+      !segmentAllowsPlatilloTamanoForLine(next, segments, segment)
+    ) {
+      const { platilloTamano: _t, ...rest } = next
+      next = rest
+    }
+
+    return next
   })
 
   let result = [...sanitized, ...findMissingGenericDrinkLines(segments, sanitized)]
   result = coerceUnknownBebidaLines(result, catalogJson)
   result = attachBebidaTamanoFromSegments(result, segments, catalogJson)
-  return result
+  return dedupePortalAiLineInputs(result)
 }

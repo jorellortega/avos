@@ -211,6 +211,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           const item = existingItems.find((i) => i.id === itemId)
           if (
             item?.needsProteina ||
+            item?.needsPlatilloTamano ||
             item?.needsBebidaTamano ||
             item?.needsBebidaEleccion
           ) {
@@ -353,6 +354,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           lineBreakdown?: PortalOrderLineBreakdown[]
           assistantMessage?: string
           orderTipo?: OrderType
+          incomplete?: boolean
           error?: string
           warnings?: string[]
         }
@@ -374,6 +376,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           delivery,
         )
         const orderReply = { lines, total: replyTotal, warnings }
+        const assistantText = data.assistantMessage?.trim() ?? ""
 
         const resolvedTipo = resolvePortalOrderTipo(
           trimmed,
@@ -395,15 +398,29 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
           // Append to current order: refresh the single summary card, don't stack duplicates
           if (existingItems.length > 0 && lastReplyIdx >= 0) {
             return prev.map((m, i) =>
-              i === lastReplyIdx ? { ...m, orderReply } : m,
+              i === lastReplyIdx
+                ? {
+                    ...m,
+                    content: assistantText,
+                    orderReply,
+                  }
+                : m,
             )
           }
           return [
             ...prev,
-            { role: "assistant", content: "", orderReply },
+            {
+              role: "assistant",
+              content: assistantText,
+              orderReply,
+            },
           ]
         })
-        onItemsResolved(items, replyTotal, "")
+        onItemsResolved(
+          items,
+          replyTotal,
+          showAssistantWithReply ? "" : assistantText,
+        )
       } catch {
         setMessages((prev) => prev.slice(0, -1))
         setInput(trimmed)
@@ -665,7 +682,11 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                   )}
                 >
                   {m.orderReply ? (
-                    <PortalAiOrderReply
+                    <div className="space-y-2">
+                      {m.content ? (
+                        <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                      ) : null}
+                      <PortalAiOrderReply
                       lines={m.orderReply.lines}
                       total={m.orderReply.total}
                       orderNumero={displayNum}
@@ -699,6 +720,7 @@ export const PortalAiChat = forwardRef<PortalAiChatHandle, PortalAiChatProps>(
                         i === lastOrderReplyIndex ? onDeliveryFeeChange : undefined
                       }
                     />
+                    </div>
                   ) : (
                     <span className="whitespace-pre-wrap text-sm">
                       {m.content}

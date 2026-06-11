@@ -16,6 +16,7 @@ export type PortalOrderSpeechInput = {
 
 function lineToSpeech(line: PortalOrderLineBreakdown): string {
   let name = line.nombre
+    .replace(/\s*\(elige proteína y tamaño\)/gi, "")
     .replace(/\s*\(elige proteína\)/gi, "")
     .replace(/\s*\(elige tamaño\)/gi, "")
     .trim()
@@ -30,6 +31,7 @@ function lineToSpeech(line: PortalOrderLineBreakdown): string {
     phrase += `, ${line.notas.trim()}`
   }
   if (line.needsProteina) phrase += ", falta elegir proteína"
+  if (line.needsPlatilloTamano) phrase += ", falta elegir tamaño"
   if (line.needsBebidaTamano) phrase += ", falta elegir tamaño de bebida"
   if (line.needsBebidaEleccion) phrase += ", falta elegir bebida"
   return phrase

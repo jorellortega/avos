@@ -21,18 +21,22 @@ import {
 import { useMenuCatalogContext } from "@/components/menu-catalog-provider"
 import {
   bebidaTamanoLabels,
+  getCategoriaById,
+  getPlatillosForCategoria,
+  getPlatilloTamanoLabel,
   proteinas,
   type BebidaTamano,
   type Proteina,
 } from "@/lib/menu-data"
-import type { PortalOrderLineBreakdown } from "@/lib/portal-menu-snapshot"
-import type { OrderType } from "@/components/orders-provider"
-import { PortalOrderTipoDelivery } from "@/components/portal/portal-order-tipo-delivery"
-import type { PortalDeliveryInfo } from "@/lib/portal-delivery"
 import {
   parseCartLineBaseId,
   type PortalCartItemUpdate,
 } from "@/lib/portal-cart-item"
+import type { PortalOrderLineBreakdown } from "@/lib/portal-menu-snapshot"
+import type { OrderType } from "@/components/orders-provider"
+import { PortalOrderTipoDelivery } from "@/components/portal/portal-order-tipo-delivery"
+import { PortalOrderTipoPicker } from "@/components/portal/portal-order-tipo-picker"
+import type { PortalDeliveryInfo } from "@/lib/portal-delivery"
 import { cn } from "@/lib/utils"
 import { formatPortalOrderSpeechText } from "@/lib/portal-order-speech"
 import { PortalOrderPlayback } from "@/components/portal/portal-order-playback"
@@ -103,11 +107,18 @@ export function PortalAiOrderReply({
     delivery,
   })
   const hasIncomplete = lines.some(
-    (l) => l.needsProteina || l.needsBebidaTamano || l.needsBebidaEleccion,
+    (l) =>
+      l.needsProteina ||
+      l.needsPlatilloTamano ||
+      l.needsBebidaTamano ||
+      l.needsBebidaEleccion,
   )
 
   const lineNeedsFix = (line: PortalOrderLineBreakdown) =>
-    line.needsProteina || line.needsBebidaTamano || line.needsBebidaEleccion
+    line.needsProteina ||
+    line.needsPlatilloTamano ||
+    line.needsBebidaTamano ||
+    line.needsBebidaEleccion
 
   const openCustomize = (line: PortalOrderLineBreakdown) => {
     setCustomizing(line)
@@ -167,6 +178,12 @@ export function PortalAiOrderReply({
         bebidaId: editBebidaId,
         ...(editBebidaTamano ? { bebidaTamano: editBebidaTamano } : {}),
       })
+    } else if (editing.needsPlatilloTamano) {
+      if (!editBebidaTamano) return
+      onUpdateItem(editing.id, {
+        cantidad: fixOnly ? editing.cantidad : qty,
+        platilloTamano: editBebidaTamano,
+      })
     } else if (editing.needsBebidaTamano) {
       if (!editBebidaTamano) return
       onUpdateItem(editing.id, {
@@ -200,6 +217,9 @@ export function PortalAiOrderReply({
       {line.needsProteina && (
         <span className="block text-xs text-destructive mt-0.5">Toca para elegir proteína</span>
       )}
+      {line.needsPlatilloTamano && (
+        <span className="block text-xs text-destructive mt-0.5">Toca para elegir tamaño</span>
+      )}
       {line.needsBebidaTamano && (
         <span className="block text-xs text-destructive mt-0.5">Toca para elegir tamaño</span>
       )}
@@ -222,7 +242,7 @@ export function PortalAiOrderReply({
     ? "Editar artículo"
     : editing.needsBebidaEleccion
       ? "Elegir bebida"
-      : editing.needsBebidaTamano
+      : editing.needsPlatilloTamano || editing.needsBebidaTamano
       ? editing.nombre.replace(/\s*\(elige tamaño\)/i, "").trim() || "Elegir tamaño"
       : editing.needsProteina || (fixOnly && editing.tieneProteinas)
         ? editing.nombre.replace(/\s*\(elige proteína\)/i, "").trim() || "Elegir proteína"
@@ -234,6 +254,8 @@ export function PortalAiOrderReply({
     ? ""
     : editing.needsBebidaEleccion
       ? "Selecciona qué bebida es."
+      : editing.needsPlatilloTamano
+      ? "Selecciona el tamaño de este platillo."
       : editing.needsBebidaTamano
       ? "Selecciona chico o grande para esta bebida."
       : editing.needsProteina
@@ -242,11 +264,28 @@ export function PortalAiOrderReply({
 
   const showProteinPicker =
     editing &&
+    !editing.needsPlatilloTamano &&
     !editing.needsBebidaTamano &&
     !editing.needsBebidaEleccion &&
     (editing.needsProteina || editing.tieneProteinas || fixOnly)
 
-  const showTamanoPicker = editing?.needsBebidaTamano
+  const showTamanoPicker =
+    editing?.needsPlatilloTamano || editing?.needsBebidaTamano
+
+  const platilloTamanoLabels = (() => {
+    if (!editing?.needsPlatilloTamano) return null
+    const parsed = parseCartLineBaseId(editing.id)
+    if (!parsed) return null
+    const cat = getCategoriaById(parsed.categoriaId)
+    const platillo = cat
+      ? getPlatillosForCategoria(cat).find((p) => p.id === parsed.platilloId)
+      : undefined
+    if (!platillo) return null
+    return {
+      chico: getPlatilloTamanoLabel(platillo, "chico"),
+      grande: getPlatilloTamanoLabel(platillo, "grande"),
+    }
+  })()
   const showBebidaPicker = editing?.needsBebidaEleccion
 
   return (
@@ -271,8 +310,9 @@ export function PortalAiOrderReply({
         </div>
       </div>
       {hasIncomplete && (
-        <p className="text-xs text-destructive font-medium">
-          En rojo: falta proteína o tamaño de bebida — toca la línea para corregir
+        <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
+          Falta un detalle — responde en el chat (ej. «asada», «chico») o toca la
+          línea en rojo para elegir.
         </p>
       )}
       <ul className="space-y-0.5 text-sm">
@@ -329,36 +369,54 @@ export function PortalAiOrderReply({
           ),
         )}
       </ul>
-      <p className="text-sm font-semibold pt-0.5">
-        Total: ${total.toFixed(2)} MXN
-        {orderTipo === "domicilio" && delivery.deliveryFee != null && delivery.deliveryFee > 0 ? (
-          <span className="block text-xs font-normal text-muted-foreground">
-            Incluye envío ${delivery.deliveryFee.toFixed(2)}
-          </span>
-        ) : null}
-        {hasIncomplete && (
-          <span className="text-xs font-normal text-destructive block">
-            Incluye precios base; corrige líneas en rojo
-          </span>
-        )}
-      </p>
-
-      {onOrderTipoChange && onDeliverySave && onDeliveryFeeChange ? (
-        <PortalOrderTipoDelivery
-          orderTipo={orderTipo}
-          onOrderTipoChange={onOrderTipoChange}
-          delivery={delivery}
-          needsDelivery={needsDelivery}
-          onDeliverySave={onDeliverySave}
-          onDeliveryFeeChange={onDeliveryFeeChange}
-          className="pt-2 border-t border-border/60"
-        />
+      {onOrderTipoChange ? (
+        onDeliverySave && onDeliveryFeeChange ? (
+          <PortalOrderTipoDelivery
+            orderTipo={orderTipo}
+            onOrderTipoChange={onOrderTipoChange}
+            delivery={delivery}
+            needsDelivery={needsDelivery}
+            onDeliverySave={onDeliverySave}
+            onDeliveryFeeChange={onDeliveryFeeChange}
+            className="pt-2 border-t border-border/60"
+          />
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/60">
+            <span className="text-xs font-medium text-muted-foreground shrink-0">
+              Servicio
+            </span>
+            <PortalOrderTipoPicker
+              variant="inline"
+              value={orderTipo}
+              onChange={onOrderTipoChange}
+            />
+          </div>
+        )
       ) : null}
 
-      <PortalCashChange
-        total={total}
-        className="pt-2 border-t border-border/60"
-      />
+      {!hasIncomplete ? (
+        <>
+          <p className="text-sm font-semibold pt-0.5">
+            Total: ${total.toFixed(2)} MXN
+            {orderTipo === "domicilio" &&
+            delivery.deliveryFee != null &&
+            delivery.deliveryFee > 0 ? (
+              <span className="block text-xs font-normal text-muted-foreground">
+                Incluye envío ${delivery.deliveryFee.toFixed(2)}
+              </span>
+            ) : null}
+          </p>
+
+          <PortalCashChange
+            total={total}
+            className="pt-2 border-t border-border/60"
+          />
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground pt-1">
+          El total aparece cuando elijas proteína, tamaño o bebida.
+        </p>
+      )}
 
       {warnings && (
         <p className="text-xs text-amber-700 dark:text-amber-400">⚠ {warnings}</p>
@@ -543,7 +601,7 @@ export function PortalAiOrderReply({
                       )}
                       onClick={() => setEditBebidaTamano(tam)}
                     >
-                      {bebidaTamanoLabels[tam]}
+                      {platilloTamanoLabels?.[tam] ?? bebidaTamanoLabels[tam]}
                     </Button>
                   )
                 })}

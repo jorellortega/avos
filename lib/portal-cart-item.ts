@@ -11,8 +11,14 @@ import {
   type Proteina,
 } from "@/lib/menu-data"
 import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
+import {
+  platilloCartSuffix,
+  platilloLineNombre,
+  platilloPickerFlags,
+} from "@/lib/platillo-config"
 
 export const PORTAL_INCOMPLETE_PROTEIN_SUFFIX = "pendiente"
+export const PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX = "platillo-tamano-pendiente"
 export const PORTAL_INCOMPLETE_BEBIDA_SUFFIX = "tamano-pendiente"
 export const PORTAL_INCOMPLETE_BEBIDA_CHOICE_SUFFIX = "bebida-pendiente"
 
@@ -26,6 +32,27 @@ export function parseCartLineBaseId(itemId: string): {
     const prefix = `${cat.id}-`
     if (!baseId.startsWith(prefix)) continue
     const tail = baseId.slice(prefix.length)
+    for (const p of proteinas) {
+      if (tail.endsWith(`-${p}-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`)) {
+        return {
+          categoriaId: cat.id,
+          platilloId: tail.slice(
+            0,
+            -`-${p}-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`.length,
+          ),
+          proteina: p,
+        }
+      }
+    }
+    if (tail.endsWith(`-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`)) {
+      return {
+        categoriaId: cat.id,
+        platilloId: tail.slice(
+          0,
+          -`-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`.length,
+        ),
+      }
+    }
     if (tail.endsWith(`-${PORTAL_INCOMPLETE_PROTEIN_SUFFIX}`)) {
       return {
         categoriaId: cat.id,
@@ -101,7 +128,10 @@ export function parseBebidaItemId(itemId: string): {
 
 export function cartItemNeedsCompletion(item: OrderItem): boolean {
   return Boolean(
-    item.needsProteina || item.needsBebidaTamano || item.needsBebidaEleccion,
+    item.needsProteina ||
+      item.needsPlatilloTamano ||
+      item.needsBebidaTamano ||
+      item.needsBebidaEleccion,
   )
 }
 
@@ -166,6 +196,7 @@ function precioBebida(
 export type PortalCartItemUpdate = {
   cantidad?: number
   proteina?: Proteina
+  platilloTamano?: BebidaTamano
   bebidaTamano?: BebidaTamano
   bebidaId?: string
   notas?: string
@@ -297,6 +328,70 @@ export function applyPortalCartItemUpdate(
     return [...withoutOld, updated].filter((i) => i.cantidad > 0)
   }
 
+  if (update.platilloTamano != null && item.needsPlatilloTamano) {
+    const parsed = parseCartLineBaseId(item.id)
+    if (!parsed) {
+      return items.map((i) => (i.id === itemId ? { ...i, cantidad } : i))
+    }
+    const cat = getCategoriaById(parsed.categoriaId)
+    const platillo = cat
+      ? getPlatillosForCategoria(cat).find((p) => p.id === parsed.platilloId)
+      : undefined
+    if (!platillo || !cat) {
+      return items.map((i) => (i.id === itemId ? { ...i, cantidad } : i))
+    }
+    const flags = platilloPickerFlags(platillo, cat)
+    const tam = update.platilloTamano
+    const prot = item.proteina ?? parsed.proteina
+    if (flags.tieneProteinas && !prot) {
+      return items.map((i) => (i.id === itemId ? { ...i, cantidad } : i))
+    }
+    const suffix = platilloCartSuffix(flags, tam, prot)
+    const baseId = `${parsed.categoriaId}-${parsed.platilloId}-${suffix}`
+    const parts = item.id.split("::")
+    const newId =
+      parts.length <= 1 ? baseId : `${baseId}::${parts.slice(1).join("::")}`
+    const platilloNombre = platilloDisplayName(parsed.categoriaId, parsed.platilloId)
+    const updated: OrderItem = {
+      ...item,
+      id: newId,
+      proteina: prot,
+      needsPlatilloTamano: false,
+      needsProteina: false,
+      nombre: platilloLineNombre(
+        platilloNombre,
+        flags,
+        tam,
+        prot,
+        platillo,
+      ),
+      precio: prot
+        ? (catalog?.getPrecioConProteina(
+            parsed.categoriaId,
+            prot,
+            parsed.platilloId,
+            tam,
+          ) ??
+          precioConProteina(catalog, parsed.categoriaId, parsed.platilloId, prot))
+        : (catalog?.getPlatilloPrecioTamano(
+            parsed.categoriaId,
+            parsed.platilloId,
+            tam,
+          ) ?? platillo.precioBase),
+      cantidad,
+    }
+    const withoutOld = items.filter((i) => i.id !== itemId)
+    const existing = withoutOld.find((i) => i.id === newId)
+    if (existing) {
+      return withoutOld
+        .map((i) =>
+          i.id === newId ? { ...i, cantidad: i.cantidad + cantidad } : i,
+        )
+        .filter((i) => i.cantidad > 0)
+    }
+    return [...withoutOld, updated].filter((i) => i.cantidad > 0)
+  }
+
   const proteinaChange =
     update.proteina != null &&
     (item.needsProteina ||
@@ -314,22 +409,99 @@ export function applyPortalCartItemUpdate(
   }
 
   const newProteina = update.proteina!
-  const parts = item.id.split("::")
-  const baseId = `${parsed.categoriaId}-${parsed.platilloId}-${newProteina}`
-  const newId = parts.length <= 1 ? baseId : `${baseId}::${parts.slice(1).join("::")}`
+  const cat = getCategoriaById(parsed.categoriaId)
+  const platillo = cat
+    ? getPlatillosForCategoria(cat).find((p) => p.id === parsed.platilloId)
+    : undefined
+  const flags =
+    platillo && cat
+      ? platilloPickerFlags(platillo, cat)
+      : { tieneProteinas: true, tieneTamanos: false, tieneOpciones: false }
   const platilloNombre = platilloDisplayName(parsed.categoriaId, parsed.platilloId)
+  const parts = item.id.split("::")
+
+  if (item.needsPlatilloTamano) {
+    const pendingId = `${parsed.categoriaId}-${parsed.platilloId}-${newProteina}-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`
+    const newId =
+      parts.length <= 1 ? pendingId : `${pendingId}::${parts.slice(1).join("::")}`
+    const updated: OrderItem = {
+      ...item,
+      id: newId,
+      proteina: newProteina,
+      needsProteina: false,
+      needsPlatilloTamano: true,
+      nombre: `${platilloNombre} de ${newProteina} (elige tamaño)`,
+      precio:
+        catalog?.getPrecioConProteina(
+          parsed.categoriaId,
+          newProteina,
+          parsed.platilloId,
+          "chico",
+        ) ?? precioConProteina(catalog, parsed.categoriaId, parsed.platilloId, newProteina),
+      cantidad,
+    }
+    const withoutOld = items.filter((i) => i.id !== itemId)
+    return [...withoutOld, updated].filter((i) => i.cantidad > 0)
+  }
+
+  let tam: BebidaTamano | undefined
+  const base = parts[0] ?? item.id
+  for (const t of ["chico", "grande"] as const) {
+    if (base.includes(`-${t}-`) || base.endsWith(`-${t}`)) {
+      tam = t
+      break
+    }
+  }
+
+  if (flags.tieneTamanos && !tam) {
+    const pendingId = `${parsed.categoriaId}-${parsed.platilloId}-${newProteina}-${PORTAL_INCOMPLETE_PLATILLO_TAMANO_SUFFIX}`
+    const newId =
+      parts.length <= 1 ? pendingId : `${pendingId}::${parts.slice(1).join("::")}`
+    const updated: OrderItem = {
+      ...item,
+      id: newId,
+      proteina: newProteina,
+      needsProteina: false,
+      needsPlatilloTamano: true,
+      nombre: `${platilloNombre} de ${newProteina} (elige tamaño)`,
+      precio:
+        catalog?.getPrecioConProteina(
+          parsed.categoriaId,
+          newProteina,
+          parsed.platilloId,
+          "chico",
+        ) ?? precioConProteina(catalog, parsed.categoriaId, parsed.platilloId, newProteina),
+      cantidad,
+    }
+    const withoutOld = items.filter((i) => i.id !== itemId)
+    return [...withoutOld, updated].filter((i) => i.cantidad > 0)
+  }
+
+  const suffix = flags.tieneTamanos && tam
+    ? platilloCartSuffix(flags, tam, newProteina)
+    : newProteina
+  const baseId = `${parsed.categoriaId}-${parsed.platilloId}-${suffix}`
+  const newId = parts.length <= 1 ? baseId : `${baseId}::${parts.slice(1).join("::")}`
   const updated: OrderItem = {
     ...item,
     id: newId,
     proteina: newProteina,
     needsProteina: false,
-    nombre: `${platilloNombre} de ${newProteina}`,
-    precio: precioConProteina(
-      catalog,
-      parsed.categoriaId,
-      parsed.platilloId,
-      newProteina,
-    ),
+    needsPlatilloTamano: false,
+    nombre:
+      flags.tieneTamanos && tam
+        ? platilloLineNombre(platilloNombre, flags, tam, newProteina, platillo)
+        : `${platilloNombre} de ${newProteina}`,
+    precio:
+      flags.tieneTamanos && tam
+        ? (catalog?.getPrecioConProteina(
+            parsed.categoriaId,
+            newProteina,
+            parsed.platilloId,
+            tam,
+          ) ??
+          precioConProteina(catalog, parsed.categoriaId, parsed.platilloId, newProteina))
+        : precioConProteina(catalog, parsed.categoriaId, parsed.platilloId, newProteina),
     cantidad,
   }
 
