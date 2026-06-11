@@ -1,7 +1,9 @@
 import type { InventoryItemRow, InventoryListKind } from "@/lib/inventario-types"
 import {
   findStockStatusForNotes,
+  mergeInventoryPricesFromSource,
   mergeSuggestedBuyIntoShopping,
+  normalizeInventoryPrice,
   normalizeInventoryItemName,
   shoppingHasBuyQuantity,
   shoppingNotesFromStock,
@@ -66,6 +68,7 @@ export function shoppingPatchFromStock(
   if (stock.image_url.trim()) {
     patch.image_url = stock.image_url.trim()
   }
+  Object.assign(patch, mergeInventoryPricesFromSource(shopping, stock))
   if (shopping && normalizeInventoryItemName(shopping.name) !== normalizeInventoryItemName(stock.name)) {
     patch.name = stock.name.trim()
   }
@@ -117,6 +120,7 @@ export function stockPatchFromShopping(
     notes,
     stock_action: STOCK_BUY_ACTION,
     ...imagePatch,
+    ...mergeInventoryPricesFromSource(stock, shopping),
     ...(stock && normalizeInventoryItemName(stock.name) !== normalizeInventoryItemName(name)
       ? { name }
       : {}),
@@ -167,6 +171,10 @@ export function shoppingInsertFromStock(
     cantidad_num: suggested.cantidad_num ?? null,
     marinated: null,
     par_level: null,
+    par_period: null,
+    par_unit: null,
+    price_min: normalizeInventoryPrice(stock.price_min),
+    price_max: normalizeInventoryPrice(stock.price_max),
   }
 }
 
@@ -187,6 +195,10 @@ export function emptyStockRowFromShopping(
     marinated: null,
     stock_action: patch?.stock_action ?? STOCK_BUY_ACTION,
     par_level: null,
+    par_period: null,
+    par_unit: null,
+    price_min: normalizeInventoryPrice(shopping.price_min),
+    price_max: normalizeInventoryPrice(shopping.price_max),
     notes: patch?.notes ?? STOCK_BUY_NOTES,
     list_kind: "stock",
     purchased: false,

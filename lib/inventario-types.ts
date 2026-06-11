@@ -111,6 +111,14 @@ export interface InventoryItemRow {
   marinated: boolean | null
   stock_action: string
   par_level: number | null
+  /** Target applies per day or per week (stock only). */
+  par_period: InventoryParPeriod | null
+  /** Unit for par_level: kg, pza, or bolsas. */
+  par_unit: InventoryParUnit | null
+  /** Typical low unit price (MXN). */
+  price_min: number | null
+  /** Typical high unit price (MXN); same as min if fixed. */
+  price_max: number | null
   notes: string
   list_kind: InventoryListKind
   purchased: boolean
@@ -198,6 +206,69 @@ export function patchForStockStatusOption(
     Object.assign(patch, stockQuantitiesClearedPatch())
   }
   return patch
+}
+
+export function parseInventoryPriceInput(
+  raw: string | null | undefined,
+): number | null {
+  const t = (raw ?? "").trim().replace(/[$,\s]/g, "")
+  if (!t) return null
+  const n = Number.parseFloat(t)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.round(n * 100) / 100
+}
+
+export function normalizeInventoryPrice(
+  value: number | null | undefined,
+): number | null {
+  if (value == null || value === undefined) return null
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.round(n * 100) / 100
+}
+
+export function formatInventoryPriceRange(
+  item: Pick<InventoryItemRow, "price_min" | "price_max">,
+): string | null {
+  const min = normalizeInventoryPrice(item.price_min)
+  const max = normalizeInventoryPrice(item.price_max)
+  if (min == null && max == null) return null
+  const fmt = (n: number) =>
+    n % 1 === 0 ? `$${n}` : `$${n.toFixed(2)}`
+  if (min != null && max != null && max !== min) {
+    return `${fmt(min)} – ${fmt(max)}`
+  }
+  const single = min ?? max
+  return single != null ? fmt(single) : null
+}
+
+export function mergeInventoryPricesFromSource(
+  target: InventoryItemRow | undefined,
+  source: Pick<InventoryItemRow, "price_min" | "price_max">,
+): Partial<Pick<InventoryItemRow, "price_min" | "price_max">> {
+  const hasSource =
+    normalizeInventoryPrice(source.price_min) != null ||
+    normalizeInventoryPrice(source.price_max) != null
+  if (!hasSource) return {}
+  const targetEmpty =
+    !target ||
+    (normalizeInventoryPrice(target.price_min) == null &&
+      normalizeInventoryPrice(target.price_max) == null)
+  if (!targetEmpty) return {}
+  return inventoryPricesPatch(source)
+}
+
+export function inventoryPricesPatch(
+  source: Pick<InventoryItemRow, "price_min" | "price_max">,
+): Pick<InventoryItemRow, "price_min" | "price_max"> {
+  let min = normalizeInventoryPrice(source.price_min)
+  let max = normalizeInventoryPrice(source.price_max)
+  if (min != null && max != null && max < min) {
+    const swap = min
+    min = max
+    max = swap
+  }
+  return { price_min: min, price_max: max }
 }
 
 /** Buy / reorder actions (separate from on-hand Estado). */
@@ -309,6 +380,141 @@ export function shoppingNotesFromStock(
   return parts.length ? parts.join(" · ") : "Reabastecer"
 }
 
+export type InventoryParPeriod = "day" | "week"
+export type InventoryParUnit = "kg" | "pza" | "bolsas"
+
+export const INVENTORY_PAR_PERIOD_OPTIONS: {
+  id: InventoryParPeriod
+  label: string
+}[] = [
+  { id: "day", label: "Día" },
+  { id: "week", label: "Semana" },
+]
+
+export const INVENTORY_PAR_UNIT_OPTIONS: {
+  id: InventoryParUnit
+  label: string
+}[] = [
+  { id: "kg", label: "Kilos" },
+  { id: "pza", label: "Piezas" },
+  { id: "bolsas", label: "Bolsas" },
+]
+
+export function normalizeInventoryParPeriod(
+  raw: string | null | undefined,
+): InventoryParPeriod | null {
+  const v = (raw ?? "").trim().toLowerCase()
+  if (v === "day" || v === "week") return v
+  return null
+}
+
+export function normalizeInventoryParUnit(
+  raw: string | null | undefined,
+): InventoryParUnit | null {
+  const v = (raw ?? "").trim().toLowerCase()
+  if (v === "kg" || v === "pza" || v === "bolsas") return v
+  return null
+}
+
+export function stockOnHandForParUnit(
+  item: Pick<
+    InventoryItemRow,
+    "quantity" | "unit" | "cantidad_num" | "bolsas"
+  >,
+  parUnit: InventoryParUnit,
+): number {
+  if (parUnit === "kg") return Number(item.quantity) || 0
+  if (parUnit === "pza") return item.cantidad_num ?? 0
+  return item.bolsas ?? 0
+}
+
+export function stockParTargetLabel(
+  item: Pick<
+    InventoryItemRow,
+    "par_level" | "par_period" | "par_unit"
+  >,
+): string | null {
+  if (item.par_level == null || item.par_level <= 0) return null
+  if (!item.par_period || !item.par_unit) return null
+  const unit =
+    INVENTORY_PAR_UNIT_OPTIONS.find((u) => u.id === item.par_unit)?.label ??
+    item.par_unit
+  const period =
+    INVENTORY_PAR_PERIOD_OPTIONS.find((p) => p.id === item.par_period)?.label ??
+    item.par_period
+  const qty =
+    item.par_unit === "kg" && Number.isInteger(item.par_level)
+      ? String(item.par_level)
+      : String(item.par_level)
+  return `${qty} ${unit.toLowerCase()} / ${period.toLowerCase()}`
+}
+
+export type StockParGap = {
+  gap: number
+  unitLabel: string
+  periodLabel: string
+}
+
+export function stockParGap(
+  item: Pick<
+    InventoryItemRow,
+    | "par_level"
+    | "par_period"
+    | "par_unit"
+    | "quantity"
+    | "unit"
+    | "cantidad_num"
+    | "bolsas"
+  >,
+): StockParGap | null {
+  if (item.par_level == null || item.par_level <= 0) return null
+  if (!item.par_period || !item.par_unit) return null
+  const onHand = stockOnHandForParUnit(item, item.par_unit)
+  const gap = item.par_level - onHand
+  if (gap <= 0) return null
+  const unitLabel =
+    INVENTORY_PAR_UNIT_OPTIONS.find((u) => u.id === item.par_unit)?.label ??
+    item.par_unit
+  const periodLabel =
+    INVENTORY_PAR_PERIOD_OPTIONS.find((p) => p.id === item.par_period)?.label ??
+    item.par_period
+  return {
+    gap: item.par_unit === "kg" ? gap : Math.ceil(gap),
+    unitLabel,
+    periodLabel,
+  }
+}
+
+export function suggestedBuyFromParLevel(
+  stock: Pick<
+    InventoryItemRow,
+    | "par_level"
+    | "par_period"
+    | "par_unit"
+    | "quantity"
+    | "unit"
+    | "cantidad_num"
+    | "bolsas"
+  >,
+): Partial<
+  Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">
+> {
+  const gapInfo = stockParGap(stock)
+  if (!gapInfo || !stock.par_unit) return {}
+  const out: Partial<
+    Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">
+  > = {}
+  if (stock.par_unit === "kg") {
+    out.quantity = gapInfo.gap
+    out.unit = "kg"
+  } else if (stock.par_unit === "pza") {
+    out.cantidad_num = gapInfo.gap
+  } else {
+    out.bolsas = gapInfo.gap
+  }
+  return out
+}
+
 /** Read-only context from linked stock (estado, acción, en cocina). */
 export function stockLinkedContextLabel(
   item: Pick<
@@ -319,6 +525,11 @@ export function stockLinkedContextLabel(
     | "unit"
     | "cantidad_num"
     | "bolsas"
+    | "par_level"
+    | "par_period"
+    | "par_unit"
+    | "price_min"
+    | "price_max"
   >,
 ): string | null {
   const parts: string[] = []
@@ -334,6 +545,10 @@ export function stockLinkedContextLabel(
   if (item.bolsas != null && item.bolsas > 0) {
     parts.push(`Bolsas: ${item.bolsas}`)
   }
+  const par = stockParTargetLabel(item)
+  if (par) parts.push(`Meta: ${par}`)
+  const price = formatInventoryPriceRange(item)
+  if (price) parts.push(`Precio: ${price}`)
   return parts.length ? parts.join(" · ") : null
 }
 
@@ -356,34 +571,20 @@ export function suggestedBuyFromStock(
     | "cantidad_num"
     | "bolsas"
     | "par_level"
+    | "par_period"
+    | "par_unit"
   >,
 ): Partial<Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">> {
   if (!stockItemNeedsPurchase(stock)) return {}
+
+  const fromPar = suggestedBuyFromParLevel(stock)
+  if (Object.keys(fromPar).length > 0) return fromPar
 
   const out: Partial<
     Pick<InventoryItemRow, "quantity" | "unit" | "cantidad_num" | "bolsas">
   > = {}
   const status = findStockStatusForNotes(stock.notes)
   const unit = (stock.unit ?? "kg").trim().toLowerCase()
-
-  if (stock.par_level != null && stock.par_level > 0) {
-    if (unit === "kg") {
-      const onHand = Number(stock.quantity) || 0
-      const gap = stock.par_level - onHand
-      if (gap > 0) {
-        out.quantity = gap
-        out.unit = "kg"
-      }
-    }
-    if (stock.cantidad_num != null) {
-      const gap = stock.par_level - stock.cantidad_num
-      if (gap > 0) out.cantidad_num = Math.ceil(gap)
-    }
-    if (stock.bolsas != null) {
-      const gap = stock.par_level - stock.bolsas
-      if (gap > 0) out.bolsas = Math.ceil(gap)
-    }
-  }
 
   const lowOrOut =
     status?.id === "agotado" ||

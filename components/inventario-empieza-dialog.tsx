@@ -8,11 +8,18 @@ import {
   findStockCountPresetForItem,
   findStockQuantityPresetForItem,
   findStockStatusForNotes,
+  INVENTORY_PAR_PERIOD_OPTIONS,
+  INVENTORY_PAR_UNIT_OPTIONS,
   INVENTORY_SELECT_BLANK,
   INVENTORY_SELECT_NONE,
   categoryShowsMarinated,
   inventoryCategoryLabel,
+  formatInventoryPriceRange,
+  normalizeInventoryParPeriod,
+  normalizeInventoryParUnit,
+  parseInventoryPriceInput,
   patchForStockStatusOption,
+  stockParGap,
   type InventoryStockCategoryRow,
   STOCK_ACTION_OPTIONS,
   STOCK_BOLSAS_PRESETS,
@@ -451,6 +458,131 @@ export function InventarioEmpiezaDialog({
                     </Select>
                   </div>
                 )}
+
+                <div className="space-y-2 sm:col-span-2 border-t border-border pt-3">
+                  <Label>Meta (día o semana)</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={item.par_unit === "kg" ? 0.25 : 1}
+                      disabled={disabled}
+                      placeholder="Cantidad"
+                      value={
+                        item.par_level != null ? String(item.par_level) : ""
+                      }
+                      onChange={(e) => {
+                        const raw = e.target.value.trim()
+                        const n = raw === "" ? null : Number(raw)
+                        onPatch(item.id, {
+                          par_level:
+                            n == null || Number.isNaN(n)
+                              ? null
+                              : Math.max(0, n),
+                        })
+                      }}
+                    />
+                    <Select
+                      disabled={disabled}
+                      value={item.par_period ?? INVENTORY_SELECT_NONE}
+                      onValueChange={(id) => {
+                        onPatch(item.id, {
+                          par_period:
+                            id === INVENTORY_SELECT_NONE
+                              ? null
+                              : normalizeInventoryParPeriod(id),
+                        })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Periodo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={INVENTORY_SELECT_NONE}>
+                          {INVENTORY_SELECT_BLANK}
+                        </SelectItem>
+                        {INVENTORY_PAR_PERIOD_OPTIONS.map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      disabled={disabled}
+                      value={item.par_unit ?? INVENTORY_SELECT_NONE}
+                      onValueChange={(id) => {
+                        onPatch(item.id, {
+                          par_unit:
+                            id === INVENTORY_SELECT_NONE
+                              ? null
+                              : normalizeInventoryParUnit(id),
+                        })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Unidad" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={INVENTORY_SELECT_NONE}>
+                          {INVENTORY_SELECT_BLANK}
+                        </SelectItem>
+                        {INVENTORY_PAR_UNIT_OPTIONS.map((o) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {stockParGap(item) ? (
+                    <p className="text-xs text-amber-700">
+                      Faltan {stockParGap(item)!.gap}{" "}
+                      {stockParGap(item)!.unitLabel.toLowerCase()} para la meta
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2 sm:col-span-2 border-t border-border pt-3">
+                  <Label>Precio (MXN)</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      disabled={disabled}
+                      placeholder="Desde"
+                      value={
+                        item.price_min != null ? String(item.price_min) : ""
+                      }
+                      onChange={(e) => {
+                        onPatch(item.id, {
+                          price_min: parseInventoryPriceInput(e.target.value),
+                        })
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      disabled={disabled}
+                      placeholder="Hasta (opc.)"
+                      value={
+                        item.price_max != null ? String(item.price_max) : ""
+                      }
+                      onChange={(e) => {
+                        onPatch(item.id, {
+                          price_max: parseInventoryPriceInput(e.target.value),
+                        })
+                      }}
+                    />
+                  </div>
+                  {formatInventoryPriceRange(item) ? (
+                    <p className="text-xs text-muted-foreground">
+                      {formatInventoryPriceRange(item)}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <>
@@ -476,6 +608,46 @@ export function InventarioEmpiezaDialog({
                     onChange={(e) => onPatch(item.id, { notes: e.target.value })}
                     placeholder="Ej. 1 bag, $20, need 3"
                   />
+                </div>
+                <div className="space-y-2 border-t border-border pt-3">
+                  <Label>Precio (MXN)</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      disabled={disabled}
+                      placeholder="Desde"
+                      value={
+                        item.price_min != null ? String(item.price_min) : ""
+                      }
+                      onChange={(e) => {
+                        onPatch(item.id, {
+                          price_min: parseInventoryPriceInput(e.target.value),
+                        })
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      disabled={disabled}
+                      placeholder="Hasta (opc.)"
+                      value={
+                        item.price_max != null ? String(item.price_max) : ""
+                      }
+                      onChange={(e) => {
+                        onPatch(item.id, {
+                          price_max: parseInventoryPriceInput(e.target.value),
+                        })
+                      }}
+                    />
+                  </div>
+                  {formatInventoryPriceRange(item) ? (
+                    <p className="text-xs text-muted-foreground">
+                      {formatInventoryPriceRange(item)}
+                    </p>
+                  ) : null}
                 </div>
               </>
             )}

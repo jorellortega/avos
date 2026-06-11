@@ -27,14 +27,24 @@ import {
   findStockStatusForNotes,
   categoryShowsMarinated,
   groupStockItemsByCategory,
+  INVENTORY_PAR_PERIOD_OPTIONS,
+  INVENTORY_PAR_UNIT_OPTIONS,
   INVENTORY_SELECT_BLANK,
   INVENTORY_SELECT_NONE,
   inventoryCategoryLabel,
   isAutoSyncedShoppingNotes,
+  formatInventoryPriceRange,
+  inventoryPricesPatch,
+  normalizeInventoryParPeriod,
+  normalizeInventoryParUnit,
+  normalizeInventoryPrice,
   normalizeStockCategory,
+  parseInventoryPriceInput,
   patchForStockStatusOption,
   stockCategoryNames,
   stockItemNeedsPurchase,
+  stockParGap,
+  stockParTargetLabel,
   stockStatusClearsOnHand,
   type InventoryStockCategoryRow,
   STOCK_ACTION_OPTIONS,
@@ -125,12 +135,30 @@ import {
   Check,
   ChevronDown,
   FolderOpen,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
   ShoppingCart,
   Trash2,
+  X,
 } from "lucide-react"
+
+function inventoryItemMatchesSearch(
+  item: InventoryItemRow,
+  query: string,
+): boolean {
+  const haystack = [
+    item.name,
+    item.notes,
+    item.stock_action,
+    inventoryCategoryLabel(item.category),
+    formatInventoryPriceRange(item) ?? "",
+  ]
+    .join(" ")
+    .toLowerCase()
+  return haystack.includes(query)
+}
 
 function normalizeItem(row: InventoryItemRow): InventoryItemRow {
   return {
@@ -165,6 +193,14 @@ function normalizeItem(row: InventoryItemRow): InventoryItemRow {
     stock_action:
       typeof row.stock_action === "string" ? row.stock_action.trim() : "",
     par_level: row.par_level == null ? null : Number(row.par_level),
+    par_period: normalizeInventoryParPeriod(
+      typeof row.par_period === "string" ? row.par_period : null,
+    ),
+    par_unit: normalizeInventoryParUnit(
+      typeof row.par_unit === "string" ? row.par_unit : null,
+    ),
+    price_min: normalizeInventoryPrice(row.price_min),
+    price_max: normalizeInventoryPrice(row.price_max),
   }
 }
 
@@ -191,6 +227,10 @@ function emptyItem(
     marinated: null,
     stock_action: "",
     par_level: null,
+    par_period: null,
+    par_unit: null,
+    price_min: null,
+    price_max: null,
     notes: "",
     list_kind: kind,
     purchased: false,
@@ -277,14 +317,10 @@ export function InventarioEditDashboard({
       list = list.filter((i) => !i.purchased)
     }
     if (!q) return list
-    return list.filter(
-      (item) =>
-        item.name.toLowerCase().includes(q) ||
-        (item.notes ?? "").toLowerCase().includes(q) ||
-        (item.stock_action ?? "").toLowerCase().includes(q) ||
-        (item.category ?? "").toLowerCase().includes(q),
-    )
+    return list.filter((item) => inventoryItemMatchesSearch(item, q))
   }, [tabItems, search, tab, showPurchased])
+
+  const searchResultCount = search.trim() ? filtered.length : null
 
   const shoppingPending = useMemo(
     () => shoppingItems.filter((i) => !i.purchased).length,
@@ -357,9 +393,35 @@ export function InventarioEditDashboard({
     })
 
     if (options?.sync !== false && !syncGuardRef.current) {
+      if (patch.price_min !== undefined || patch.price_max !== undefined) {
+        await syncLinkedPrices(merged, catalogForSync)
+      }
       await syncLinkedPartner(merged, priorName, catalogForSync)
     }
     return true
+  }
+
+  async function syncLinkedPrices(
+    source: InventoryItemRow,
+    catalog: InventoryItemRow[] = items,
+  ) {
+    const partnerKind = source.list_kind === "stock" ? "shopping" : "stock"
+    const partner = findInventoryByName(catalog, source.name, partnerKind)
+    if (!partner) return
+    const prices = inventoryPricesPatch(source)
+    const partnerPrices = inventoryPricesPatch(partner)
+    if (
+      partnerPrices.price_min === prices.price_min &&
+      partnerPrices.price_max === prices.price_max
+    ) {
+      return
+    }
+    syncGuardRef.current = true
+    try {
+      await saveItemFields(partner.id, prices, { sync: false })
+    } finally {
+      syncGuardRef.current = false
+    }
   }
 
   function patchCatalogRow(
@@ -559,6 +621,9 @@ export function InventarioEditDashboard({
             ? draft.marinated
             : null,
         par_level: tab === "stock" ? draft.par_level : null,
+        par_period: tab === "stock" ? draft.par_period : null,
+        par_unit: tab === "stock" ? draft.par_unit : null,
+        ...inventoryPricesPatch(draft),
         notes: draft.notes.trim(),
         stock_action: tab === "stock" ? draft.stock_action.trim() : "",
         list_kind: tab,
@@ -1047,6 +1112,10 @@ export function InventarioEditDashboard({
         ? item.marinated
         : null,
       stock_action: item.stock_action.trim(),
+      par_level: item.par_level,
+      par_period: item.par_period,
+      par_unit: item.par_unit,
+      ...inventoryPricesPatch(item),
       purchased: item.purchased,
     })
     setBusyId(null)
@@ -1071,9 +1140,12 @@ export function InventarioEditDashboard({
       )}
 
       <p className="text-xs text-muted-foreground -mt-2">
-        Los productos se enlazan por nombre (mismo nombre en ambas listas). Los
-        cambios nuevos se sincronizan al guardar; si ya tenías Agotado / Comprar más
-        marcados antes, pulsa <strong>Sincronizar todo</strong> una vez.
+        Los productos se enlazan por nombre (mismo nombre en ambas listas). En inventario,
+        usa <strong>Meta</strong> para cuánto debería haber por día o por semana;{" "}
+        <strong>Falta</strong> compara con lo que tienes ahora. Pulsa el lápiz para{" "}
+        <strong>Categoría</strong>, <strong>Bolsas</strong> y <strong>Precio</strong>. Los cambios nuevos se
+        sincronizan al guardar; si ya tenías Agotado / Comprar más marcados antes, pulsa{" "}
+        <strong>Sincronizar todo</strong> una vez.
       </p>
 
       <Tabs
@@ -1090,21 +1162,52 @@ export function InventarioEditDashboard({
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <div className="rounded-lg border border-border bg-muted/30 p-3 sm:p-4 space-y-2">
+          <Label htmlFor="inv-search" className="text-sm font-medium">
+            Buscar producto
+          </Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
             <Input
+              id="inv-search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={
                 tab === "stock"
-                  ? "Buscar en inventario…"
-                  : "Buscar en lista de compras…"
+                  ? "Nombre, categoría, notas, precio…"
+                  : "Nombre, notas, precio…"
               }
-              className="pl-9"
+              className="pl-9 pr-9 bg-background"
             />
+            {search.trim() ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 size-7"
+                title="Limpiar búsqueda"
+                onClick={() => setSearch("")}
+              >
+                <X className="size-4" />
+              </Button>
+            ) : null}
           </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
+          {searchResultCount != null ? (
+            <p className="text-xs text-muted-foreground">
+              {searchResultCount === 0
+                ? "Sin resultados en esta lista."
+                : `${searchResultCount} resultado${searchResultCount === 1 ? "" : "s"} en ${
+                    tab === "stock" ? "inventario" : "lista de compras"
+                  }.`}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Busca por nombre, categoría, notas o precio en la pestaña activa.
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2 justify-end">
             <Button
               type="button"
               variant="secondary"
@@ -1455,6 +1558,88 @@ export function InventarioEditDashboard({
                         </Select>
                       </div>
                     )}
+                    <div className="space-y-2 sm:col-span-2 border-t border-border pt-3">
+                      <Label>Meta (cuánto debería haber)</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Objetivo por día o por semana; compara con kilos, piezas o
+                        bolsas.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Input
+                          id="inv-par-level"
+                          type="number"
+                          min={0}
+                          step={draft.par_unit === "kg" ? 0.25 : 1}
+                          placeholder="Cantidad"
+                          value={
+                            draft.par_level != null ? String(draft.par_level) : ""
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value.trim()
+                            const n = raw === "" ? null : Number(raw)
+                            setDraft({
+                              ...draft,
+                              par_level:
+                                n == null || Number.isNaN(n)
+                                  ? null
+                                  : Math.max(0, n),
+                            })
+                          }}
+                        />
+                        <Select
+                          value={draft.par_period ?? INVENTORY_SELECT_NONE}
+                          onValueChange={(id) => {
+                            setDraft({
+                              ...draft,
+                              par_period:
+                                id === INVENTORY_SELECT_NONE
+                                  ? null
+                                  : normalizeInventoryParPeriod(id),
+                            })
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Periodo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={INVENTORY_SELECT_NONE}>
+                              {INVENTORY_SELECT_BLANK}
+                            </SelectItem>
+                            {INVENTORY_PAR_PERIOD_OPTIONS.map((o) => (
+                              <SelectItem key={o.id} value={o.id}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select
+                          value={draft.par_unit ?? INVENTORY_SELECT_NONE}
+                          onValueChange={(id) => {
+                            setDraft({
+                              ...draft,
+                              par_unit:
+                                id === INVENTORY_SELECT_NONE
+                                  ? null
+                                  : normalizeInventoryParUnit(id),
+                            })
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Unidad" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={INVENTORY_SELECT_NONE}>
+                              {INVENTORY_SELECT_BLANK}
+                            </SelectItem>
+                            {INVENTORY_PAR_UNIT_OPTIONS.map((o) => (
+                              <SelectItem key={o.id} value={o.id}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </>
                 ) : (
                   <>
@@ -1580,6 +1765,44 @@ export function InventarioEditDashboard({
                     </div>
                   </>
                 )}
+                <div className="space-y-2 sm:col-span-2 border-t border-border pt-3">
+                  <Label>Precio (MXN)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Un solo precio en «Desde», o rango si sube y baja.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="Desde"
+                      value={
+                        draft.price_min != null ? String(draft.price_min) : ""
+                      }
+                      onChange={(e) => {
+                        setDraft({
+                          ...draft,
+                          price_min: parseInventoryPriceInput(e.target.value),
+                        })
+                      }}
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="Hasta (opc.)"
+                      value={
+                        draft.price_max != null ? String(draft.price_max) : ""
+                      }
+                      onChange={(e) => {
+                        setDraft({
+                          ...draft,
+                          price_max: parseInventoryPriceInput(e.target.value),
+                        })
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
               <DialogFooter>
                 <Button
@@ -1595,7 +1818,7 @@ export function InventarioEditDashboard({
               </DialogFooter>
             </DialogContent>
             </Dialog>
-          </div>
+        </div>
 
           <InventarioEmpiezaDialog
             open={empiezaOpen}
@@ -1618,7 +1841,6 @@ export function InventarioEditDashboard({
             onCategoriesChange={setCategories}
             onItemsCategoryRenamed={handleItemsCategoryRenamed}
           />
-        </div>
 
         <TabsContent value="stock" className="space-y-4 mt-0">
           {stockByCategory.length === 0 ? (
@@ -1714,8 +1936,8 @@ export function InventarioEditDashboard({
               <CardTitle>Need to buy / restock</CardTitle>
               <CardDescription>
                 {shoppingPending} pendiente{shoppingPending === 1 ? "" : "s"}.
-                Mismas columnas que inventario: Estado y Acción vienen del stock
-                enlazado; Cantidad Kilos / Cantidad / Bolsas = cuánto comprar.
+                Estado y Acción vienen del stock enlazado; Cantidad Kilos / Cantidad =
+                cuánto comprar. Lápiz = categoría (stock), bolsas y precio.
               </CardDescription>
             </CardHeader>
             <CardContent className="md:overflow-x-auto md:-mx-2 md:px-2">
@@ -1723,6 +1945,7 @@ export function InventarioEditDashboard({
                 items={filtered}
                 allCount={shoppingItems.length}
                 stockItems={stockItems}
+                categoryNames={categoryNames}
                 busyId={busyId}
                 onPatch={patchLocal}
                 onSave={saveItemFields}
@@ -1736,6 +1959,7 @@ export function InventarioEditDashboard({
                 onClearBolsas={clearStockBolsas}
                 onAction={applyStockAction}
                 onClearAction={clearStockAction}
+                onCategory={applyStockCategory}
                 onImageUrl={applyInventoryImage}
                 onDelete={deleteItem}
               />
@@ -1770,6 +1994,277 @@ const stockTableMobile =
   "max-md:block max-md:w-full max-md:whitespace-normal max-md:p-0 max-md:py-0.5"
 const stockRowMobile =
   "max-md:flex max-md:flex-col max-md:gap-3 max-md:py-4 max-md:items-stretch"
+
+function StockParTargetCell({
+  item,
+  busy,
+  onPatch,
+  onSave,
+}: {
+  item: InventoryItemRow
+  busy: boolean
+  onPatch: (id: string, patch: Partial<InventoryItemRow>) => void
+  onSave: (id: string, patch: Partial<InventoryItemRow>) => Promise<boolean>
+}) {
+  const savePar = () => {
+    void onSave(item.id, {
+      par_level: item.par_level,
+      par_period: item.par_period,
+      par_unit: item.par_unit,
+    })
+  }
+
+  return (
+    <div className="space-y-1 min-w-[6.5rem]">
+      <Input
+        type="number"
+        min={0}
+        step={item.par_unit === "kg" ? 0.25 : 1}
+        className="h-8"
+        placeholder="Meta"
+        disabled={busy}
+        value={item.par_level != null ? String(item.par_level) : ""}
+        onChange={(e) => {
+          const raw = e.target.value.trim()
+          const n = raw === "" ? null : Number(raw)
+          onPatch(item.id, {
+            par_level:
+              n == null || Number.isNaN(n) ? null : Math.max(0, n),
+          })
+        }}
+        onBlur={savePar}
+      />
+      <Select
+        value={item.par_period ?? INVENTORY_SELECT_NONE}
+        disabled={busy}
+        onValueChange={(id) => {
+          onPatch(item.id, {
+            par_period:
+              id === INVENTORY_SELECT_NONE
+                ? null
+                : normalizeInventoryParPeriod(id),
+          })
+          void onSave(item.id, {
+            par_period:
+              id === INVENTORY_SELECT_NONE
+                ? null
+                : normalizeInventoryParPeriod(id),
+          })
+        }}
+      >
+        <SelectTrigger className="h-8 text-xs">
+          <SelectValue placeholder="Día / sem." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={INVENTORY_SELECT_NONE}>
+            {INVENTORY_SELECT_BLANK}
+          </SelectItem>
+          {INVENTORY_PAR_PERIOD_OPTIONS.map((o) => (
+            <SelectItem key={o.id} value={o.id}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={item.par_unit ?? INVENTORY_SELECT_NONE}
+        disabled={busy}
+        onValueChange={(id) => {
+          const par_unit =
+            id === INVENTORY_SELECT_NONE ? null : normalizeInventoryParUnit(id)
+          onPatch(item.id, { par_unit })
+          void onSave(item.id, { par_unit })
+        }}
+      >
+        <SelectTrigger className="h-8 text-xs">
+          <SelectValue placeholder="Unidad" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={INVENTORY_SELECT_NONE}>
+            {INVENTORY_SELECT_BLANK}
+          </SelectItem>
+          {INVENTORY_PAR_UNIT_OPTIONS.map((o) => (
+            <SelectItem key={o.id} value={o.id}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function InventoryPriceRangeCell({
+  item,
+  busy,
+  onPatch,
+  onSave,
+}: {
+  item: InventoryItemRow
+  busy: boolean
+  onPatch: (id: string, patch: Partial<InventoryItemRow>) => void
+  onSave: (id: string, patch: Partial<InventoryItemRow>) => Promise<boolean>
+}) {
+  const savePrices = () => {
+    const prices = inventoryPricesPatch(item)
+    onPatch(item.id, prices)
+    void onSave(item.id, prices)
+  }
+
+  return (
+    <div className="space-y-1 min-w-[5.5rem]">
+      <Input
+        type="number"
+        min={0}
+        step={0.01}
+        className="h-8"
+        placeholder="Desde"
+        disabled={busy}
+        value={
+          item.price_min != null ? String(item.price_min) : ""
+        }
+        onChange={(e) => {
+          onPatch(item.id, {
+            price_min: parseInventoryPriceInput(e.target.value),
+          })
+        }}
+        onBlur={savePrices}
+      />
+      <Input
+        type="number"
+        min={0}
+        step={0.01}
+        className="h-8"
+        placeholder="Hasta"
+        disabled={busy}
+        value={
+          item.price_max != null ? String(item.price_max) : ""
+        }
+        onChange={(e) => {
+          onPatch(item.id, {
+            price_max: parseInventoryPriceInput(e.target.value),
+          })
+        }}
+        onBlur={savePrices}
+      />
+      {formatInventoryPriceRange(item) ? (
+        <p className="text-[10px] text-muted-foreground leading-tight">
+          {formatInventoryPriceRange(item)}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function inventoryItemMoreOptionsActive(item: InventoryItemRow): boolean {
+  return item.bolsas != null || formatInventoryPriceRange(item) != null
+}
+
+function InventoryItemMoreDialog({
+  open,
+  onOpenChange,
+  item,
+  busy,
+  showCategory,
+  categoryItem,
+  categoryNames,
+  onPatch,
+  onSave,
+  onCategory,
+  onBolsasPreset,
+  onClearBolsas,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  item: InventoryItemRow | null
+  busy: boolean
+  showCategory: boolean
+  categoryItem: InventoryItemRow | null
+  categoryNames: string[]
+  onPatch: (id: string, patch: Partial<InventoryItemRow>) => void
+  onSave: (id: string, patch: Partial<InventoryItemRow>) => Promise<boolean>
+  onCategory?: (item: InventoryItemRow, category: string) => void
+  onBolsasPreset: (item: InventoryItemRow, preset: StockBolsasPreset) => void
+  onClearBolsas: (item: InventoryItemRow) => void
+}) {
+  if (!item) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{item.name.trim() || "Producto"}</DialogTitle>
+          <DialogDescription>
+            Categoría, bolsas y precio (no se muestran en la tabla principal).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {showCategory && categoryItem && onCategory && categoryNames.length > 0 ? (
+            <div className="space-y-2">
+              <Label>Categoría</Label>
+              <StockCategoryMenu
+                item={categoryItem}
+                busy={busy}
+                categoryNames={categoryNames}
+                onCategory={onCategory}
+              />
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            <Label>Bottles/Bolsas</Label>
+            <StockBolsasMenu
+              item={item}
+              busy={busy}
+              onBolsasPreset={onBolsasPreset}
+              onClear={onClearBolsas}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Precio (MXN)</Label>
+            <InventoryPriceRangeCell
+              item={item}
+              busy={busy}
+              onPatch={onPatch}
+              onSave={onSave}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" onClick={() => onOpenChange(false)}>
+            Listo
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function StockParGapCell({ item }: { item: InventoryItemRow }) {
+  const target = stockParTargetLabel(item)
+  const gap = stockParGap(item)
+  if (!target) {
+    return (
+      <span className="text-xs text-muted-foreground">{INVENTORY_SELECT_BLANK}</span>
+    )
+  }
+  if (gap) {
+    return (
+      <div className="space-y-0.5">
+        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 leading-snug">
+          Faltan {gap.gap} {gap.unitLabel.toLowerCase()}
+        </p>
+        <p className="text-[10px] text-muted-foreground leading-tight">
+          meta / {gap.periodLabel.toLowerCase()}
+        </p>
+      </div>
+    )
+  }
+  return (
+    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+      OK
+    </p>
+  )
+}
 
 type StockTableProps = {
   items: InventoryItemRow[]
@@ -1829,12 +2324,15 @@ function StockTable({
   onScanError,
   onDelete,
 }: StockTableProps) {
+  const [moreEditId, setMoreEditId] = useState<string | null>(null)
+  const moreEditItem = items.find((row) => row.id === moreEditId) ?? null
   const colCount = showMarinated ? 10 : 9
 
   return (
+    <>
     <Table
       containerClassName="max-md:overflow-visible"
-      className="w-full max-w-4xl md:table-fixed max-md:block"
+      className="w-full max-w-5xl md:table-fixed max-md:block"
     >
         <colgroup className="max-md:hidden">
           <col className="w-11" />
@@ -1842,22 +2340,22 @@ function StockTable({
           <col className="w-[7.5rem]" />
           <col className="w-[6.5rem]" />
           <col className="w-[6.5rem]" />
-          <col className="w-[5.5rem]" />
-          <col className="w-[6.5rem]" />
           {showMarinated ? <col className="w-[5.5rem]" /> : null}
+          <col className="w-[7.5rem]" />
+          <col className="w-[5.5rem]" />
           <col className="w-[7rem]" />
-          <col className="w-[4.5rem]" />
+          <col className="w-[5.5rem]" />
         </colgroup>
         <TableHeader className="max-md:hidden">
           <TableRow>
             <TableHead className="w-11" />
             <TableHead>Producto</TableHead>
-            <TableHead>Categoría</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Cantidad Kilos</TableHead>
             <TableHead>Cantidad</TableHead>
-            <TableHead>Bottles/Bolsas</TableHead>
             {showMarinated ? <TableHead>Marinado</TableHead> : null}
+            <TableHead>Meta</TableHead>
+            <TableHead>Falta</TableHead>
             <TableHead>Acción</TableHead>
             <TableHead />
           </TableRow>
@@ -1904,15 +2402,6 @@ function StockTable({
                     />
                   </TableCell>
                   <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel>Categoría</InventoryCellLabel>
-                    <StockCategoryMenu
-                      item={item}
-                      busy={busy}
-                      categoryNames={categoryNames}
-                      onCategory={onCategory}
-                    />
-                  </TableCell>
-                  <TableCell className={stockTableMobile}>
                     <InventoryCellLabel>Estado</InventoryCellLabel>
                     <StockStatusMenu
                       item={item}
@@ -1939,15 +2428,6 @@ function StockTable({
                       onClear={onClearCount}
                     />
                   </TableCell>
-                  <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel>Bottles/Bolsas</InventoryCellLabel>
-                    <StockBolsasMenu
-                      item={item}
-                      busy={busy}
-                      onBolsasPreset={onBolsasPreset}
-                      onClear={onClearBolsas}
-                    />
-                  </TableCell>
                   {showMarinated ? (
                     <TableCell className={stockTableMobile}>
                       <InventoryCellLabel>Marinado</InventoryCellLabel>
@@ -1960,6 +2440,19 @@ function StockTable({
                     </TableCell>
                   ) : null}
                   <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Meta</InventoryCellLabel>
+                    <StockParTargetCell
+                      item={item}
+                      busy={busy}
+                      onPatch={onPatch}
+                      onSave={onSave}
+                    />
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Falta</InventoryCellLabel>
+                    <StockParGapCell item={item} />
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
                     <InventoryCellLabel>Acción</InventoryCellLabel>
                     <StockActionMenu
                       item={item}
@@ -1971,6 +2464,21 @@ function StockTable({
                   <TableCell className={stockTableMobile}>
                     <InventoryCellLabel className="sr-only">Herramientas</InventoryCellLabel>
                     <div className="flex items-center gap-0.5 md:justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "size-8 shrink-0",
+                          inventoryItemMoreOptionsActive(item) &&
+                            "text-primary",
+                        )}
+                        disabled={busy}
+                        title="Editar categoría, bolsas y precio"
+                        onClick={() => setMoreEditId(item.id)}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
                       <Button
                         type="button"
                         variant="ghost"
@@ -2012,6 +2520,23 @@ function StockTable({
           )}
         </TableBody>
     </Table>
+    <InventoryItemMoreDialog
+      open={moreEditId != null}
+      onOpenChange={(open) => {
+        if (!open) setMoreEditId(null)
+      }}
+      item={moreEditItem}
+      busy={moreEditItem != null && busyId === moreEditItem.id}
+      showCategory
+      categoryItem={moreEditItem}
+      categoryNames={categoryNames}
+      onPatch={onPatch}
+      onSave={onSave}
+      onCategory={onCategory}
+      onBolsasPreset={onBolsasPreset}
+      onClearBolsas={onClearBolsas}
+    />
+    </>
   )
 }
 
@@ -2417,6 +2942,7 @@ type ShoppingTableProps = {
   items: InventoryItemRow[]
   allCount: number
   stockItems: InventoryItemRow[]
+  categoryNames: string[]
   busyId: string | null
   onPatch: (id: string, patch: Partial<InventoryItemRow>) => void
   onSave: (id: string, patch: Partial<InventoryItemRow>) => Promise<boolean>
@@ -2433,6 +2959,7 @@ type ShoppingTableProps = {
   onClearBolsas: (item: InventoryItemRow) => void
   onAction: (item: InventoryItemRow, option: StockActionOption) => void
   onClearAction: (item: InventoryItemRow) => void
+  onCategory: (item: InventoryItemRow, category: string) => void
   onImageUrl: (item: InventoryItemRow, imageUrl: string) => void | Promise<void>
   onDelete: (id: string) => void
 }
@@ -2441,6 +2968,7 @@ function ShoppingTable({
   items,
   allCount,
   stockItems,
+  categoryNames,
   busyId,
   onPatch,
   onSave,
@@ -2454,10 +2982,19 @@ function ShoppingTable({
   onClearBolsas,
   onAction,
   onClearAction,
+  onCategory,
   onImageUrl,
   onDelete,
 }: ShoppingTableProps) {
+  const [moreEditId, setMoreEditId] = useState<string | null>(null)
+  const moreEditItem = items.find((row) => row.id === moreEditId) ?? null
+  const moreEditLinkedStock =
+    moreEditItem != null
+      ? findInventoryByName(stockItems, moreEditItem.name, "stock")
+      : null
+
   return (
+    <>
     <Table
       containerClassName="max-md:overflow-visible"
       className="w-full max-w-4xl md:table-fixed max-md:block"
@@ -2469,10 +3006,9 @@ function ShoppingTable({
           <col className="w-[7.5rem]" />
           <col className="w-[6.5rem]" />
           <col className="w-[6.5rem]" />
-          <col className="w-[5.5rem]" />
           <col className="w-[7rem]" />
           <col />
-          <col className="w-12" />
+          <col className="w-[5.5rem]" />
         </colgroup>
         <TableHeader className="max-md:hidden">
           <TableRow>
@@ -2482,7 +3018,6 @@ function ShoppingTable({
             <TableHead>Estado</TableHead>
             <TableHead>Cantidad Kilos</TableHead>
             <TableHead>Cantidad</TableHead>
-            <TableHead>Bottles/Bolsas</TableHead>
             <TableHead>Acción</TableHead>
             <TableHead>Notas</TableHead>
             <TableHead />
@@ -2492,7 +3027,7 @@ function ShoppingTable({
           {items.length === 0 ? (
             <TableRow className={stockRowMobile}>
               <TableCell
-                colSpan={10}
+                colSpan={9}
                 className={cn(stockTableMobile, "text-center text-muted-foreground py-10 max-md:col-span-1")}
               >
                 {allCount === 0
@@ -2601,15 +3136,6 @@ function ShoppingTable({
                     />
                   </TableCell>
                   <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel>Bottles/Bolsas</InventoryCellLabel>
-                    <StockBolsasMenu
-                      item={item}
-                      busy={busy}
-                      onBolsasPreset={onBolsasPreset}
-                      onClear={onClearBolsas}
-                    />
-                  </TableCell>
-                  <TableCell className={stockTableMobile}>
                     <InventoryCellLabel>Acción</InventoryCellLabel>
                     {linkedStock ? (
                       <StockActionMenu
@@ -2642,8 +3168,22 @@ function ShoppingTable({
                     />
                   </TableCell>
                   <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel className="sr-only">Eliminar</InventoryCellLabel>
-                    <div className="md:flex md:justify-end">
+                    <InventoryCellLabel className="sr-only">Herramientas</InventoryCellLabel>
+                    <div className="flex items-center gap-0.5 md:justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "size-8 shrink-0",
+                          inventoryItemMoreOptionsActive(item) && "text-primary",
+                        )}
+                        disabled={busy}
+                        title="Editar categoría, bolsas y precio"
+                        onClick={() => setMoreEditId(item.id)}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
                       <DeleteButton
                         name={item.name}
                         busy={busy}
@@ -2657,6 +3197,23 @@ function ShoppingTable({
           )}
         </TableBody>
     </Table>
+    <InventoryItemMoreDialog
+      open={moreEditId != null}
+      onOpenChange={(open) => {
+        if (!open) setMoreEditId(null)
+      }}
+      item={moreEditItem}
+      busy={moreEditItem != null && busyId === moreEditItem.id}
+      showCategory={moreEditLinkedStock != null}
+      categoryItem={moreEditLinkedStock}
+      categoryNames={categoryNames}
+      onPatch={onPatch}
+      onSave={onSave}
+      onCategory={onCategory}
+      onBolsasPreset={onBolsasPreset}
+      onClearBolsas={onClearBolsas}
+    />
+    </>
   )
 }
 
