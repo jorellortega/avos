@@ -75,7 +75,7 @@ export default async function HomePage() {
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 Desde tacos hasta platillos completos, tenemos algo para todos.
-                Elige tu proteína favorita: Asada, Pollo, Pastor o Camarón.
+                Elige tu proteína favorita: Asada, Pollo, Pastor, Chorizo, Carnitas o Camarón.
               </p>
             </div>
 

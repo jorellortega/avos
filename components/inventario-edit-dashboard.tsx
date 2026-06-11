@@ -32,8 +32,10 @@ import {
   inventoryCategoryLabel,
   isAutoSyncedShoppingNotes,
   normalizeStockCategory,
+  patchForStockStatusOption,
   stockCategoryNames,
   stockItemNeedsPurchase,
+  stockStatusClearsOnHand,
   type InventoryStockCategoryRow,
   STOCK_ACTION_OPTIONS,
   STOCK_BOLSAS_PRESETS,
@@ -598,8 +600,18 @@ export function InventarioEditDashboard({
   ) {
     setBusyId(item.id)
     setLoadError(null)
-    patchLocal(item.id, { notes: option.notes })
-    const ok = await saveItemFields(item.id, { notes: option.notes })
+    const patch = patchForStockStatusOption(option)
+    patchLocal(item.id, patch)
+
+    if (
+      item.list_kind === "stock" &&
+      stockStatusClearsOnHand(option.id) &&
+      Number(item.quantity) > 0
+    ) {
+      await adjustQuantity(item, -Number(item.quantity), "Agotado")
+    }
+
+    const ok = await saveItemFields(item.id, patch)
     setBusyId(null)
     if (!ok) await refresh()
   }
@@ -945,6 +957,15 @@ export function InventarioEditDashboard({
     setBusyId(item.id)
     setLoadError(null)
     setSyncFeedback(null)
+
+    if (
+      item.list_kind === "stock" &&
+      findStockStatusForNotes(patch.notes)?.id === "agotado" &&
+      Number(item.quantity) > 0
+    ) {
+      await adjustQuantity(item, -Number(item.quantity), "Agotado")
+    }
+
     const ok = await saveItemFields(item.id, patch)
     if (ok) {
       const merged = normalizeItem({ ...item, ...patch })
@@ -1234,7 +1255,10 @@ export function InventarioEditDashboard({
                             (o) => o.id === id,
                           )
                           if (!option) return
-                          setDraft({ ...draft, notes: option.notes })
+                          setDraft({
+                            ...draft,
+                            ...patchForStockStatusOption(option),
+                          })
                         }}
                       >
                         <SelectTrigger id="inv-status" className="w-full">

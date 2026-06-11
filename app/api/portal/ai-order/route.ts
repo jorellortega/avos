@@ -245,7 +245,7 @@ Responde ÚNICAMENTE con JSON válido (sin markdown) con esta forma:
 Reglas:
 - Usa categoriaId, platilloId, proteina y precios del menú abajo.
 - "small/chico/pequeño" → bebidaTamano "chico"; "large/grande" → "grande".
-- Sinónimos: asada=Asada, pollo=Pollo, pastor=Pastor, camarón/camaron=Camarón.
+- Sinónimos: asada=Asada, pollo=Pollo, pastor=Pastor, chorizo=Chorizo, carnitas=Carnitas, camarón/camaron=Camarón.
 - Si el usuario pide quitar algo, ponlo en "notas" (ej. "sin salsa").
 - mergeMode "append" salvo que diga reemplazar, borrar todo o nueva orden limpia.
 - assistantMessage debe mencionar cantidades y total aproximado en pesos MXN ($).

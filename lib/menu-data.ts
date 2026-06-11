@@ -1,4 +1,11 @@
-export const proteinas = ["Asada", "Pollo", "Pastor", "Camarón"] as const
+export const proteinas = [
+  "Asada",
+  "Pollo",
+  "Pastor",
+  "Chorizo",
+  "Carnitas",
+  "Camarón",
+] as const
 export type Proteina = (typeof proteinas)[number]
 
 /** Fallback protein thumbnails. Live URLs: `ai_settings.public_proteina_imagenes` (edit at /edit as CEO). */
@@ -7,6 +14,8 @@ export const imagenProteinaPorId: Record<Proteina, string> = {
   Asada: PROTEINA_IMG_PLACEHOLDER,
   Pollo: PROTEINA_IMG_PLACEHOLDER,
   Pastor: PROTEINA_IMG_PLACEHOLDER,
+  Chorizo: PROTEINA_IMG_PLACEHOLDER,
+  Carnitas: PROTEINA_IMG_PLACEHOLDER,
   Camarón: PROTEINA_IMG_PLACEHOLDER,
 }
 
@@ -145,10 +154,12 @@ export const platillosPorCategoria: Partial<
       tieneTamanos: true,
       precioChico: 15,
       precioGrande: 28,
-      proteinas: ["Asada", "Pollo", "Camarón"],
+      proteinas: ["Asada", "Pollo", "Chorizo", "Carnitas", "Camarón"],
       preciosProteinaTamano: {
         Asada: { chico: 18, grande: 28 },
         Pollo: { chico: 15, grande: 25 },
+        Chorizo: { chico: 15, grande: 25 },
+        Carnitas: { chico: 15, grande: 25 },
         Camarón: { chico: 25, grande: 35 },
       },
     },
@@ -165,10 +176,12 @@ export const platillosPorCategoria: Partial<
       precioGrande: 65,
       tamanoLabelChico: "Chica",
       tamanoLabelGrande: "Grande",
-      proteinas: ["Asada", "Pollo"],
+      proteinas: ["Asada", "Pollo", "Chorizo", "Carnitas"],
       preciosProteinaTamano: {
         Asada: { chico: 45, grande: 65 },
         Pollo: { chico: 42, grande: 62 },
+        Chorizo: { chico: 42, grande: 62 },
+        Carnitas: { chico: 42, grande: 62 },
       },
     },
   ],
@@ -217,6 +230,27 @@ export const platillosPorCategoria: Partial<
       precioBase: 120,
       tieneProteinas: false,
     },
+    {
+      id: "chilaquiles",
+      nombre: "Chilaquiles",
+      descripcion:
+        "Tortillas en salsa, crema, queso fresco y cebolla — elige tamaño y proteína",
+      precioBase: 95,
+      tieneProteinas: true,
+      tieneTamanos: true,
+      precioChico: 95,
+      precioGrande: 120,
+      tamanoLabelChico: "Chicos",
+      tamanoLabelGrande: "Grandes",
+      preciosProteinaTamano: {
+        Asada: { chico: 98, grande: 120 },
+        Pollo: { chico: 95, grande: 120 },
+        Pastor: { chico: 95, grande: 120 },
+        Chorizo: { chico: 95, grande: 120 },
+        Carnitas: { chico: 95, grande: 120 },
+        Camarón: { chico: 115, grande: 140 },
+      },
+    },
   ],
   "carne-asada-fries": [
     {
@@ -234,6 +268,8 @@ export const platillosPorCategoria: Partial<
         Asada: { chico: 65, grande: 90 },
         Pollo: { chico: 62, grande: 87 },
         Pastor: { chico: 62, grande: 87 },
+        Chorizo: { chico: 62, grande: 87 },
+        Carnitas: { chico: 62, grande: 87 },
         Camarón: { chico: 82, grande: 107 },
       },
     },

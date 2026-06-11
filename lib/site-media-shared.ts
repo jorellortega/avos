@@ -21,7 +21,7 @@ export type SiteMedia = {
   heroSlides: HeroSlide[]
   menuBannerUrl: string
   categoriaImagenes: Record<string, string>
-  /** Asada, Pollo, Pastor, Camarón — used in protein pickers */
+  /** Asada, Pollo, Pastor, Chorizo, Carnitas, Camarón — used in protein pickers */
   proteinaImagenes: Record<Proteina, string>
   /** jamaica, pina, … — optional per-drink thumbnails */
   bebidaImagenes: Record<string, string>

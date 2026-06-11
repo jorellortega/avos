@@ -4,6 +4,7 @@ import {
   findStockCountPresetForItem,
   findStockQuantityPresetForItem,
   findStockStatusForNotes,
+  stockQuantitiesClearedPatch,
   STOCK_BOLSAS_PRESETS,
   STOCK_COUNT_PRESETS,
   STOCK_QUANTITY_PRESETS,
@@ -141,7 +142,14 @@ export function patchesFromInventoryScan(
   if (scan.nombre?.trim()) patch.name = scan.nombre.trim()
 
   const estadoNotes = matchEstado(scan.estado)
-  if (estadoNotes) patch.notes = estadoNotes
+  if (estadoNotes) {
+    patch.notes = estadoNotes
+    const status = findStockStatusForNotes(estadoNotes)
+    if (status && status.id === "agotado") {
+      Object.assign(patch, stockQuantitiesClearedPatch())
+      return patch
+    }
+  }
 
   const kilos = matchKilos(scan.cantidad_kilos)
   if (kilos) {

@@ -173,6 +173,33 @@ export function findStockStatusForNotes(
   )
 }
 
+/** Agotado means nothing on hand — clear kilos, count, and bolsas. */
+export function stockStatusClearsOnHand(statusId: StockStatusId): boolean {
+  return statusId === "agotado"
+}
+
+export function stockQuantitiesClearedPatch(): Pick<
+  InventoryItemRow,
+  "quantity" | "unit" | "cantidad_num" | "bolsas"
+> {
+  return {
+    quantity: 0,
+    unit: "kg",
+    cantidad_num: null,
+    bolsas: null,
+  }
+}
+
+export function patchForStockStatusOption(
+  option: StockStatusOption,
+): Partial<InventoryItemRow> {
+  const patch: Partial<InventoryItemRow> = { notes: option.notes }
+  if (stockStatusClearsOnHand(option.id)) {
+    Object.assign(patch, stockQuantitiesClearedPatch())
+  }
+  return patch
+}
+
 /** Buy / reorder actions (separate from on-hand Estado). */
 export type StockActionId =
   | "buy_now"

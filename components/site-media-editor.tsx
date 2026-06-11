@@ -43,6 +43,8 @@ const PROTEINA_SLUG: Record<Proteina, string> = {
   Asada: "asada",
   Pollo: "pollo",
   Pastor: "pastor",
+  Chorizo: "chorizo",
+  Carnitas: "carnitas",
   Camarón: "camaron",
 }
 
@@ -339,7 +341,7 @@ export function SiteMediaEditor({
           setting_key: SITE_MEDIA_KEYS.proteinaImagenes,
           setting_value: JSON.stringify(proteinaPayload),
           description:
-            "JSON: Asada|Pollo|Pastor|Camarón -> image URL (selector de proteína)",
+            "JSON: Asada|Pollo|Pastor|Chorizo|Carnitas|Camarón -> image URL (selector de proteína)",
         },
         {
           setting_key: SITE_MEDIA_KEYS.bebidaImagenes,

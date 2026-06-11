@@ -12,6 +12,7 @@ import {
   INVENTORY_SELECT_NONE,
   categoryShowsMarinated,
   inventoryCategoryLabel,
+  patchForStockStatusOption,
   type InventoryStockCategoryRow,
   STOCK_ACTION_OPTIONS,
   STOCK_BOLSAS_PRESETS,
@@ -250,7 +251,9 @@ export function InventarioEmpiezaDialog({
                         return
                       }
                       const option = STOCK_STATUS_OPTIONS.find((o) => o.id === id)
-                      if (option) onPatch(item.id, { notes: option.notes })
+                      if (option) {
+                        onPatch(item.id, patchForStockStatusOption(option))
+                      }
                     }}
                   >
                     <SelectTrigger className="w-full">
