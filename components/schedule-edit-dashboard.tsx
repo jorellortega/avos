@@ -5,8 +5,11 @@ import { createBrowserSupabase } from "@/lib/supabase/client"
 import type {
   StaffScheduleEmployeeRow,
   StaffScheduleRow,
-  ScheduleDayKey,
   ScheduleShiftKey,
+} from "@/lib/schedule-types"
+import {
+  DEFAULT_SCHEDULE_HOURS,
+  resolveScheduleHours,
 } from "@/lib/schedule-types"
 import {
   SCHEDULE_DAY_KEYS,
@@ -46,6 +49,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Brain, Copy, Link2, Plus, Trash2 } from "lucide-react"
+import { ScheduleDaySelect } from "@/components/schedule-day-select"
+import { ScheduleHoursSelect } from "@/components/schedule-hours-select"
+import { isValidScheduleHours } from "@/lib/schedule-time-options"
 import { ScheduleAiAssistant } from "@/components/schedule-ai-assistant"
 import { ScheduleRowAiDialog } from "@/components/schedule-row-ai-dialog"
 import { ScheduleFullViewDialog } from "@/components/schedule-full-view-dialog"
@@ -57,6 +63,11 @@ import {
   resolveUpdateShift,
   type ScheduleAiResult,
 } from "@/lib/schedule-ai"
+import {
+  computeSchedulePaySummary,
+  employeeWeeklyPay,
+  formatScheduleMoney,
+} from "@/lib/schedule-pay"
 
 function employeeSharePath(token: string) {
   return `/horario/e/${token}`
@@ -259,11 +270,19 @@ export function ScheduleEditDashboard() {
   function updateLocalEmployee(
     id: string,
     field: keyof StaffScheduleEmployeeRow,
-    value: string,
+    value: string | number | null,
   ) {
     setEmployees((prev) =>
       prev.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
     )
+  }
+
+  function parseDailyPayInput(raw: string): number | null {
+    const t = raw.trim()
+    if (!t) return null
+    const n = Number(t.replace(/,/g, ""))
+    if (!Number.isFinite(n) || n < 0) return null
+    return n
   }
 
   async function dedupeNamedEmployees(
@@ -302,6 +321,18 @@ export function ScheduleEditDashboard() {
     rowAiEmployeeId != null
       ? employees.find((e) => e.id === rowAiEmployeeId) ?? null
       : null
+
+  const paySummary = useMemo(
+    () => computeSchedulePaySummary(employees),
+    [employees],
+  )
+
+  const operatingHours = useMemo(() => {
+    if (!schedule) return DEFAULT_SCHEDULE_HOURS
+    return resolveScheduleHours(schedule)
+  }, [schedule])
+
+  const hoursInvalid = !isValidScheduleHours(operatingHours)
 
   async function applyScheduleAiPlan(
     plan: ScheduleAiResult,
@@ -412,16 +443,6 @@ export function ScheduleEditDashboard() {
     return warnings.length > 0 ? warnings.join(" ") : null
   }
 
-  function handleDayBlur(
-    id: string,
-    day: ScheduleDayKey,
-    value: string,
-    valueAtFocus: string,
-  ) {
-    if (value === valueAtFocus) return
-    void updateEmployee(id, { [day]: value })
-  }
-
   if (!schedule) {
     return <p className="text-sm text-muted-foreground">Cargando horario…</p>
   }
@@ -485,6 +506,39 @@ export function ScheduleEditDashboard() {
             </div>
           </div>
 
+          <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium">Horario de operación</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Los turnos de empleados solo pueden elegir horas entre apertura
+                y cierre.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ScheduleHoursSelect
+                label="Apertura"
+                value={operatingHours.open}
+                onChange={(open) => {
+                  setSchedule({ ...schedule, hours_open: open })
+                  void saveScheduleHeader({ hours_open: open })
+                }}
+              />
+              <ScheduleHoursSelect
+                label="Cierre"
+                value={operatingHours.close}
+                onChange={(close) => {
+                  setSchedule({ ...schedule, hours_close: close })
+                  void saveScheduleHeader({ hours_close: close })
+                }}
+              />
+            </div>
+            {hoursInvalid && (
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                El cierre debe ser después de la apertura.
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-3">
             <Switch
               id="schedule-published"
@@ -507,6 +561,76 @@ export function ScheduleEditDashboard() {
               Mientras no esté publicado, los enlaces de empleados mostrarán que
               el horario no está disponible.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Costo de nómina</CardTitle>
+          <CardDescription>
+            Pon el pago por día de cada empleado (MXN). Se calcula según los
+            días con horario (vacío, Libre u OFF no cuentan).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {paySummary.perEmployee.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Agrega pago por día en las filas de abajo para ver totales.
+            </p>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Esta semana
+                  </p>
+                  <p className="text-2xl font-semibold tabular-nums">
+                    {formatScheduleMoney(paySummary.weeklyTotal)}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Promedio mensual
+                  </p>
+                  <p className="text-2xl font-semibold tabular-nums">
+                    {formatScheduleMoney(paySummary.monthlyEstimate)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Estimado (52 semanas ÷ 12 meses)
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Empleados con pago
+                  </p>
+                  <p className="text-2xl font-semibold tabular-nums">
+                    {paySummary.perEmployee.length}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium mb-2">Costo por día</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                  {SCHEDULE_DAY_KEYS.map((day) => (
+                    <div
+                      key={day}
+                      className="rounded-md border px-3 py-2 text-center"
+                    >
+                      <p className="text-xs text-muted-foreground">
+                        {SCHEDULE_DAY_LABELS[day]}
+                      </p>
+                      <p className="text-sm font-medium tabular-nums">
+                        {paySummary.dailyByDay[day] > 0
+                          ? formatScheduleMoney(paySummary.dailyByDay[day])
+                          : "—"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -550,18 +674,23 @@ export function ScheduleEditDashboard() {
                     <TableHead className="min-w-[140px] sticky left-0 bg-card z-10">
                       Nombre
                     </TableHead>
+                    <TableHead className="min-w-[100px] text-right">
+                      Pago/día
+                    </TableHead>
                     {SCHEDULE_DAY_KEYS.map((day) => (
                       <TableHead
                         key={day}
-                        className="min-w-[100px] text-center"
+                        className="min-w-[8.5rem] text-center"
                       >
                         {SCHEDULE_DAY_LABELS[day]}
                       </TableHead>
                     ))}
+                    <TableHead className="min-w-[90px] text-right">
+                      Semana
+                    </TableHead>
                     <TableHead className="min-w-[120px] text-right">
-                        Enlace
-                      </TableHead>
-
+                      Enlace
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -569,7 +698,7 @@ export function ScheduleEditDashboard() {
                     <TableRow>
                       <TableCell
                         colSpan={
-                          SCHEDULE_DAY_KEYS.length + 2
+                          SCHEDULE_DAY_KEYS.length + 4
                         }
                         className="text-center text-muted-foreground py-8"
                       >
@@ -620,39 +749,67 @@ export function ScheduleEditDashboard() {
                             />
                           </div>
                         </TableCell>
+                        <TableCell className="p-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            value={
+                              emp.daily_pay != null ? String(emp.daily_pay) : ""
+                            }
+                            onFocus={() => {
+                              fieldFocusRef.current[
+                                employeeFieldKey(emp.id, "daily_pay")
+                              ] =
+                                emp.daily_pay != null
+                                  ? String(emp.daily_pay)
+                                  : ""
+                            }}
+                            onChange={(e) => {
+                              const parsed = parseDailyPayInput(e.target.value)
+                              updateLocalEmployee(emp.id, "daily_pay", parsed)
+                            }}
+                            onBlur={(e) => {
+                              const key = employeeFieldKey(emp.id, "daily_pay")
+                              const atFocus = fieldFocusRef.current[key] ?? ""
+                              delete fieldFocusRef.current[key]
+                              const parsed = parseDailyPayInput(e.target.value)
+                              const prevParsed = parseDailyPayInput(atFocus)
+                              const same =
+                                parsed === prevParsed ||
+                                (parsed != null &&
+                                  prevParsed != null &&
+                                  parsed === prevParsed)
+                              if (!same) {
+                                void updateEmployee(emp.id, {
+                                  daily_pay: parsed,
+                                })
+                              }
+                            }}
+                            placeholder="MXN"
+                            className="text-right text-sm min-w-[88px]"
+                          />
+                        </TableCell>
                         {SCHEDULE_DAY_KEYS.map((day) => (
-                            <TableCell key={day} className="p-1">
-                              <Input
-                                value={emp[day]}
-                                onFocus={() => {
-                                  fieldFocusRef.current[
-                                    employeeFieldKey(emp.id, day)
-                                  ] = emp[day]
-                                }}
-                                onChange={(e) =>
-                                  updateLocalEmployee(
-                                    emp.id,
-                                    day,
-                                    e.target.value,
-                                  )
-                                }
-                                onBlur={(e) => {
-                                  const key = employeeFieldKey(emp.id, day)
-                                  const atFocus =
-                                    fieldFocusRef.current[key] ?? emp[day]
-                                  delete fieldFocusRef.current[key]
-                                  handleDayBlur(
-                                    emp.id,
-                                    day,
-                                    e.target.value,
-                                    atFocus,
-                                  )
-                                }}
-                                placeholder="—"
-                                className="text-center text-sm min-w-[90px]"
-                              />
-                            </TableCell>
+                          <TableCell key={day} className="p-1">
+                            <ScheduleDaySelect
+                              shift={shift}
+                              hours={operatingHours}
+                              value={emp[day]}
+                              onChange={(next) => {
+                                if (next === emp[day]) return
+                                updateLocalEmployee(emp.id, day, next)
+                                void updateEmployee(emp.id, { [day]: next })
+                              }}
+                            />
+                          </TableCell>
                         ))}
+                        <TableCell className="p-2 text-right text-sm tabular-nums text-muted-foreground whitespace-nowrap">
+                          {employeeWeeklyPay(emp) > 0
+                            ? formatScheduleMoney(employeeWeeklyPay(emp))
+                            : "—"}
+                        </TableCell>
                         <TableCell className="p-2">
                             <div className="flex items-center justify-end gap-1">
                               <Button

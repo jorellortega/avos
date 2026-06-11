@@ -10,6 +10,7 @@ import {
   SCHEDULE_SHIFT_KEYS,
   SCHEDULE_SHIFT_LABELS,
 } from "@/lib/schedule-types"
+import { scheduleDaySelectLabel } from "@/lib/schedule-time-options"
 
 export type ScheduleDayDateLabel = {
   day: ScheduleDayKey
@@ -77,8 +78,7 @@ export function getScheduleDayDateLabels(
 }
 
 export function formatScheduleCell(value: string): string {
-  const t = value.trim()
-  return t || "—"
+  return scheduleDaySelectLabel(value)
 }
 
 export function buildFullSchedulePlainText(
