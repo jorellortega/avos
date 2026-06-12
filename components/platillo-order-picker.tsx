@@ -13,7 +13,7 @@ import {
   type BebidaTamano,
   type CategoriaMenu,
   type CategoriaPlatillo,
-  type Proteina,
+  type ProteinaPlatillo,
 } from "@/lib/menu-data"
 import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
 import { platilloPickerFlags } from "@/lib/platillo-config"
@@ -23,9 +23,9 @@ type PlatilloOrderPickerProps = {
   categoria: CategoriaMenu
   platillo: CategoriaPlatillo
   catalog: MenuCatalogHelpers | null
-  proteinaImgs?: Partial<Record<Proteina, string>>
+  proteinaImgs?: Partial<Record<ProteinaPlatillo, string>>
   onAdd: (
-    proteina?: Proteina,
+    proteina?: ProteinaPlatillo,
     tamano?: BebidaTamano,
     opcionId?: string,
   ) => void
@@ -47,7 +47,7 @@ export function PlatilloOrderPicker({
     catalog?.isPlatilloOut(categoria.id, platillo.id) ?? false
   const proteinasMenu = getProteinasForPlatillo(platillo, categoria)
 
-  const precioProteina = (p: Proteina) =>
+  const precioProteina = (p: ProteinaPlatillo) =>
     catalog?.getPrecioConProteina(
       categoria.id,
       p,
@@ -116,17 +116,15 @@ export function PlatilloOrderPicker({
                   )
                 }
               >
-                {proteinaImgs?.[proteina] ? (
-                  <span className="relative block w-full aspect-[4/3] bg-muted">
-                    <Image
-                      src={proteinaImgs[proteina]!}
-                      alt=""
-                      fill
-                      className="object-cover"
-                      sizes="120px"
-                    />
-                  </span>
-                ) : null}
+                <span className="relative block w-full aspect-[4/3] bg-muted">
+                  <Image
+                    src={proteinaImgs?.[proteina] ?? "/placeholder.svg"}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="120px"
+                  />
+                </span>
                 <span className="font-semibold py-1.5 text-sm">{proteina}</span>
                 <span className="text-xs text-muted-foreground pb-2">
                   ${precio}

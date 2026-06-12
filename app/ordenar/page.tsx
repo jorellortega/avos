@@ -38,7 +38,8 @@ import {
   type BebidaOrdenar,
   type BebidaTamano,
   type OrdenarMenuItem,
-  type Proteina,
+  isProteinaRegular,
+  type ProteinaPlatillo,
 } from "@/lib/menu-data"
 import { BebidaThumb } from "@/components/bebida-thumb"
 import { useBebidaImagenes } from "@/lib/use-bebida-imagenes"
@@ -74,7 +75,7 @@ interface CartItem {
   id: string
   name: string
   categoria: string
-  protein?: Proteina
+  protein?: ProteinaPlatillo
   price: number
   quantity: number
   extras: string[]
@@ -405,15 +406,15 @@ function OrdenarProteinPlatilloBlock({
   category: { id: string; name: string }
   catalog: MenuCatalogHelpers | null
   linesForItem: CartItem[]
-  selectedProtein: Proteina | null
-  setSelectedProtein: (p: Proteina | null) => void
+  selectedProtein: ProteinaPlatillo | null
+  setSelectedProtein: (p: ProteinaPlatillo | null) => void
   pickerQty: number
   setPickerQty: Dispatch<SetStateAction<number>>
-  proteinaImgs: Record<Proteina, string>
+  proteinaImgs: Partial<Record<ProteinaPlatillo, string>>
   onAdd: (
     item: OrdenarMenuItem,
     categoria: string,
-    protein: Proteina,
+    protein: ProteinaPlatillo,
     qty: number,
     categoryId: string,
     extras: string[],
@@ -519,7 +520,7 @@ function OrdenarProteinPlatilloBlock({
               >
                 <span className="relative aspect-[4/3] w-full bg-muted pointer-events-none">
                   <Image
-                    src={proteinaImgs[protein]}
+                    src={proteinaImgs[protein] ?? "/placeholder.svg"}
                     alt=""
                     fill
                     className="object-cover pointer-events-none select-none"
@@ -565,7 +566,7 @@ function OrdenarProteinPlatilloBlock({
                 >
                   <span className="min-w-0">
                     <span className="font-medium">
-                      {line.protein
+                      {line.protein && !isProteinaRegular(line.protein)
                         ? `${line.name} de ${line.protein}`
                         : line.name}
                     </span>
@@ -697,7 +698,8 @@ export default function OrdenarPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null,
   )
-  const [selectedProtein, setSelectedProtein] = useState<Proteina | null>(null)
+  const [selectedProtein, setSelectedProtein] =
+    useState<ProteinaPlatillo | null>(null)
   const [pickerQty, setPickerQty] = useState(1)
   const [selectedBebidaId, setSelectedBebidaId] = useState<string | null>(null)
   const [selectedBebidaTamano, setSelectedBebidaTamano] =
@@ -787,7 +789,7 @@ export default function OrdenarPage() {
     (
       item: OrdenarMenuItem,
       categoria: string,
-      protein: Proteina | undefined,
+      protein: ProteinaPlatillo | undefined,
       qty: number,
       categoryId: string,
       extras: string[] = [],

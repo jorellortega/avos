@@ -8,7 +8,9 @@ import {
   getProteinasForPlatillo,
   proteinas,
   type BebidaTamano,
+  PROTEINA_REGULAR,
   type Proteina,
+  type ProteinaPlatillo,
 } from "@/lib/menu-data"
 import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
 import { cartLineKey } from "@/lib/order-item-extras"
@@ -135,9 +137,10 @@ export function buildPortalMenuSnapshot(catalog: MenuCatalogHelpers): string {
   return lines.join("\n")
 }
 
-function normalizeProteina(raw: string | undefined): Proteina | undefined {
+function normalizeProteina(raw: string | undefined): ProteinaPlatillo | undefined {
   if (!raw?.trim()) return undefined
   const t = raw.trim()
+  if (/^(regular|sencillo|solo|sin carne)$/i.test(t)) return PROTEINA_REGULAR
   const match = proteinas.find(
     (p) => p.toLowerCase() === t.toLowerCase() || p === t,
   )
@@ -147,13 +150,14 @@ function normalizeProteina(raw: string | undefined): Proteina | undefined {
 function platilloDisplayName(
   categoriaId: string,
   platilloId: string,
-  proteina?: Proteina,
+  proteina?: ProteinaPlatillo,
 ): string {
   const cat = categorias.find((c) => c.id === categoriaId)
   if (!cat) return platilloId
   const platillo = getPlatillosForCategoria(cat).find((p) => p.id === platilloId)
   const base = platillo?.nombre ?? cat.nombre
-  return proteina ? `${base} de ${proteina}` : base
+  if (!proteina || proteina === PROTEINA_REGULAR) return base
+  return `${base} de ${proteina}`
 }
 
 /** Turn AI JSON lines into `OrderItem[]`, merging quantities on matching lines. */

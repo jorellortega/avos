@@ -8,6 +8,16 @@ export const proteinas = [
 ] as const
 export type Proteina = (typeof proteinas)[number]
 
+/** Sin carne — solo en platillos que lo incluyen en `proteinas` (ej. chilaquiles). */
+export const PROTEINA_REGULAR = "Regular" as const
+export type ProteinaPlatillo = Proteina | typeof PROTEINA_REGULAR
+
+export function isProteinaRegular(
+  proteina: string | undefined,
+): proteina is typeof PROTEINA_REGULAR {
+  return proteina === PROTEINA_REGULAR
+}
+
 /** Fallback protein thumbnails. Live URLs: `ai_settings.public_proteina_imagenes` (edit at /edit as CEO). */
 const PROTEINA_IMG_PLACEHOLDER = "/placeholder.svg"
 export const imagenProteinaPorId: Record<Proteina, string> = {
@@ -127,8 +137,8 @@ export type CategoriaPlatillo = {
   opciones?: readonly PlatilloOpcion[]
   /** Absolute price per protein and size (ej. Carne Asada Fries, Tacos) */
   preciosProteinaTamano?: ProteinaTamanoPrecios
-  /** Limit protein picker (ej. tacos: sin Pastor) */
-  proteinas?: readonly Proteina[]
+  /** Limit protein picker (ej. tacos: sin Pastor; chilaquiles incluye Regular) */
+  proteinas?: readonly ProteinaPlatillo[]
 }
 
 export type PlatilloOpcion = {
@@ -137,7 +147,7 @@ export type PlatilloOpcion = {
 }
 
 export type ProteinaTamanoPrecios = Partial<
-  Record<Proteina, Partial<Record<BebidaTamano, number>>>
+  Record<ProteinaPlatillo, Partial<Record<BebidaTamano, number>>>
 >
 
 /** Multiple menu items within one category (e.g. burrito styles). */
@@ -242,7 +252,17 @@ export const platillosPorCategoria: Partial<
       precioGrande: 120,
       tamanoLabelChico: "Chicos",
       tamanoLabelGrande: "Grandes",
+      proteinas: [
+        "Regular",
+        "Asada",
+        "Pollo",
+        "Pastor",
+        "Chorizo",
+        "Carnitas",
+        "Camarón",
+      ],
       preciosProteinaTamano: {
+        Regular: { chico: 95, grande: 120 },
         Asada: { chico: 98, grande: 120 },
         Pollo: { chico: 95, grande: 120 },
         Pastor: { chico: 95, grande: 120 },
@@ -355,7 +375,7 @@ export function getPlatillosForCategoria(
 export function getProteinasForPlatillo(
   platillo: CategoriaPlatillo,
   categoria: Pick<CategoriaMenu, "tieneProteinas">,
-): readonly Proteina[] {
+): readonly ProteinaPlatillo[] {
   if (platillo.tieneProteinas === false) return []
   if (platillo.proteinas?.length) return platillo.proteinas
   if ((categoria as { tieneProteinas?: boolean }).tieneProteinas === false) {
@@ -376,7 +396,7 @@ export type OrdenarMenuItem = {
   tamanoLabelChico?: string
   tamanoLabelGrande?: string
   opciones?: readonly PlatilloOpcion[]
-  proteins: readonly Proteina[]
+  proteins: readonly ProteinaPlatillo[]
 }
 
 export type OrdenarMenuCategory = {
@@ -514,7 +534,7 @@ export function getPlatilloPrecioProteinaTamanoDefault(
     | "precioGrande"
     | "tieneTamanos"
   >,
-  proteina: Proteina,
+  proteina: ProteinaPlatillo,
   tamano: BebidaTamano,
   camarónExtra = 20,
 ): number {
@@ -542,7 +562,7 @@ export const bebidasOrdenar: BebidaOrdenar[] = bebidas.map((b) => ({
 
 export function getPrecioConProteina(
   precioBase: number,
-  proteina: Proteina,
+  proteina: ProteinaPlatillo,
   camarónExtra = 20,
 ): number {
   if (proteina === "Camarón") {

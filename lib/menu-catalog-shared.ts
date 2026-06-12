@@ -8,6 +8,7 @@ import {
   proteinas,
   type BebidaTamano,
   type Proteina,
+  type ProteinaPlatillo,
 } from "@/lib/menu-data"
 
 export const MENU_CATALOG_KEY = "public_menu_catalog" as const
@@ -375,7 +376,7 @@ export type MenuCatalogHelpers = {
   ) => number
   getPrecioConProteina: (
     categoriaId: string,
-    proteina: Proteina,
+    proteina: ProteinaPlatillo,
     platilloId?: string,
     tamano?: BebidaTamano,
   ) => number
@@ -536,7 +537,7 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
 
   const getPrecioConProteina = (
     categoriaId: string,
-    proteina: Proteina,
+    proteina: ProteinaPlatillo,
     platilloId?: string,
     tamano?: BebidaTamano,
   ) => {
@@ -598,7 +599,7 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
 
 export function precioItemConProteina(
   base: number,
-  proteina: Proteina,
+  proteina: ProteinaPlatillo,
   camarónExtra: number,
 ): number {
   if (proteina === "Camarón") return base + camarónExtra

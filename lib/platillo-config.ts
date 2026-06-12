@@ -2,8 +2,9 @@ import type {
   BebidaTamano,
   CategoriaMenu,
   CategoriaPlatillo,
-  Proteina,
+  ProteinaPlatillo,
 } from "@/lib/menu-data"
+import { isProteinaRegular } from "@/lib/menu-data"
 import { getPlatilloTamanoLabel } from "@/lib/menu-data"
 
 export type PlatilloPickerFlags = {
@@ -47,7 +48,7 @@ export function platilloPickerFlags(
 export function platilloCartSuffix(
   flags: PlatilloPickerFlags,
   tamano?: BebidaTamano,
-  proteina?: Proteina,
+  proteina?: ProteinaPlatillo,
   opcionId?: string,
 ): string {
   if (flags.tieneTamanos && flags.tieneProteinas) {
@@ -66,7 +67,7 @@ export function platilloLineNombre(
   baseNombre: string,
   flags: PlatilloPickerFlags,
   tamano?: BebidaTamano,
-  proteina?: Proteina,
+  proteina?: ProteinaPlatillo,
   platillo?: Pick<
     CategoriaPlatillo,
     "tamanoLabelChico" | "tamanoLabelGrande" | "opciones"
@@ -82,10 +83,13 @@ export function platilloLineNombre(
       ? `${baseNombre} (${tamLabel}) — ${opcionLabel}`
       : `${baseNombre} — ${opcionLabel}`
   }
-  if (flags.tieneProteinas && proteina) {
+  if (flags.tieneProteinas && proteina && !isProteinaRegular(proteina)) {
     return flags.tieneTamanos && tamLabel
       ? `${baseNombre} (${tamLabel}) de ${proteina}`
       : `${baseNombre} de ${proteina}`
+  }
+  if (flags.tieneProteinas && isProteinaRegular(proteina) && tamLabel) {
+    return `${baseNombre} (${tamLabel})`
   }
   if (flags.tieneTamanos && tamLabel) {
     return `${baseNombre} (${tamLabel})`
