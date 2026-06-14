@@ -60,6 +60,8 @@ export type MenuCatalogJson = {
   bebidaPrecios: BebidaPreciosPorTamano
   /** Chico/grande prices for sized platillos (key: catalogPlatilloKey) */
   platilloPrecios: BebidaPreciosPorTamano
+  /** Display name overrides (key: catalogPlatilloKey) */
+  platilloNombres: Partial<Record<string, string>>
   /** Extra drinks added in /staff/menu-catalog */
   customBebidas: CatalogBebida[]
   /** Drink ids with optional inventory tracking */
@@ -104,6 +106,19 @@ export function catalogLookupKeys(
   if (!platilloId || platilloId === categoriaId) return [categoriaId]
   const key = catalogPlatilloKey(categoriaId, platilloId)
   return key === categoriaId ? [categoriaId] : [key, categoriaId]
+}
+
+export function resolvePlatilloNombre(
+  json: MenuCatalogJson,
+  categoriaId: string,
+  platilloId: string,
+  fallback: string,
+): string {
+  for (const key of catalogLookupKeys(categoriaId, platilloId)) {
+    const name = json.platilloNombres?.[key]?.trim()
+    if (name) return name
+  }
+  return fallback
 }
 
 export function slugifyBebidaId(nombre: string, taken: Set<string>): string {
@@ -213,6 +228,7 @@ export function defaultMenuCatalogJson(): MenuCatalogJson {
     proteinaPreciosPorTamano: {},
     bebidaPrecios: {},
     platilloPrecios: {},
+    platilloNombres: {},
     customBebidas: [],
     bebidaTrackStock: [],
     bebidaStockQty: {},
@@ -242,6 +258,17 @@ function asNumberRecord(v: unknown): Partial<Record<string, number>> {
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return []
   return v.filter((x): x is string => typeof x === "string")
+}
+
+function asStringRecord(v: unknown): Partial<Record<string, string>> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {}
+  const out: Partial<Record<string, string>> = {}
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val === "string" && val.trim()) {
+      out[k] = val.trim().slice(0, 120)
+    }
+  }
+  return out
 }
 
 function asProteinaPreciosPorCategoria(v: unknown): ProteinaPreciosPorCategoria {
@@ -338,6 +365,7 @@ export function parseMenuCatalogJson(raw: string | null | undefined): MenuCatalo
       ),
       bebidaPrecios: asBebidaPreciosPorTamano(o.bebidaPrecios),
       platilloPrecios: asBebidaPreciosPorTamano(o.platilloPrecios),
+      platilloNombres: asStringRecord(o.platilloNombres),
       customBebidas: asCatalogBebidas(o.customBebidas),
       bebidaTrackStock: asStringArray(o.bebidaTrackStock),
       bebidaStockQty: asNumberRecord(o.bebidaStockQty),
@@ -374,6 +402,7 @@ export type MenuCatalogHelpers = {
     platilloId: string,
     tamano: BebidaTamano,
   ) => number
+  getPlatilloNombre: (categoriaId: string, platilloId: string) => string
   getPrecioConProteina: (
     categoriaId: string,
     proteina: ProteinaPlatillo,
@@ -461,6 +490,15 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
       if (p?.tieneTamanos) return getPlatilloPrecioDefault(p, tamano)
     }
     return getPlatilloPrecio(categoriaId, platilloId)
+  }
+
+  const getPlatilloNombre = (categoriaId: string, platilloId: string) => {
+    const c = categorias.find((x) => x.id === categoriaId)
+    const plat = c
+      ? getPlatillosForCategoria(c).find((p) => p.id === platilloId)
+      : undefined
+    const fallback = plat?.nombre ?? c?.nombre ?? platilloId
+    return resolvePlatilloNombre(json, categoriaId, platilloId, fallback)
   }
 
   const getBebidaPrecio = (bebidaId: string, tamano: BebidaTamano) => {
@@ -579,6 +617,7 @@ export function buildMenuCatalogHelpers(json: MenuCatalogJson): MenuCatalogHelpe
     getCategoriaPrecioBase,
     getPlatilloPrecio,
     getPlatilloPrecioTamano,
+    getPlatilloNombre,
     getPrecioConProteina,
     getBebidaPrecio,
     getBebidas,

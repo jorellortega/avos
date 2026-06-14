@@ -223,6 +223,8 @@ Reglas:
 ${conversationalRule}- IMPORTANTE: Si piden tacos/tortas/burritos/quesadillas/platillos SIN decir proteína, igual incluye la línea con categoriaId y platilloId correctos y cantidad, pero OMITE el campo "proteina" (no adivines). Ej: "3 tacos" → cantidad 3, categoriaId tacos, sin proteina.
 - IMPORTANTE: Si piden un platillo con tamaños (tacos, quesadillas, chilaquiles, etc.) SIN decir chico o grande, incluye categoriaId y platilloId pero OMITE "platilloTamano" (no asumas chico). Ej: "2 tacos asada" sin tamaño → proteina Asada, sin platilloTamano.
 - Chilaquiles sin carne / sencillos / solos → platilloId "chilaquiles" y proteina "Regular". Con pollo/asada/etc. → mismo platilloId con la proteina indicada.
+- Acompañamientos (categoriaId "acompanamientos"): papas-fritas, guacamole-extra, arroz, frijoles — precio fijo, sin proteína.
+- Proteína extra (categoriaId "proteina-extra"): asada-vaso, pollo-vaso — precio fijo, sin proteína.
 - "small/chico/pequeño" → platilloTamano "chico"; "large/grande" → platilloTamano "grande" en platillos con tamaño.
 - IMPORTANTE: Si piden bebida/agua/refresco SIN decir chico o grande, incluye bebidaId y cantidad pero OMITE "bebidaTamano". Ej: "agua de jamaica" sin tamaño → sin bebidaTamano; "large jamaica" → bebidaId jamaica + bebidaTamano grande.
 - Si dicen solo "drink"/"bebida"/"grande agua"/"agua" SIN sabor específico (jamaica, horchata, piña, etc.), NO uses bebidaId "agua" (no existe). Usa categoriaId=bebidas, cantidad, bebidaTamano si dijeron grande/chico, y OMITE bebidaId.

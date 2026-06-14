@@ -78,6 +78,9 @@ function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
   for (const [key, sizes] of Object.entries(j.platilloPrecios ?? {})) {
     if (sizes) platilloPrecios[key] = { ...sizes }
   }
+  const platilloNombres: MenuCatalogJson["platilloNombres"] = {
+    ...(j.platilloNombres ?? {}),
+  }
   const proteinaPreciosPorTamano: MenuCatalogJson["proteinaPreciosPorTamano"] = {}
   for (const [key, map] of Object.entries(j.proteinaPreciosPorTamano ?? {})) {
     if (!map) continue
@@ -95,6 +98,7 @@ function cloneJson(j: MenuCatalogJson): MenuCatalogJson {
     proteinaPreciosPorTamano,
     bebidaPrecios,
     platilloPrecios,
+    platilloNombres,
     camarónExtra: j.camarónExtra,
     outCategorias: [...j.outCategorias],
     outProteinas: [...j.outProteinas],
@@ -428,6 +432,23 @@ export function MenuCatalogEditor({ initial }: Props) {
     })
   }
 
+  const setPlatilloNombre = (
+    catalogKey: string,
+    val: string,
+    defaultNombre: string,
+  ) => {
+    const trimmed = val.trim()
+    setState((s) => {
+      const next = cloneJson(s)
+      if (!trimmed || trimmed === defaultNombre) {
+        delete next.platilloNombres[catalogKey]
+      } else {
+        next.platilloNombres[catalogKey] = trimmed.slice(0, 120)
+      }
+      return next
+    })
+  }
+
   const setPlatilloTamanoPrecio = (
     catalogKey: string,
     tamano: BebidaTamano,
@@ -611,7 +632,28 @@ export function MenuCatalogEditor({ initial }: Props) {
                         className="space-y-3 border-t border-border/60 pt-4 first:border-0 first:pt-0"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
-                          <p className="font-medium text-sm">{platillo.nombre}</p>
+                          <div className="space-y-1 min-w-[12rem] flex-1 max-w-md">
+                            <Label
+                              className="text-xs"
+                              htmlFor={`platillo-nombre-${catalogKey}`}
+                            >
+                              Nombre
+                            </Label>
+                            <Input
+                              id={`platillo-nombre-${catalogKey}`}
+                              value={
+                                state.platilloNombres[catalogKey] ??
+                                platillo.nombre
+                              }
+                              onChange={(e) =>
+                                setPlatilloNombre(
+                                  catalogKey,
+                                  e.target.value,
+                                  platillo.nombre,
+                                )
+                              }
+                            />
+                          </div>
                           <div className="flex flex-wrap gap-3">
                             <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                               <Checkbox

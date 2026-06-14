@@ -92,6 +92,7 @@ const categoriaEmoji: Record<string, string> = {
   platillos: "🍽️",
   "carne-asada-fries": "🍟",
   "menu-infantil": "🧒",
+  acompanamientos: "🍟",
   "proteina-extra": "🥩",
   bebidas: "🥤",
 }
@@ -679,6 +680,12 @@ export default function OrdenarPage() {
     },
     [customizations],
   )
+
+  const resolveMenuItemName = useCallback(
+    (categoryId: string, item: Pick<OrdenarMenuItem, "id" | "name">) =>
+      catalog?.getPlatilloNombre(categoryId, item.id) ?? item.name,
+    [catalog],
+  )
   const proteinaImgs = useProteinaImagenes()
   const bebidaImgs = useBebidaImagenes()
   const categoriaImgs = useCategoriaImagenes()
@@ -837,7 +844,7 @@ export default function OrdenarPage() {
           tieneOpciones: (item.opciones?.length ?? 0) > 0,
         }
         const displayName = platilloLineNombre(
-          item.name,
+          resolveMenuItemName(categoryId, item),
           flags,
           tamano,
           protein,
@@ -870,7 +877,7 @@ export default function OrdenarPage() {
         ]
       })
     },
-    [catalog, customizations],
+    [catalog, customizations, resolveMenuItemName],
   )
 
   const addBebidaToCart = useCallback(
@@ -1256,7 +1263,7 @@ export default function OrdenarPage() {
                                 <div className="flex justify-between items-start mb-3">
                                   <div>
                                     <h4 className="font-semibold">
-                                      {item.name}
+                                      {resolveMenuItemName(category.id, item)}
                                     </h4>
                                     <p className="text-sm text-muted-foreground">
                                       {item.tieneProteinas

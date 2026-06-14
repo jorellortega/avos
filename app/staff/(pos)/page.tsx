@@ -120,7 +120,7 @@ export default function StaffPage() {
     const itemId = cartLineKey(baseId, pendingExtras, pendingCustomNote, config)
     const notas = formatOrderItemNotas(pendingExtras, pendingCustomNote, config)
     const displayNombre = platilloLineNombre(
-      platillo.nombre,
+      catalog?.getPlatilloNombre(categoria.id, platilloId) ?? platillo.nombre,
       flags,
       tam,
       proteina,
@@ -490,7 +490,10 @@ export default function StaffPage() {
                           .map((platillo) => (
                           <div key={platillo.id} className="space-y-3">
                             <div>
-                              <p className="font-medium">{platillo.nombre}</p>
+                              <p className="font-medium">
+                                {catalog?.getPlatilloNombre(categoria.id, platillo.id) ??
+                                  platillo.nombre}
+                              </p>
                               <p className="text-sm text-muted-foreground">
                                 {platillo.descripcion}
                               </p>

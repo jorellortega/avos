@@ -150,7 +150,14 @@ export function cartItemSupportsBebidaTamano(item: OrderItem): boolean {
   return Boolean(item.needsBebidaTamano || item.categoria === "bebidas")
 }
 
-function platilloDisplayName(categoriaId: string, platilloId: string): string {
+function platilloDisplayName(
+  catalog: MenuCatalogHelpers | null,
+  categoriaId: string,
+  platilloId: string,
+): string {
+  if (catalog) {
+    return catalog.getPlatilloNombre(categoriaId, platilloId)
+  }
   const cat = getCategoriaById(categoriaId)
   if (!cat) return platilloId
   const platillo = getPlatillosForCategoria(cat).find((p) => p.id === platilloId)
@@ -351,7 +358,11 @@ export function applyPortalCartItemUpdate(
     const parts = item.id.split("::")
     const newId =
       parts.length <= 1 ? baseId : `${baseId}::${parts.slice(1).join("::")}`
-    const platilloNombre = platilloDisplayName(parsed.categoriaId, parsed.platilloId)
+    const platilloNombre = platilloDisplayName(
+      catalog,
+      parsed.categoriaId,
+      parsed.platilloId,
+    )
     const updated: OrderItem = {
       ...item,
       id: newId,
@@ -417,7 +428,11 @@ export function applyPortalCartItemUpdate(
     platillo && cat
       ? platilloPickerFlags(platillo, cat)
       : { tieneProteinas: true, tieneTamanos: false, tieneOpciones: false }
-  const platilloNombre = platilloDisplayName(parsed.categoriaId, parsed.platilloId)
+  const platilloNombre = platilloDisplayName(
+    catalog,
+    parsed.categoriaId,
+    parsed.platilloId,
+  )
   const parts = item.id.split("::")
 
   if (item.needsPlatilloTamano) {

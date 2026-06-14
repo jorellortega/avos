@@ -35,7 +35,10 @@ export function MenuCategoriaPlatillosGrid({
             categoriaId={categoria.id}
             platilloId={platillo.id}
             categoria={categoria.nombre}
-            nombre={platillo.nombre}
+            nombre={
+              catalog?.getPlatilloNombre(categoria.id, platillo.id) ??
+              platillo.nombre
+            }
             descripcion={platillo.descripcion}
             precioBase={platillo.precioBase}
             tieneProteinas={resolvePlatilloTieneProteinas(platillo, categoria)}

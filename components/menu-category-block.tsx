@@ -74,7 +74,10 @@ export function MenuCategoryBlock({
             categoriaId={categoriaId}
             platilloId={platillo.id}
             categoria={categoriaNombre}
-            nombre={platillo.nombre}
+            nombre={
+              catalog?.getPlatilloNombre(categoriaId, platillo.id) ??
+              platillo.nombre
+            }
             descripcion={platillo.descripcion}
             precioBase={platillo.precioBase}
             tieneProteinas={resolvePlatilloTieneProteinas(platillo, categoria)}
