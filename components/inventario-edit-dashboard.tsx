@@ -330,6 +330,16 @@ export function InventarioEditDashboard({
     return list.filter((item) => inventoryItemMatchesSearch(item, q))
   }, [tabItems, search, tab, showPurchased])
 
+  /** Full inventario walk: all stock by category order, or all pending shopping rows. */
+  const empiezaItems = useMemo(() => {
+    if (tab === "stock") {
+      return groupStockItemsByCategory(stockItems, categoryNames).flatMap(
+        (group) => group.items,
+      )
+    }
+    return shoppingItems.filter((i) => !i.purchased)
+  }, [tab, stockItems, shoppingItems, categoryNames])
+
   const searchResultCount = search.trim() ? filtered.length : null
 
   const shoppingPending = useMemo(
@@ -1956,7 +1966,7 @@ export function InventarioEditDashboard({
             open={empiezaOpen}
             onOpenChange={setEmpiezaOpen}
             tab={tab}
-            items={filtered}
+            items={empiezaItems}
             categoryNames={categoryNames}
             categories={categories}
             busy={busyId != null}

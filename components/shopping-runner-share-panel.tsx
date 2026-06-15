@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createBrowserSupabase } from "@/lib/supabase/client"
 import {
+  fullShoppingRunnerListUrl,
   parseRunnerPriceInput,
   parseShoppingRunnerShare,
   shoppingRunnerListPath,
@@ -44,10 +45,16 @@ export function ShoppingRunnerSharePanel() {
     void load()
   }, [load])
 
-  const shareUrl = useMemo(() => {
-    if (!token || typeof window === "undefined") return ""
-    return `${window.location.origin}${shoppingRunnerListPath(token)}`
-  }, [token])
+  const copyLink = async () => {
+    if (!token) return
+    try {
+      await navigator.clipboard.writeText(fullShoppingRunnerListUrl(token))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError("No se pudo copiar.")
+    }
+  }
 
   const saveBudget = async () => {
     const amount = parseRunnerPriceInput(budgetText)
@@ -70,17 +77,6 @@ export function ShoppingRunnerSharePanel() {
     if (parsed) {
       setToken(parsed.shareToken)
       setBudgetText(parsed.cashBudget.toFixed(2))
-    }
-  }
-
-  const copyLink = async () => {
-    if (!shareUrl) return
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setError("No se pudo copiar.")
     }
   }
 

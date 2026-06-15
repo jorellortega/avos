@@ -16,13 +16,13 @@ import {
   computeRunnerOtherSpend,
   computeRunnerSpent,
   formatRunnerMoney,
+  fullShoppingRunnerListUrl,
   parseRunnerPriceInput,
   parseShoppingRunnerPublic,
   parseShoppingRunnerShare,
   SHOPPING_RUNNER_LIST_REFRESH_MS,
   type ShoppingRunnerItem,
   type ShoppingRunnerPublic,
-  shoppingRunnerListPath,
 } from "@/lib/shopping-runner-list"
 import { cn } from "@/lib/utils"
 
@@ -172,11 +172,6 @@ export function ListaComprasClient({
   )
   const canEditCompletion = Boolean(shareToken && data)
 
-  const shareUrl = useMemo(() => {
-    if (!shareToken || typeof window === "undefined") return ""
-    return `${window.location.origin}${shoppingRunnerListPath(shareToken)}`
-  }, [shareToken])
-
   const patchItem = useCallback(
     async (
       item: ShoppingRunnerItem,
@@ -310,9 +305,9 @@ export function ListaComprasClient({
   }
 
   const copyLink = async () => {
-    if (!shareUrl) return
+    if (!shareToken) return
     try {
-      await navigator.clipboard.writeText(shareUrl)
+      await navigator.clipboard.writeText(fullShoppingRunnerListUrl(shareToken))
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -432,7 +427,7 @@ export function ListaComprasClient({
               </p>
             ) : null}
 
-            {canEditBudget && shareUrl ? (
+            {canEditBudget && shareToken ? (
               <div className="flex flex-wrap gap-2 pt-1 border-t border-border/70">
                 <Button type="button" variant="outline" size="sm" onClick={() => void copyLink()}>
                   {copied ? (
@@ -552,8 +547,9 @@ export function ListaComprasClient({
                         ) : null}
                       </div>
                       {row.buyLabel ? (
-                        <p className="text-xs text-muted-foreground">
-                          Comprar: {row.buyLabel}
+                        <p className="mt-1.5 inline-flex flex-wrap items-baseline gap-x-1.5 rounded-md border border-primary/25 bg-primary/10 px-2.5 py-1 text-sm font-semibold text-foreground">
+                          <span className="text-primary">Comprar</span>
+                          <span className="tabular-nums">{row.buyLabel}</span>
                         </p>
                       ) : null}
                       {row.detail ? (

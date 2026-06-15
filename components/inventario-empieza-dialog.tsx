@@ -13,6 +13,7 @@ import {
   INVENTORY_SELECT_BLANK,
   INVENTORY_SELECT_NONE,
   categoryShowsMarinated,
+  groupStockItemsByCategory,
   inventoryCategoryLabel,
   formatInventoryPriceRange,
   normalizeInventoryParPeriod,
@@ -81,10 +82,15 @@ export function InventarioEmpiezaDialog({
   const [saving, setSaving] = useState(false)
   const [scanFeedback, setScanFeedback] = useState<string | null>(null)
 
-  const walkItems = useMemo(
-    () => items.filter((i) => i.list_kind === tab),
-    [items, tab],
-  )
+  const walkItems = useMemo(() => {
+    if (tab === "stock") {
+      return groupStockItemsByCategory(
+        items.filter((i) => i.list_kind === "stock"),
+        categoryNames,
+      ).flatMap((group) => group.items)
+    }
+    return items.filter((i) => i.list_kind === "shopping" && !i.purchased)
+  }, [items, tab, categoryNames])
 
   const total = walkItems.length
   const item = walkItems[index]
@@ -150,6 +156,9 @@ export function InventarioEmpiezaDialog({
             {total > 0 && (
               <span className="block mt-1 font-medium text-foreground">
                 {index + 1} de {total}
+                {tab === "stock" && item ? (
+                  <> · {inventoryCategoryLabel(item.category)}</>
+                ) : null}
               </span>
             )}
           </DialogDescription>
@@ -157,8 +166,7 @@ export function InventarioEmpiezaDialog({
 
         {total === 0 ? (
           <p className="px-6 py-8 text-center text-sm text-muted-foreground">
-            No hay productos en esta lista. Agrega uno o quita el filtro de
-            búsqueda.
+            No hay productos en esta lista.
           </p>
         ) : item ? (
           <div className="px-6 py-4 space-y-5 max-h-[min(70vh,32rem)] overflow-y-auto">

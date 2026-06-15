@@ -105,6 +105,13 @@ export function shoppingRunnerListPath(token: string): string {
   return t ? `/lista-compras?t=${encodeURIComponent(t)}` : "/lista-compras"
 }
 
+/** Full URL for clipboard — call from event handlers only (uses window). */
+export function fullShoppingRunnerListUrl(token: string): string {
+  const path = shoppingRunnerListPath(token)
+  if (typeof window === "undefined") return path
+  return `${window.location.origin}${path}`
+}
+
 /** Background poll while runner is shopping (new items from inventario). */
 export const SHOPPING_RUNNER_LIST_REFRESH_MS = 5 * 60 * 1000
 
