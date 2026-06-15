@@ -6,6 +6,7 @@ export type ShoppingRunnerItem = {
   checked: boolean
   paidAmount: number | null
   sortOrder: number
+  runnerHidden: boolean
 }
 
 export type ShoppingRunnerPublic = {
@@ -66,6 +67,7 @@ export function parseShoppingRunnerPublic(raw: unknown): ShoppingRunnerPublic | 
               ? Number(paid)
               : null,
         sortOrder: Number(r.sort_order) || 0,
+        runnerHidden: r.runner_hidden === true,
       })
     }
   }
@@ -103,9 +105,12 @@ export function shoppingRunnerListPath(token: string): string {
   return t ? `/lista-compras?t=${encodeURIComponent(t)}` : "/lista-compras"
 }
 
+/** Background poll while runner is shopping (new items from inventario). */
+export const SHOPPING_RUNNER_LIST_REFRESH_MS = 5 * 60 * 1000
+
 export function computeRunnerSpent(items: ShoppingRunnerItem[]): number {
   return items.reduce((sum, row) => {
-    if (!row.checked || row.paidAmount == null) return sum
+    if (row.runnerHidden || !row.checked || row.paidAmount == null) return sum
     return sum + row.paidAmount
   }, 0)
 }

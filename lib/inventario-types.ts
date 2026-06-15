@@ -124,6 +124,8 @@ export interface InventoryItemRow {
   notes: string
   list_kind: InventoryListKind
   purchased: boolean
+  /** Hidden from /lista-compras runner link; CEO/manager still see it. */
+  runner_hidden: boolean
   is_active: boolean
   sort_order: number
   created_at: string

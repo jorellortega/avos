@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
-import { Check, ClipboardCopy, Loader2, RefreshCw } from "lucide-react"
+import { Check, ClipboardCopy, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -19,6 +19,7 @@ import {
   parseRunnerPriceInput,
   parseShoppingRunnerPublic,
   parseShoppingRunnerShare,
+  SHOPPING_RUNNER_LIST_REFRESH_MS,
   type ShoppingRunnerItem,
   type ShoppingRunnerPublic,
   shoppingRunnerListPath,
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils"
 type ListaComprasClientProps = {
   token: string | null
   canEditBudget: boolean
+  canManageRunnerHidden?: boolean
 }
 
 function priceText(amount: number | null): string {
@@ -38,6 +40,7 @@ function priceText(amount: number | null): string {
 export function ListaComprasClient({
   token,
   canEditBudget,
+  canManageRunnerHidden = false,
 }: ListaComprasClientProps) {
   const supabase = useMemo(() => createBrowserSupabase(), [])
   const [data, setData] = useState<ShoppingRunnerPublic | null>(null)
@@ -51,47 +54,67 @@ export function ListaComprasClient({
   const [changeLeftDraft, setChangeLeftDraft] = useState("")
   const [notesDraft, setNotesDraft] = useState("")
   const [savingCompletion, setSavingCompletion] = useState(false)
+  const [hideBusyId, setHideBusyId] = useState<string | null>(null)
   const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const completionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const loadList = useCallback(async (activeToken: string) => {
-    setLoading(true)
-    setError(null)
-    const { data: raw, error: err } = await supabase.rpc(
-      "get_shopping_runner_public",
-      { p_token: activeToken },
-    )
-    setLoading(false)
-    if (err) {
-      setError(
-        err.message.includes("invalid token")
-          ? "Enlace inválido o expirado. Pide uno nuevo al equipo."
-          : err.message,
-      )
-      setData(null)
-      return
-    }
-    const parsed = parseShoppingRunnerPublic(raw)
-    if (!parsed) {
-      setError("No se pudo cargar la lista.")
-      return
-    }
-    setData(parsed)
-    setBudgetText(parsed.cashBudget > 0 ? parsed.cashBudget.toFixed(2) : "")
-    setChangeLeftDraft(priceText(parsed.changeLeft))
-    setNotesDraft(parsed.completionNotes ?? "")
-    setPriceDrafts((prev) => {
-      const next = { ...prev }
-      for (const row of parsed.items) {
-        if (!(row.id in next)) {
-          next[row.id] = priceText(row.paidAmount)
-        } else if (row.paidAmount != null) {
-          next[row.id] = priceText(row.paidAmount)
-        }
+  const loadList = useCallback(
+    async (
+      activeToken: string,
+      options?: { includeHidden?: boolean; silent?: boolean },
+    ) => {
+      const includeHidden = options?.includeHidden ?? canManageRunnerHidden
+      const silent = options?.silent ?? false
+      if (!silent) {
+        setLoading(true)
+        setError(null)
       }
-      return next
-    })
-  }, [supabase])
+      const { data: raw, error: err } = await supabase.rpc(
+        "get_shopping_runner_public",
+        {
+          p_token: activeToken,
+          p_include_hidden: includeHidden,
+        },
+      )
+      if (!silent) setLoading(false)
+      if (err) {
+        if (!silent) {
+          setError(
+            err.message.includes("invalid token")
+              ? "Enlace inválido o expirado. Pide uno nuevo al equipo."
+              : err.message,
+          )
+          setData(null)
+        }
+        return
+      }
+      const parsed = parseShoppingRunnerPublic(raw)
+      if (!parsed) {
+        if (!silent) setError("No se pudo cargar la lista.")
+        return
+      }
+      setData(parsed)
+      if (!silent) {
+        setBudgetText(parsed.cashBudget > 0 ? parsed.cashBudget.toFixed(2) : "")
+        setChangeLeftDraft(priceText(parsed.changeLeft))
+        setNotesDraft(parsed.completionNotes ?? "")
+      } else if (!canEditBudget) {
+        setBudgetText(parsed.cashBudget > 0 ? parsed.cashBudget.toFixed(2) : "")
+      }
+      setPriceDrafts((prev) => {
+        const next = { ...prev }
+        for (const row of parsed.items) {
+          if (!(row.id in next)) {
+            next[row.id] = priceText(row.paidAmount)
+          } else if (!silent && row.paidAmount != null) {
+            next[row.id] = priceText(row.paidAmount)
+          }
+        }
+        return next
+      })
+    },
+    [supabase, canManageRunnerHidden, canEditBudget],
+  )
 
   const loadStaffShare = useCallback(async () => {
     const { data: raw, error: err } = await supabase.rpc(
@@ -123,6 +146,14 @@ export function ListaComprasClient({
     })()
   }, [token, canEditBudget, loadList, loadStaffShare])
 
+  useEffect(() => {
+    if (!shareToken) return
+    const timer = window.setInterval(() => {
+      void loadList(shareToken, { silent: true })
+    }, SHOPPING_RUNNER_LIST_REFRESH_MS)
+    return () => window.clearInterval(timer)
+  }, [shareToken, loadList])
+
   const spent = useMemo(
     () => (data ? computeRunnerSpent(data.items) : 0),
     [data],
@@ -131,7 +162,15 @@ export function ListaComprasClient({
   const listChange = computeRunnerListChange(budget, spent)
   const changeLeft = data?.changeLeft ?? null
   const otherSpend = computeRunnerOtherSpend(budget, spent, changeLeft)
-  const canEditCompletion = !canEditBudget && Boolean(shareToken && data)
+  const runnerVisibleCount = useMemo(
+    () => data?.items.filter((row) => !row.runnerHidden).length ?? 0,
+    [data],
+  )
+  const hiddenCount = useMemo(
+    () => data?.items.filter((row) => row.runnerHidden).length ?? 0,
+    [data],
+  )
+  const canEditCompletion = Boolean(shareToken && data)
 
   const shareUrl = useMemo(() => {
     if (!shareToken || typeof window === "undefined") return ""
@@ -223,6 +262,28 @@ export function ListaComprasClient({
     [canEditCompletion, saveCompletion],
   )
 
+  const toggleRunnerHidden = useCallback(
+    async (item: ShoppingRunnerItem, hidden: boolean) => {
+      if (!canManageRunnerHidden || !shareToken) return
+      setHideBusyId(item.id)
+      setError(null)
+      const { error: err } = await supabase.rpc(
+        "manager_set_shopping_runner_hidden",
+        {
+          p_item_id: item.id,
+          p_hidden: hidden,
+        },
+      )
+      setHideBusyId(null)
+      if (err) {
+        setError(err.message)
+        return
+      }
+      await loadList(shareToken, { includeHidden: true })
+    },
+    [canManageRunnerHidden, shareToken, supabase, loadList],
+  )
+
   const saveBudget = async () => {
     const parsed = parseRunnerPriceInput(budgetText)
     if (parsed == null) {
@@ -280,7 +341,8 @@ export function ListaComprasClient({
             Lista de compras
           </CardTitle>
           <CardDescription>
-            Marca lo que compraste y pon el precio. El total se suma abajo.
+            Marca lo que compraste y pon el precio. El total se suma abajo. La lista
+            se actualiza sola cada 5 minutos.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -363,6 +425,13 @@ export function ListaComprasClient({
               </div>
             </div>
 
+            {canManageRunnerHidden && hiddenCount > 0 ? (
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                {hiddenCount} artículo{hiddenCount === 1 ? "" : "s"} oculto
+                {hiddenCount === 1 ? "" : "s"} al runner — solo tú los ves aquí.
+              </p>
+            ) : null}
+
             {canEditBudget && shareUrl ? (
               <div className="flex flex-wrap gap-2 pt-1 border-t border-border/70">
                 <Button type="button" variant="outline" size="sm" onClick={() => void copyLink()}>
@@ -405,29 +474,47 @@ export function ListaComprasClient({
             </p>
           ) : null}
 
-          {data && data.items.length === 0 ? (
+          {data && runnerVisibleCount === 0 && hiddenCount === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               Nada pendiente en lista de compras.
             </p>
           ) : null}
 
+          {data && runnerVisibleCount === 0 && hiddenCount > 0 && canManageRunnerHidden ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Todo está oculto al runner ({hiddenCount} artículo
+              {hiddenCount === 1 ? "" : "s"}). Usa «Mostrar al runner» abajo para
+              publicar de nuevo.
+            </p>
+          ) : null}
+
           {data && data.items.length > 0 ? (
             <ol className="space-y-3 list-none counter-reset-none">
-              {data.items.map((row, idx) => (
+              {(() => {
+                let visibleNum = 0
+                return data.items.map((row) => {
+                  const listNum = row.runnerHidden ? null : ++visibleNum
+                  const rowBusy = hideBusyId === row.id
+                  const rowDisabled = row.runnerHidden
+                  return (
                 <li
                   key={row.id}
                   className={cn(
                     "rounded-lg border p-3 flex gap-3 items-start",
-                    row.checked && "bg-muted/30",
+                    row.checked && !row.runnerHidden && "bg-muted/30",
+                    row.runnerHidden &&
+                      "border-dashed border-amber-500/40 bg-amber-500/5 opacity-90",
                   )}
                 >
                   <span className="text-sm font-bold text-muted-foreground w-6 shrink-0 pt-1 tabular-nums">
-                    {idx + 1}.
+                    {listNum != null ? `${listNum}.` : "—"}
                   </span>
                   <Checkbox
                     checked={row.checked}
+                    disabled={rowDisabled}
                     className="mt-1 shrink-0"
                     onCheckedChange={(checked) => {
+                      if (rowDisabled) return
                       const nextChecked = checked === true
                       setData((prev) =>
                         prev
@@ -446,14 +533,24 @@ export function ListaComprasClient({
                   />
                   <div className="min-w-0 flex-1 space-y-2">
                     <div>
-                      <p
-                        className={cn(
-                          "font-medium leading-snug",
-                          row.checked && "line-through text-muted-foreground",
-                        )}
-                      >
-                        {row.name}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p
+                          className={cn(
+                            "font-medium leading-snug",
+                            row.checked &&
+                              !row.runnerHidden &&
+                              "line-through text-muted-foreground",
+                            row.runnerHidden && "text-muted-foreground",
+                          )}
+                        >
+                          {row.name}
+                        </p>
+                        {row.runnerHidden ? (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full border border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-300 px-2 py-0.5">
+                            Oculto al runner
+                          </span>
+                        ) : null}
+                      </div>
                       {row.buyLabel ? (
                         <p className="text-xs text-muted-foreground">
                           Comprar: {row.buyLabel}
@@ -463,65 +560,95 @@ export function ListaComprasClient({
                         <p className="text-xs text-muted-foreground">{row.detail}</p>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2 max-w-[11rem]">
-                      <Label htmlFor={`price-${row.id}`} className="sr-only">
-                        Precio {row.name}
-                      </Label>
-                      <span className="text-sm text-muted-foreground shrink-0">$</span>
-                      <Input
-                        id={`price-${row.id}`}
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        className="h-9 tabular-nums"
-                        value={priceDrafts[row.id] ?? priceText(row.paidAmount)}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setPriceDrafts((prev) => ({ ...prev, [row.id]: v }))
-                          const parsed = parseRunnerPriceInput(v)
-                          setData((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  items: prev.items.map((i) =>
-                                    i.id === row.id
-                                      ? {
-                                          ...i,
-                                          paidAmount: parsed,
-                                          checked:
-                                            parsed != null && parsed > 0
-                                              ? true
-                                              : i.checked,
-                                        }
-                                      : i,
-                                  ),
-                                }
-                              : prev,
-                          )
-                          schedulePatch(row, {
-                            paidAmount: parsed,
-                            checked:
-                              parsed != null && parsed > 0 ? true : row.checked,
-                          })
-                        }}
-                        onBlur={() => {
-                          const parsed = parseRunnerPriceInput(
-                            priceDrafts[row.id] ?? "",
-                          )
-                          setPriceDrafts((prev) => ({
-                            ...prev,
-                            [row.id]: priceText(parsed),
-                          }))
-                        }}
-                      />
-                    </div>
+                    {!rowDisabled ? (
+                      <div className="flex items-center gap-2 max-w-[11rem]">
+                        <Label htmlFor={`price-${row.id}`} className="sr-only">
+                          Precio {row.name}
+                        </Label>
+                        <span className="text-sm text-muted-foreground shrink-0">$</span>
+                        <Input
+                          id={`price-${row.id}`}
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          className="h-9 tabular-nums"
+                          value={priceDrafts[row.id] ?? priceText(row.paidAmount)}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setPriceDrafts((prev) => ({ ...prev, [row.id]: v }))
+                            const parsed = parseRunnerPriceInput(v)
+                            setData((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    items: prev.items.map((i) =>
+                                      i.id === row.id
+                                        ? {
+                                            ...i,
+                                            paidAmount: parsed,
+                                            checked:
+                                              parsed != null && parsed > 0
+                                                ? true
+                                                : i.checked,
+                                          }
+                                        : i,
+                                    ),
+                                  }
+                                : prev,
+                            )
+                            schedulePatch(row, {
+                              paidAmount: parsed,
+                              checked:
+                                parsed != null && parsed > 0 ? true : row.checked,
+                            })
+                          }}
+                          onBlur={() => {
+                            const parsed = parseRunnerPriceInput(
+                              priceDrafts[row.id] ?? "",
+                            )
+                            setPriceDrafts((prev) => ({
+                              ...prev,
+                              [row.id]: priceText(parsed),
+                            }))
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                    {canManageRunnerHidden ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={row.runnerHidden ? "secondary" : "outline"}
+                        className="h-8"
+                        disabled={rowBusy}
+                        onClick={() =>
+                          void toggleRunnerHidden(row, !row.runnerHidden)
+                        }
+                      >
+                        {rowBusy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : row.runnerHidden ? (
+                          <>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Mostrar al runner
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="h-4 w-4 mr-1" />
+                            Ocultar al runner
+                          </>
+                        )}
+                      </Button>
+                    ) : null}
                   </div>
                 </li>
-              ))}
+                  )
+                })
+              })()}
             </ol>
           ) : null}
 
-          {data && data.items.length > 0 ? (
+          {data && runnerVisibleCount > 0 ? (
             <div className="border-t pt-4 flex justify-between items-center text-sm">
               <span className="text-muted-foreground">Total comprado</span>
               <span className="text-lg font-bold tabular-nums">
@@ -541,107 +668,86 @@ export function ListaComprasClient({
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="runner-change-left">
-                  Cambio que traes
-                  {!canEditCompletion && changeLeft == null ? (
-                    <span className="text-muted-foreground font-normal"> — pendiente</span>
-                  ) : null}
-                </Label>
-                {canEditCompletion ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative max-w-[10rem]">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                        $
-                      </span>
-                      <Input
-                        id="runner-change-left"
-                        type="text"
-                        inputMode="decimal"
-                        className="pl-7 tabular-nums"
-                        placeholder={priceText(listChange) || "0.00"}
-                        value={changeLeftDraft}
-                        disabled={savingCompletion}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setChangeLeftDraft(v)
-                          const parsed = parseRunnerPriceInput(v)
-                          setData((prev) =>
-                            prev ? { ...prev, changeLeft: parsed } : prev,
-                          )
-                          scheduleCompletionSave(parsed, notesDraft)
-                        }}
-                        onBlur={() => {
-                          const parsed = parseRunnerPriceInput(changeLeftDraft)
-                          setChangeLeftDraft(priceText(parsed))
-                          void saveCompletion(parsed, notesDraft)
-                        }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      Según lista: {formatRunnerMoney(listChange)}
+                <Label htmlFor="runner-change-left">Cambio que traes</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative max-w-[10rem]">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                      $
                     </span>
+                    <Input
+                      id="runner-change-left"
+                      type="text"
+                      inputMode="decimal"
+                      className="pl-7 tabular-nums"
+                      placeholder={priceText(listChange) || "0.00"}
+                      value={changeLeftDraft}
+                      disabled={!canEditCompletion || savingCompletion}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setChangeLeftDraft(v)
+                        const parsed = parseRunnerPriceInput(v)
+                        setData((prev) =>
+                          prev ? { ...prev, changeLeft: parsed } : prev,
+                        )
+                        scheduleCompletionSave(parsed, notesDraft)
+                      }}
+                      onBlur={() => {
+                        const parsed = parseRunnerPriceInput(changeLeftDraft)
+                        setChangeLeftDraft(priceText(parsed))
+                        void saveCompletion(parsed, notesDraft)
+                      }}
+                    />
                   </div>
-                ) : (
-                  <p className="text-lg font-bold tabular-nums">
-                    {changeLeft != null ? formatRunnerMoney(changeLeft) : "—"}
-                  </p>
-                )}
+                  <span className="text-xs text-muted-foreground">
+                    Según lista: {formatRunnerMoney(listChange)}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-1">
                 <Label htmlFor="runner-completion-notes">Notas</Label>
-                {canEditCompletion ? (
-                  <>
-                    <Textarea
-                      id="runner-completion-notes"
-                      rows={3}
-                      placeholder="Ej. compré bolsas en la tienda, ticket en la bolsa…"
-                      value={notesDraft}
-                      disabled={savingCompletion}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setNotesDraft(v)
-                        setData((prev) =>
-                          prev
-                            ? { ...prev, completionNotes: v.trim() || null }
-                            : prev,
-                        )
-                        scheduleCompletionSave(
-                          parseRunnerPriceInput(changeLeftDraft),
-                          v,
-                        )
-                      }}
-                      onBlur={() =>
-                        void saveCompletion(
-                          parseRunnerPriceInput(changeLeftDraft),
-                          notesDraft,
-                        )
-                      }
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={savingCompletion}
-                      onClick={() =>
-                        void saveCompletion(
-                          parseRunnerPriceInput(changeLeftDraft),
-                          notesDraft,
-                        )
-                      }
-                    >
-                      {savingCompletion ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Guardar notas"
-                      )}
-                    </Button>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {data.completionNotes?.trim() || "—"}
-                  </p>
-                )}
+                <Textarea
+                  id="runner-completion-notes"
+                  rows={3}
+                  placeholder="Ej. compré bolsas en la tienda, ticket en la bolsa…"
+                  value={notesDraft}
+                  disabled={!canEditCompletion || savingCompletion}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setNotesDraft(v)
+                    setData((prev) =>
+                      prev ? { ...prev, completionNotes: v.trim() || null } : prev,
+                    )
+                    scheduleCompletionSave(
+                      parseRunnerPriceInput(changeLeftDraft),
+                      v,
+                    )
+                  }}
+                  onBlur={() =>
+                    void saveCompletion(
+                      parseRunnerPriceInput(changeLeftDraft),
+                      notesDraft,
+                    )
+                  }
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!canEditCompletion || savingCompletion}
+                  onClick={() =>
+                    void saveCompletion(
+                      parseRunnerPriceInput(changeLeftDraft),
+                      notesDraft,
+                    )
+                  }
+                >
+                  {savingCompletion ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Guardar notas"
+                  )}
+                </Button>
               </div>
             </div>
           ) : null}

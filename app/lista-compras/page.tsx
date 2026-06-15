@@ -4,7 +4,7 @@ import { Footer } from "@/components/footer"
 import { ListaComprasClient } from "@/components/lista-compras-client"
 import { createServerSupabase } from "@/lib/supabase/server"
 import type { StaffProfile } from "@/lib/profile-types"
-import { isStaffOrdersRole } from "@/lib/profile-types"
+import { isManagerOrCeo, isStaffOrdersRole } from "@/lib/profile-types"
 
 export const metadata: Metadata = {
   title: "Lista de compras | Avos",
@@ -32,6 +32,7 @@ export default async function ListaComprasPage({ searchParams }: PageProps) {
   } = await supabase.auth.getUser()
 
   let canEditBudget = false
+  let canManageRunnerHidden = false
   if (user) {
     let { data: profileRow } = await supabase
       .from("users")
@@ -51,6 +52,7 @@ export default async function ListaComprasPage({ searchParams }: PageProps) {
 
     const profile = profileRow as StaffProfile | null
     canEditBudget = Boolean(profile && isStaffOrdersRole(profile.role))
+    canManageRunnerHidden = Boolean(profile && isManagerOrCeo(profile.role))
   }
 
   return (
@@ -61,6 +63,7 @@ export default async function ListaComprasPage({ searchParams }: PageProps) {
           <ListaComprasClient
             token={token || null}
             canEditBudget={canEditBudget}
+            canManageRunnerHidden={canManageRunnerHidden}
           />
         </div>
       </main>

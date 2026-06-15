@@ -177,6 +177,7 @@ export function shoppingInsertFromStock(
     unit: suggested.unit ?? "kg",
     quantity: suggested.quantity ?? 0,
     purchased: false,
+    runner_hidden: false,
     is_active: true,
     sort_order: sortOrder,
     image_url: stock.image_url.trim(),
@@ -219,6 +220,7 @@ export function emptyStockRowFromShopping(
     buy_note: "",
     list_kind: "stock",
     purchased: false,
+    runner_hidden: false,
     is_active: true,
     sort_order: sortOrder,
   }

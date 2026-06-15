@@ -137,6 +137,8 @@ import { InventoryCategoriesDialog } from "@/components/inventory-categories-dia
 import {
   Check,
   ChevronDown,
+  Eye,
+  EyeOff,
   FolderOpen,
   Pencil,
   Plus,
@@ -180,6 +182,7 @@ function normalizeItem(row: InventoryItemRow): InventoryItemRow {
     notes: typeof row.notes === "string" ? row.notes : "",
     buy_note: typeof row.buy_note === "string" ? row.buy_note : "",
     purchased: Boolean(row.purchased),
+    runner_hidden: Boolean(row.runner_hidden),
     quantity: Number(row.quantity) || 0,
     bolsas:
       row.bolsas == null || row.bolsas === undefined
@@ -240,6 +243,7 @@ function emptyItem(
     notes: "",
     list_kind: kind,
     purchased: false,
+    runner_hidden: false,
     is_active: true,
     sort_order: 0,
   }
@@ -330,6 +334,11 @@ export function InventarioEditDashboard({
 
   const shoppingPending = useMemo(
     () => shoppingItems.filter((i) => !i.purchased).length,
+    [shoppingItems],
+  )
+
+  const shoppingRunnerHidden = useMemo(
+    () => shoppingItems.filter((i) => !i.purchased && i.runner_hidden).length,
     [shoppingItems],
   )
 
@@ -860,6 +869,24 @@ export function InventarioEditDashboard({
     setBusyId(null)
     setSyncFeedback(`«${merged.name}» enlazado con lista de compras.`)
     setTab("shopping")
+  }
+
+  async function toggleShoppingRunnerHidden(
+    item: InventoryItemRow,
+    hidden: boolean,
+  ) {
+    setBusyId(item.id)
+    setLoadError(null)
+    const { error } = await supabase.rpc("manager_set_shopping_runner_hidden", {
+      p_item_id: item.id,
+      p_hidden: hidden,
+    })
+    setBusyId(null)
+    if (error) {
+      setLoadError(error.message)
+      return
+    }
+    patchLocal(item.id, { runner_hidden: hidden })
   }
 
   async function syncStockRowInCatalog(
@@ -2043,6 +2070,9 @@ export function InventarioEditDashboard({
               <CardTitle>Need to buy / restock</CardTitle>
               <CardDescription>
                 {shoppingPending} pendiente{shoppingPending === 1 ? "" : "s"}.
+                {shoppingRunnerHidden > 0
+                  ? ` ${shoppingRunnerHidden} oculto${shoppingRunnerHidden === 1 ? "" : "s"} al runner.`
+                  : ""}{" "}
                 Cantidad Kilos / Cantidad = cuánto comprar. Nota compra viene del
                 inventario enlazado. Lápiz = categoría (stock), bolsas y precio.
               </CardDescription>
@@ -2067,6 +2097,7 @@ export function InventarioEditDashboard({
                 onCategory={applyStockCategory}
                 onImageUrl={applyInventoryImage}
                 onDelete={deleteItem}
+                onToggleRunnerHidden={toggleShoppingRunnerHidden}
               />
             </CardContent>
           </Card>
@@ -3109,6 +3140,7 @@ type ShoppingTableProps = {
   onCategory: (item: InventoryItemRow, category: string) => void
   onImageUrl: (item: InventoryItemRow, imageUrl: string) => void | Promise<void>
   onDelete: (id: string) => void
+  onToggleRunnerHidden: (item: InventoryItemRow, hidden: boolean) => void | Promise<void>
 }
 
 function ShoppingTable({
@@ -3130,6 +3162,7 @@ function ShoppingTable({
   onCategory,
   onImageUrl,
   onDelete,
+  onToggleRunnerHidden,
 }: ShoppingTableProps) {
   const [moreEditId, setMoreEditId] = useState<string | null>(null)
   const moreEditItem = items.find((row) => row.id === moreEditId) ?? null
@@ -3198,6 +3231,9 @@ function ShoppingTable({
                   className={cn(
                     stockRowMobile,
                     item.purchased && "opacity-50",
+                    item.runner_hidden &&
+                      !item.purchased &&
+                      "border-l-2 border-l-amber-500/60 bg-amber-500/5",
                   )}
                 >
                   <TableCell className={cn(stockTableMobile, "md:pr-1")}>
@@ -3236,8 +3272,14 @@ function ShoppingTable({
                       className={cn(
                         "h-8 w-full md:max-w-[11rem] font-medium",
                         item.purchased && "line-through",
+                        item.runner_hidden && !item.purchased && "text-muted-foreground",
                       )}
                     />
+                    {item.runner_hidden && !item.purchased ? (
+                      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300 leading-tight">
+                        Oculto al runner
+                      </p>
+                    ) : null}
                     {!linkedStock ? (
                       <p className="mt-1 text-[10px] text-muted-foreground leading-tight">
                         Sin enlace en inventario
@@ -3309,6 +3351,33 @@ function ShoppingTable({
                   <TableCell className={stockTableMobile}>
                     <InventoryCellLabel className="sr-only">Herramientas</InventoryCellLabel>
                     <div className="flex items-center gap-0.5 md:justify-end">
+                      {!item.purchased ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "size-8 shrink-0",
+                            item.runner_hidden &&
+                              "text-amber-700 dark:text-amber-400",
+                          )}
+                          disabled={busy}
+                          title={
+                            item.runner_hidden
+                              ? "Mostrar al runner"
+                              : "Ocultar al runner"
+                          }
+                          onClick={() =>
+                            void onToggleRunnerHidden(item, !item.runner_hidden)
+                          }
+                        >
+                          {item.runner_hidden ? (
+                            <Eye className="size-4" />
+                          ) : (
+                            <EyeOff className="size-4" />
+                          )}
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
                         variant="ghost"
