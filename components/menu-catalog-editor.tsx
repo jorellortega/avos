@@ -726,7 +726,7 @@ export function MenuCatalogEditor({ initial }: Props) {
                         ) : (
                           <>
                             {platillo.tieneTamanos &&
-                            platillo.preciosProteinaTamano ? (
+                            platillo.tieneProteinas !== false ? (
                               <>
                                 <p className="text-xs font-medium text-muted-foreground">
                                   Precio por proteína y tamaño (MXN)
