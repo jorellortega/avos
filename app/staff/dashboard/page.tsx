@@ -138,6 +138,9 @@ export default async function StaffDashboardPage() {
                         <Link href="/buy-items">Lista de compras</Link>
                       </Button>
                       <Button asChild variant="secondary">
+                        <Link href="/lista-compras">Lista runner (compartir)</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
                         <Link href="/preparados">Preparados (frío / caliente)</Link>
                       </Button>
                       <Button asChild variant="secondary">

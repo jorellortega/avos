@@ -130,6 +130,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { InventarioEmpiezaDialog } from "@/components/inventario-empieza-dialog"
+import { ShoppingRunnerSharePanel } from "@/components/shopping-runner-share-panel"
 import { InventoryAiScanButton } from "@/components/inventory-ai-scan-button"
 import { InventoryItemThumb } from "@/components/inventory-item-thumb"
 import { InventoryCategoriesDialog } from "@/components/inventory-categories-dialog"
@@ -2024,6 +2025,8 @@ export function InventarioEditDashboard({
         </TabsContent>
 
         <TabsContent value="shopping" className="space-y-4 mt-0">
+          <ShoppingRunnerSharePanel />
+
           <div className="flex items-center gap-2">
             <Switch
               id="show-purchased"
