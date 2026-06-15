@@ -153,6 +153,7 @@ function inventoryItemMatchesSearch(
   const haystack = [
     item.name,
     item.notes,
+    item.buy_note,
     item.stock_action,
     inventoryCategoryLabel(item.category),
     formatInventoryPriceRange(item) ?? "",
@@ -176,6 +177,7 @@ function normalizeItem(row: InventoryItemRow): InventoryItemRow {
           : "",
     unit: typeof row.unit === "string" ? row.unit : "kg",
     notes: typeof row.notes === "string" ? row.notes : "",
+    buy_note: typeof row.buy_note === "string" ? row.buy_note : "",
     purchased: Boolean(row.purchased),
     quantity: Number(row.quantity) || 0,
     bolsas:
@@ -233,6 +235,7 @@ function emptyItem(
     par_unit: null,
     price_min: null,
     price_max: null,
+    buy_note: "",
     notes: "",
     list_kind: kind,
     purchased: false,
@@ -640,7 +643,8 @@ export function InventarioEditDashboard({
         par_period: tab === "stock" ? draft.par_period : null,
         par_unit: tab === "stock" ? draft.par_unit : null,
         ...inventoryPricesPatch(draft),
-        notes: draft.notes.trim(),
+        buy_note: tab === "stock" ? draft.buy_note.trim() : "",
+        notes: tab === "stock" ? "" : draft.notes.trim(),
         stock_action: tab === "stock" ? draft.stock_action.trim() : "",
         list_kind: tab,
         purchased: false,
@@ -1168,6 +1172,7 @@ export function InventarioEditDashboard({
       category,
       image_url: item.image_url.trim(),
       notes: item.notes.trim(),
+      buy_note: item.buy_note.trim(),
       quantity: Number(item.quantity) || 0,
       unit: item.unit.trim() || "kg",
       bolsas: item.bolsas,
@@ -1207,7 +1212,8 @@ export function InventarioEditDashboard({
         Los productos se enlazan por nombre (mismo nombre en ambas listas). En inventario,
         usa <strong>Meta</strong> para cuánto debería haber por día o por semana (kilos,
         piezas o bolsas — solo cuenta la columna que coincida con Meta);{" "}
-        <strong>Falta</strong> compara con lo que tienes ahora. Pulsa el lápiz para{" "}
+        <strong>Falta</strong> compara con lo que tienes ahora.{" "}
+        <strong>Nota compra</strong> se copia a lista de compras. Pulsa el lápiz para{" "}
         <strong>Categoría</strong>, <strong>Bolsas</strong> y <strong>Precio</strong>. Los cambios nuevos se
         sincronizan al guardar; si ya tenías Agotado / Comprar más marcados antes, pulsa{" "}
         <strong>Sincronizar todo</strong> una vez.
@@ -1851,14 +1857,14 @@ export function InventarioEditDashboard({
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="inv-notes">Notas extra</Label>
+                      <Label htmlFor="inv-buy-note">Nota para lista de compras</Label>
                       <Input
-                        id="inv-notes"
-                        value={draft.notes}
+                        id="inv-buy-note"
+                        value={draft.buy_note}
                         onChange={(e) =>
-                          setDraft({ ...draft, notes: e.target.value })
+                          setDraft({ ...draft, buy_note: e.target.value })
                         }
-                        placeholder="Ej. marca, proveedor, urgente"
+                        placeholder="Ej. marca, proveedor, Costco, urgente"
                       />
                     </div>
                   </>
@@ -2034,8 +2040,8 @@ export function InventarioEditDashboard({
               <CardTitle>Need to buy / restock</CardTitle>
               <CardDescription>
                 {shoppingPending} pendiente{shoppingPending === 1 ? "" : "s"}.
-                Estado y Acción vienen del stock enlazado; Cantidad Kilos / Cantidad =
-                cuánto comprar. Lápiz = categoría (stock), bolsas y precio.
+                Cantidad Kilos / Cantidad = cuánto comprar. Nota compra viene del
+                inventario enlazado. Lápiz = categoría (stock), bolsas y precio.
               </CardDescription>
             </CardHeader>
             <CardContent className="md:overflow-x-auto md:-mx-2 md:px-2">
@@ -2047,8 +2053,6 @@ export function InventarioEditDashboard({
                 busyId={busyId}
                 onPatch={patchLocal}
                 onSave={saveItemFields}
-                onStatus={applyStockStatus}
-                onClearStatus={clearStockStatus}
                 onQuantityPreset={applyStockQuantityPreset}
                 onClearQuantity={clearStockQuantity}
                 onCountPreset={applyStockCountPreset}
@@ -2431,7 +2435,7 @@ function StockTable({
 }: StockTableProps) {
   const [moreEditId, setMoreEditId] = useState<string | null>(null)
   const moreEditItem = items.find((row) => row.id === moreEditId) ?? null
-  const colCount = showMarinated ? 10 : 9
+  const colCount = showMarinated ? 11 : 10
 
   return (
     <>
@@ -2449,6 +2453,7 @@ function StockTable({
           <col className="w-[7.5rem]" />
           <col className="w-[5.5rem]" />
           <col className="w-[7rem]" />
+          <col className="w-[8rem]" />
           <col className="w-[5.5rem]" />
         </colgroup>
         <TableHeader className="max-md:hidden">
@@ -2462,6 +2467,7 @@ function StockTable({
             <TableHead>Meta</TableHead>
             <TableHead>Falta</TableHead>
             <TableHead>Acción</TableHead>
+            <TableHead>Nota compra</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -2582,6 +2588,23 @@ function StockTable({
                       busy={busy}
                       onAction={onAction}
                       onClear={onClearAction}
+                    />
+                  </TableCell>
+                  <TableCell className={stockTableMobile}>
+                    <InventoryCellLabel>Nota compra</InventoryCellLabel>
+                    <Input
+                      value={item.buy_note ?? ""}
+                      disabled={busy}
+                      onChange={(e) =>
+                        onPatch(item.id, { buy_note: e.target.value })
+                      }
+                      onBlur={() => {
+                        void onSave(item.id, {
+                          buy_note: (item.buy_note ?? "").trim(),
+                        })
+                      }}
+                      placeholder="Marca, proveedor…"
+                      className="h-8 w-full md:max-w-[8rem] text-sm"
                     />
                   </TableCell>
                   <TableCell className={stockTableMobile}>
@@ -3069,8 +3092,6 @@ type ShoppingTableProps = {
   busyId: string | null
   onPatch: (id: string, patch: Partial<InventoryItemRow>) => void
   onSave: (id: string, patch: Partial<InventoryItemRow>) => Promise<boolean>
-  onStatus: (item: InventoryItemRow, option: StockStatusOption) => void
-  onClearStatus: (item: InventoryItemRow) => void
   onQuantityPreset: (
     item: InventoryItemRow,
     preset: StockQuantityPreset,
@@ -3095,8 +3116,6 @@ function ShoppingTable({
   busyId,
   onPatch,
   onSave,
-  onStatus,
-  onClearStatus,
   onQuantityPreset,
   onClearQuantity,
   onCountPreset,
@@ -3126,7 +3145,6 @@ function ShoppingTable({
           <col className="w-11" />
           <col className="w-10" />
           <col className="w-[9.5rem]" />
-          <col className="w-[7.5rem]" />
           <col className="w-[6.5rem]" />
           <col className="w-[6.5rem]" />
           <col className="w-[7rem]" />
@@ -3138,7 +3156,6 @@ function ShoppingTable({
             <TableHead className="w-11" />
             <TableHead className="w-10">✓</TableHead>
             <TableHead>Producto</TableHead>
-            <TableHead>Estado</TableHead>
             <TableHead>Cantidad Kilos</TableHead>
             <TableHead>Cantidad</TableHead>
             <TableHead>Acción</TableHead>
@@ -3150,7 +3167,7 @@ function ShoppingTable({
           {items.length === 0 ? (
             <TableRow className={stockRowMobile}>
               <TableCell
-                colSpan={9}
+                colSpan={8}
                 className={cn(stockTableMobile, "text-center text-muted-foreground py-10 max-md:col-span-1")}
               >
                 {allCount === 0
@@ -3167,12 +3184,11 @@ function ShoppingTable({
                 "stock",
               )
               const stockBusy = linkedStock ? busyId === linkedStock.id : false
-              const notesValue =
-                linkedStock && isAutoSyncedShoppingNotes(item.notes)
+              const notesValue = linkedStock
+                ? (linkedStock.buy_note ?? "")
+                : isAutoSyncedShoppingNotes(item.notes)
                   ? ""
-                  : isAutoSyncedShoppingNotes(item.notes)
-                    ? ""
-                    : item.notes
+                  : item.notes
               return (
                 <TableRow
                   key={item.id}
@@ -3226,21 +3242,6 @@ function ShoppingTable({
                     ) : null}
                   </TableCell>
                   <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel>Estado</InventoryCellLabel>
-                    {linkedStock ? (
-                      <StockStatusMenu
-                        item={linkedStock}
-                        busy={stockBusy}
-                        onStatus={onStatus}
-                        onClear={onClearStatus}
-                      />
-                    ) : (
-                      <span className="flex h-8 items-center text-xs text-muted-foreground">
-                        {INVENTORY_SELECT_BLANK}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className={stockTableMobile}>
                     <InventoryCellLabel>Cantidad Kilos</InventoryCellLabel>
                     <StockQuantityMenu
                       item={item}
@@ -3277,16 +3278,28 @@ function ShoppingTable({
                     <InventoryCellLabel>Notas</InventoryCellLabel>
                     <Input
                       value={notesValue}
-                      onChange={(e) =>
-                        onPatch(item.id, { notes: e.target.value })
-                      }
+                      onChange={(e) => {
+                        const v = e.target.value
+                        if (linkedStock) {
+                          onPatch(linkedStock.id, { buy_note: v })
+                        }
+                        onPatch(item.id, { notes: v })
+                      }}
                       onBlur={() => {
-                        const notes = notesValue.trim()
-                        if (notes !== item.notes.trim()) {
-                          void onSave(item.id, { notes })
+                        const note = notesValue.trim()
+                        if (linkedStock) {
+                          void onSave(linkedStock.id, { buy_note: note })
+                          return
+                        }
+                        if (note !== item.notes.trim()) {
+                          void onSave(item.id, { notes: note })
                         }
                       }}
-                      placeholder="Marca, proveedor, etc."
+                      placeholder={
+                        linkedStock
+                          ? "Desde inventario (nota compra)"
+                          : "Marca, proveedor, etc."
+                      }
                       className="h-8 w-full md:max-w-[8rem] text-sm"
                     />
                   </TableCell>

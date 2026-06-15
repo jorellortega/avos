@@ -119,6 +119,8 @@ export interface InventoryItemRow {
   price_min: number | null
   /** Typical high unit price (MXN); same as min if fixed. */
   price_max: number | null
+  /** Free-text note copied to lista de compras (stock rows). */
+  buy_note: string
   notes: string
   list_kind: InventoryListKind
   purchased: boolean
@@ -408,6 +410,24 @@ export function shoppingNotesFromStock(
     parts.push(`Bolsas: ${item.bolsas}`)
   }
   return parts.length ? parts.join(" · ") : "Reabastecer"
+}
+
+/** Notes shown on lista de compras — buy_note wins over auto-generated status lines. */
+export function resolveShoppingListNotes(
+  stock: Pick<
+    InventoryItemRow,
+    | "buy_note"
+    | "notes"
+    | "stock_action"
+    | "quantity"
+    | "unit"
+    | "cantidad_num"
+    | "bolsas"
+  >,
+): string {
+  const buyNote = (stock.buy_note ?? "").trim()
+  if (buyNote) return buyNote.slice(0, 500)
+  return shoppingNotesFromStock(stock)
 }
 
 export type InventoryParPeriod = "day" | "week"

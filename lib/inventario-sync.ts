@@ -7,6 +7,8 @@ import {
   normalizeInventoryItemName,
   shoppingHasBuyQuantity,
   shoppingNotesFromStock,
+  isAutoSyncedShoppingNotes,
+  resolveShoppingListNotes,
   stockItemNeedsPurchase,
   suggestedBuyFromStock,
   STOCK_ACTION_OPTIONS,
@@ -69,18 +71,19 @@ export function shoppingPatchFromStock(
     return null
   }
 
-  const notes = shoppingNotesFromStock(stock)
+  const notes = resolveShoppingListNotes(stock)
   const suggested = suggestedBuyFromStock(stock)
   const patch: Partial<InventoryItemRow> = {
     purchased: false,
     ...mergeSuggestedBuyIntoShopping(shopping, suggested),
   }
-  // Legacy: keep auto notes only when shopping row has no buy qty yet.
+  const buyNote = (stock.buy_note ?? "").trim()
   if (!shopping) {
     patch.notes = notes
   } else if (
-    !shoppingHasBuyQuantity(shopping) &&
-    !shopping.notes.trim()
+    buyNote ||
+    (!shoppingHasBuyQuantity(shopping) &&
+      (!shopping.notes.trim() || isAutoSyncedShoppingNotes(shopping.notes)))
   ) {
     patch.notes = notes
   }
@@ -169,14 +172,7 @@ export function shoppingInsertFromStock(
   const name = stock.name.trim()
   return {
     name,
-    notes: shoppingHasBuyQuantity({
-      quantity: suggested.quantity ?? 0,
-      unit: suggested.unit ?? "kg",
-      cantidad_num: suggested.cantidad_num ?? null,
-      bolsas: suggested.bolsas ?? null,
-    })
-      ? ""
-      : shoppingNotesFromStock(stock),
+    notes: resolveShoppingListNotes(stock),
     list_kind: "shopping",
     unit: suggested.unit ?? "kg",
     quantity: suggested.quantity ?? 0,
@@ -194,6 +190,7 @@ export function shoppingInsertFromStock(
     par_unit: null,
     price_min: normalizeInventoryPrice(stock.price_min),
     price_max: normalizeInventoryPrice(stock.price_max),
+    buy_note: "",
   }
 }
 
@@ -219,6 +216,7 @@ export function emptyStockRowFromShopping(
     price_min: normalizeInventoryPrice(shopping.price_min),
     price_max: normalizeInventoryPrice(shopping.price_max),
     notes: patch?.notes ?? STOCK_BUY_NOTES,
+    buy_note: "",
     list_kind: "stock",
     purchased: false,
     is_active: true,

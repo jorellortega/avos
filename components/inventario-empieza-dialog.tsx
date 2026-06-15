@@ -543,6 +543,19 @@ export function InventarioEmpiezaDialog({
                   ) : null}
                 </div>
 
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="empieza-buy-note">Nota compra</Label>
+                  <Input
+                    id="empieza-buy-note"
+                    value={item.buy_note ?? ""}
+                    disabled={disabled}
+                    onChange={(e) =>
+                      onPatch(item.id, { buy_note: e.target.value })
+                    }
+                    placeholder="Ej. marca, proveedor, Costco — aparece en lista de compras"
+                  />
+                </div>
+
                 <div className="space-y-2 sm:col-span-2 border-t border-border pt-3">
                   <Label>Precio (MXN)</Label>
                   <div className="grid grid-cols-2 gap-2">
