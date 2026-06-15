@@ -1102,6 +1102,42 @@ export function InventarioEditDashboard({
     setItems((prev) => prev.filter((row) => row.id !== id))
   }
 
+  /** Mark all pending shopping rows as bought — does not change inventario actual. */
+  async function clearShoppingList() {
+    const pending = items.filter(
+      (row) => row.list_kind === "shopping" && !row.purchased,
+    )
+    if (pending.length === 0) return
+
+    setSyncBusy(true)
+    setLoadError(null)
+    setSyncFeedback(null)
+    syncGuardRef.current = true
+
+    const ids = pending.map((row) => row.id)
+    const { error } = await supabase
+      .from("inventory_items")
+      .update({ purchased: true })
+      .in("id", ids)
+
+    syncGuardRef.current = false
+    setSyncBusy(false)
+
+    if (error) {
+      setLoadError(error.message)
+      return
+    }
+
+    setItems((prev) =>
+      prev.map((row) =>
+        ids.includes(row.id) ? { ...row, purchased: true } : row,
+      ),
+    )
+    setSyncFeedback(
+      `${pending.length} artículo${pending.length === 1 ? "" : "s"} quitado${pending.length === 1 ? "" : "s"} de la lista pendiente. Inventario actual no cambió.`,
+    )
+  }
+
   function openAddDialog(presetCategory?: string) {
     const base = emptyItem(tab, defaultCategory)
     setDraft(
@@ -1274,6 +1310,39 @@ export function InventarioEditDashboard({
                 </Button>
               </>
             )}
+            {tab === "shopping" && shoppingPending > 0 ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={syncBusy}
+                    title="Quitar todos los pendientes de la lista (no cambia inventario actual)"
+                  >
+                    <Trash2 className="size-4 mr-1" />
+                    Limpiar lista
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Limpiar lista de compras</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Marca los {shoppingPending} artículo
+                      {shoppingPending === 1 ? "" : "s"} pendiente
+                      {shoppingPending === 1 ? "" : "s"} como comprados y los quita de
+                      esta lista. El inventario actual no se modifica. Puedes verlos
+                      después con «Mostrar ya comprados».
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => void clearShoppingList()}>
+                      Limpiar lista
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
             <Button
               type="button"
               variant="secondary"
