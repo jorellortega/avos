@@ -43,6 +43,7 @@ import {
   patchForStockStatusOption,
   stockCategoryNames,
   stockItemNeedsPurchase,
+  stockOnHandForParUnit,
   stockParGap,
   stockParTargetLabel,
   stockStatusClearsOnHand,
@@ -70,6 +71,7 @@ import {
   shouldCreateShoppingFromStock,
   shouldCreateStockFromShopping,
   stockPatchFromShopping,
+  stockPatchWhenPurchaseResolved,
 } from "@/lib/inventario-sync"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -485,11 +487,25 @@ export function InventarioEditDashboard({
       syncGuardRef.current = true
       try {
         const ok = await saveItemFields(shopping.id, shoppingPatch, { sync: false })
-        return ok ? "updated" : "skipped"
+        if (!ok) return "skipped"
       } finally {
         syncGuardRef.current = false
       }
     }
+
+    const stockCleanup = stockPatchWhenPurchaseResolved(stock)
+    if (stockCleanup) {
+      syncGuardRef.current = true
+      try {
+        const ok = await saveItemFields(stock.id, stockCleanup, { sync: false })
+        if (!ok) return "skipped"
+      } finally {
+        syncGuardRef.current = false
+      }
+    }
+
+    if (shoppingPatch && shopping) return "updated"
+    if (stockCleanup) return "updated"
     return "skipped"
   }
 
@@ -874,15 +890,27 @@ export function InventarioEditDashboard({
     }
 
     const shoppingPatch = shoppingPatchFromStock(stock, shopping)
-    if (!shoppingPatch || !shopping) {
-      return { result: "skipped", catalog }
+    let catalogMut = catalog
+    let result: "created" | "updated" | "marked_bought" | "skipped" = "skipped"
+
+    if (shoppingPatch && shopping) {
+      const ok = await persistRowPatch(shopping.id, shoppingPatch)
+      if (ok) {
+        catalogMut = patchCatalogRow(catalogMut, shopping.id, shoppingPatch)
+        result =
+          shoppingPatch.purchased === true ? "marked_bought" : "updated"
+      }
     }
-    const ok = await persistRowPatch(shopping.id, shoppingPatch)
-    if (!ok) return { result: "skipped", catalog }
-    return {
-      result: shoppingPatch.purchased === true ? "marked_bought" : "updated",
-      catalog: patchCatalogRow(catalog, shopping.id, shoppingPatch),
+
+    const stockCleanup = stockPatchWhenPurchaseResolved(stock)
+    if (stockCleanup) {
+      const ok = await persistRowPatch(stock.id, stockCleanup)
+      if (ok) {
+        catalogMut = patchCatalogRow(catalogMut, stock.id, stockCleanup)
+      }
     }
+
+    return { result, catalog: catalogMut }
   }
 
   async function syncShoppingRowInCatalog(
@@ -1141,7 +1169,8 @@ export function InventarioEditDashboard({
 
       <p className="text-xs text-muted-foreground -mt-2">
         Los productos se enlazan por nombre (mismo nombre en ambas listas). En inventario,
-        usa <strong>Meta</strong> para cuánto debería haber por día o por semana;{" "}
+        usa <strong>Meta</strong> para cuánto debería haber por día o por semana (kilos,
+        piezas o bolsas — solo cuenta la columna que coincida con Meta);{" "}
         <strong>Falta</strong> compara con lo que tienes ahora. Pulsa el lápiz para{" "}
         <strong>Categoría</strong>, <strong>Bolsas</strong> y <strong>Precio</strong>. Los cambios nuevos se
         sincronizan al guardar; si ya tenías Agotado / Comprar más marcados antes, pulsa{" "}
@@ -2242,6 +2271,11 @@ function InventoryItemMoreDialog({
 function StockParGapCell({ item }: { item: InventoryItemRow }) {
   const target = stockParTargetLabel(item)
   const gap = stockParGap(item)
+  const parUnit = normalizeInventoryParUnit(item.par_unit)
+  const onHand =
+    parUnit && item.par_level != null && item.par_level > 0
+      ? stockOnHandForParUnit(item, parUnit)
+      : null
   if (!target) {
     return (
       <span className="text-xs text-muted-foreground">{INVENTORY_SELECT_BLANK}</span>
@@ -2254,7 +2288,9 @@ function StockParGapCell({ item }: { item: InventoryItemRow }) {
           Faltan {gap.gap} {gap.unitLabel.toLowerCase()}
         </p>
         <p className="text-[10px] text-muted-foreground leading-tight">
-          meta / {gap.periodLabel.toLowerCase()}
+          {onHand != null
+            ? `Tienes ${onHand} · meta / ${gap.periodLabel.toLowerCase()}`
+            : `meta / ${gap.periodLabel.toLowerCase()}`}
         </p>
       </div>
     )
@@ -2411,7 +2447,9 @@ function StockTable({
                     />
                   </TableCell>
                   <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel>Cantidad Kilos</InventoryCellLabel>
+                    <InventoryCellLabel>
+                      {item.par_unit === "kg" ? "Kilos (meta)" : "Cantidad Kilos"}
+                    </InventoryCellLabel>
                     <StockQuantityMenu
                       item={item}
                       busy={busy}
@@ -2420,13 +2458,29 @@ function StockTable({
                     />
                   </TableCell>
                   <TableCell className={stockTableMobile}>
-                    <InventoryCellLabel>Cantidad</InventoryCellLabel>
-                    <StockCountMenu
-                      item={item}
-                      busy={busy}
-                      onCountPreset={onCountPreset}
-                      onClear={onClearCount}
-                    />
+                    {item.par_unit === "bolsas" ? (
+                      <>
+                        <InventoryCellLabel>Bolsas (meta)</InventoryCellLabel>
+                        <StockBolsasMenu
+                          item={item}
+                          busy={busy}
+                          onBolsasPreset={onBolsasPreset}
+                          onClear={onClearBolsas}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <InventoryCellLabel>
+                          {item.par_unit === "pza" ? "Piezas (meta)" : "Cantidad"}
+                        </InventoryCellLabel>
+                        <StockCountMenu
+                          item={item}
+                          busy={busy}
+                          onCountPreset={onCountPreset}
+                          onClear={onClearCount}
+                        />
+                      </>
+                    )}
                   </TableCell>
                   {showMarinated ? (
                     <TableCell className={stockTableMobile}>

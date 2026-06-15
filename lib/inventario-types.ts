@@ -341,11 +341,41 @@ export const STOCK_ACTION_NEEDS_BUY: StockActionId[] = [
   "check_supplier",
 ]
 
+export function stockHasParTarget(
+  item: Pick<InventoryItemRow, "par_level" | "par_period" | "par_unit">,
+): boolean {
+  return (
+    item.par_level != null &&
+    item.par_level > 0 &&
+    normalizeInventoryParPeriod(item.par_period) != null &&
+    normalizeInventoryParUnit(item.par_unit) != null
+  )
+}
+
 export function stockItemNeedsPurchase(
-  item: Pick<InventoryItemRow, "list_kind" | "notes" | "stock_action">,
+  item: Pick<
+    InventoryItemRow,
+    | "list_kind"
+    | "notes"
+    | "stock_action"
+    | "par_level"
+    | "par_period"
+    | "par_unit"
+    | "quantity"
+    | "unit"
+    | "cantidad_num"
+    | "bolsas"
+  >,
 ): boolean {
   if (item.list_kind !== "stock") return false
+
   const status = findStockStatusForNotes(item.notes)
+  if (status?.id === "agotado") return true
+
+  if (stockHasParTarget(item)) {
+    return stockParGap(item) != null
+  }
+
   if (status && STOCK_STATUS_NEEDS_BUY.includes(status.id)) return true
   const action = findStockActionForValue(item.stock_action)
   if (action && STOCK_ACTION_NEEDS_BUY.includes(action.id)) return true

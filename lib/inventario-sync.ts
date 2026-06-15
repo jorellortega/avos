@@ -10,6 +10,7 @@ import {
   stockItemNeedsPurchase,
   suggestedBuyFromStock,
   STOCK_ACTION_OPTIONS,
+  STOCK_STATUS_NEEDS_BUY,
   STOCK_STATUS_OPTIONS,
 } from "@/lib/inventario-types"
 
@@ -33,6 +34,24 @@ const STOCK_BUY_NOTES =
   STOCK_STATUS_OPTIONS.find((o) => o.id === "comprar_mas")?.notes ?? "Comprar más"
 const STOCK_BUY_ACTION =
   STOCK_ACTION_OPTIONS.find((o) => o.id === "buy_now")?.value ?? "Comprar ahora"
+
+/** Clear stale buy flags on stock when par is met or purchase no longer needed. */
+export function stockPatchWhenPurchaseResolved(
+  stock: InventoryItemRow,
+): Partial<InventoryItemRow> | null {
+  if (stock.list_kind !== "stock") return null
+  if (stockItemNeedsPurchase(stock)) return null
+
+  const patch: Partial<InventoryItemRow> = {}
+  if (stock.stock_action.trim()) {
+    patch.stock_action = ""
+  }
+  const status = findStockStatusForNotes(stock.notes)
+  if (status && STOCK_STATUS_NEEDS_BUY.includes(status.id)) {
+    patch.notes = STOCK_FULL_NOTES
+  }
+  return Object.keys(patch).length > 0 ? patch : null
+}
 
 /** Shopping row changes when stock was updated. */
 export function shoppingPatchFromStock(
