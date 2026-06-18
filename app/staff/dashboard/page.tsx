@@ -144,6 +144,9 @@ export default async function StaffDashboardPage() {
                         <Link href="/preparados">Preparados (frío / caliente)</Link>
                       </Button>
                       <Button asChild variant="secondary">
+                        <Link href="/el-plan">El plan del día</Link>
+                      </Button>
+                      <Button asChild variant="secondary">
                         <Link href="/cocina">Cocina</Link>
                       </Button>
                     </>
