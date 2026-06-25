@@ -98,6 +98,7 @@ export function InventoryCategoriesDialog({
       .update({
         name,
         show_marinated: patch.show_marinated ?? prev.show_marinated,
+        show_quantity_kg: patch.show_quantity_kg ?? prev.show_quantity_kg,
       })
       .eq("id", row.id)
 
@@ -138,6 +139,7 @@ export function InventoryCategoriesDialog({
       name,
       sort_order: maxOrder + 10,
       show_marinated: false,
+      show_quantity_kg: true,
     })
     setBusy(false)
     if (error) {
@@ -231,7 +233,30 @@ export function InventoryCategoriesDialog({
                     {(itemCountByCategory[row.name] ?? 0) === 1 ? "" : "s"}
                   </p>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex flex-col gap-2 shrink-0 sm:items-end">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id={`cat-kg-${row.id}`}
+                      checked={row.show_quantity_kg}
+                      disabled={busy}
+                      onCheckedChange={(checked) => {
+                        setRows((prev) =>
+                          prev.map((r) =>
+                            r.id === row.id
+                              ? { ...r, show_quantity_kg: checked }
+                              : r,
+                          ),
+                        )
+                        void saveRow(row, { show_quantity_kg: checked })
+                      }}
+                    />
+                    <Label
+                      htmlFor={`cat-kg-${row.id}`}
+                      className="text-xs cursor-pointer whitespace-nowrap"
+                    >
+                      Kilos
+                    </Label>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Switch
                       id={`cat-mar-${row.id}`}

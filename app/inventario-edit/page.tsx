@@ -71,6 +71,7 @@ export default async function InventarioEditPage() {
     name,
     sort_order: i * 10,
     show_marinated: name === "Proteínas",
+    show_quantity_kg: true,
     created_at: "",
     updated_at: "",
   }))
@@ -89,7 +90,8 @@ export default async function InventarioEditPage() {
               Inventario
             </h1>
             <p className="text-muted-foreground mt-2">
-              Productos por categoría (tomates, especias, proteínas…).
+              Inventario de insumos, preparados listos y lista de compras — en
+              pestañas separadas.
             </p>
           </div>
 

@@ -89,6 +89,9 @@ export function InventarioEmpiezaDialog({
         categoryNames,
       ).flatMap((group) => group.items)
     }
+    if (tab === "ready") {
+      return items.filter((i) => i.list_kind === "ready")
+    }
     return items.filter((i) => i.list_kind === "shopping" && !i.purchased)
   }, [items, tab, categoryNames])
 
@@ -152,7 +155,9 @@ export function InventarioEmpiezaDialog({
           <DialogDescription>
             {tab === "stock"
               ? "Revisa y actualiza cada producto del inventario."
-              : "Revisa cada artículo de la lista de compras."}
+              : tab === "ready"
+                ? "Revisa cada preparado listo (pico, guacamole, arroz…)."
+                : "Revisa cada artículo de la lista de compras."}
             {total > 0 && (
               <span className="block mt-1 font-medium text-foreground">
                 {index + 1} de {total}
@@ -229,7 +234,7 @@ export function InventarioEmpiezaDialog({
               />
             </div>
 
-            {tab === "stock" ? (
+            {tab === "stock" && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Categoría</Label>
@@ -605,7 +610,92 @@ export function InventarioEmpiezaDialog({
                   ) : null}
                 </div>
               </div>
-            ) : (
+            )}
+            {tab === "ready" && (
+              <div className="grid gap-3">
+                <div className="space-y-2">
+                  <Label>Estado</Label>
+                  <Select
+                    disabled={disabled}
+                    value={
+                      findStockStatusForNotes(item.notes)?.id ??
+                      INVENTORY_SELECT_NONE
+                    }
+                    onValueChange={(id) => {
+                      if (id === INVENTORY_SELECT_NONE) {
+                        onPatch(item.id, { notes: "" })
+                        return
+                      }
+                      const option = STOCK_STATUS_OPTIONS.find((o) => o.id === id)
+                      if (option) {
+                        onPatch(item.id, patchForStockStatusOption(option))
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={INVENTORY_SELECT_BLANK} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={INVENTORY_SELECT_NONE}>
+                        {INVENTORY_SELECT_BLANK}
+                      </SelectItem>
+                      {STOCK_STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Cuántos hay</Label>
+                  <Select
+                    disabled={disabled}
+                    value={
+                      findStockCountPresetForItem(item)?.id ??
+                      INVENTORY_SELECT_NONE
+                    }
+                    onValueChange={(id) => {
+                      if (id === INVENTORY_SELECT_NONE) {
+                        onPatch(item.id, { cantidad_num: null })
+                        return
+                      }
+                      const preset = STOCK_COUNT_PRESETS.find((p) => p.id === id)
+                      if (preset) {
+                        onPatch(item.id, { cantidad_num: preset.cantidad_num })
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={INVENTORY_SELECT_BLANK} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      <SelectItem value={INVENTORY_SELECT_NONE}>
+                        {INVENTORY_SELECT_BLANK}
+                      </SelectItem>
+                      {STOCK_COUNT_PRESETS.map((preset) => (
+                        <SelectItem key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="empieza-ready-note">Notas</Label>
+                  <Input
+                    id="empieza-ready-note"
+                    value={item.buy_note ?? ""}
+                    disabled={disabled}
+                    onChange={(e) =>
+                      onPatch(item.id, { buy_note: e.target.value })
+                    }
+                    placeholder="Opcional"
+                  />
+                </div>
+              </div>
+            )}
+            {tab === "shopping" && (
               <>
                 <div className="flex items-center gap-2">
                   <Checkbox

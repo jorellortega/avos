@@ -1,4 +1,4 @@
-export type InventoryListKind = "stock" | "shopping"
+export type InventoryListKind = "stock" | "shopping" | "ready"
 
 /** Shown when no preset is selected (dropdown placeholder). */
 export const INVENTORY_SELECT_BLANK = "—"
@@ -29,6 +29,7 @@ export interface InventoryStockCategoryRow {
   name: string
   sort_order: number
   show_marinated: boolean
+  show_quantity_kg: boolean
   created_at: string
   updated_at: string
 }
@@ -41,6 +42,7 @@ export function normalizeStockCategory(
     name: (row.name ?? "").trim(),
     sort_order: Number(row.sort_order) || 0,
     show_marinated: Boolean(row.show_marinated),
+    show_quantity_kg: row.show_quantity_kg !== false,
   }
 }
 
@@ -59,6 +61,16 @@ export function categoryShowsMarinated(
 ): boolean {
   const name = inventoryCategoryLabel(categoryName)
   return categories.some((c) => c.name === name && c.show_marinated)
+}
+
+export function categoryShowsQuantityKg(
+  categoryName: string | null | undefined,
+  categories: InventoryStockCategoryRow[],
+): boolean {
+  const name = inventoryCategoryLabel(categoryName)
+  const row = categories.find((c) => c.name === name)
+  if (!row) return true
+  return row.show_quantity_kg !== false
 }
 
 export function inventoryCategoryLabel(
