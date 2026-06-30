@@ -18,6 +18,7 @@ import { defaultPlatilloCustomizationConfig } from "@/lib/order-item-customizati
 import {
   platilloCartSuffix,
   platilloLineNombre,
+  platilloProteinaDisplayNombre,
   categoriaTieneProteinas,
   platilloPickerFlags,
 } from "@/lib/platillo-config"
@@ -142,7 +143,7 @@ export function buildPortalMenuSnapshot(catalog: MenuCatalogHelpers): string {
 function normalizeProteina(raw: string | undefined): ProteinaPlatillo | undefined {
   if (!raw?.trim()) return undefined
   const t = raw.trim()
-  if (/^(regular|sencillo|solo|sin carne)$/i.test(t)) return PROTEINA_REGULAR
+  if (/^(regular|sencillo|solo|sin carne|queso)$/i.test(t)) return PROTEINA_REGULAR
   const match = proteinas.find(
     (p) => p.toLowerCase() === t.toLowerCase() || p === t,
   )
@@ -156,8 +157,7 @@ function platilloDisplayName(
   proteina?: ProteinaPlatillo,
 ): string {
   const base = catalog.getPlatilloNombre(categoriaId, platilloId)
-  if (!proteina || proteina === PROTEINA_REGULAR) return base
-  return `${base} de ${proteina}`
+  return platilloProteinaDisplayNombre(base, proteina, categoriaId)
 }
 
 /** Turn AI JSON lines into `OrderItem[]`, merging quantities on matching lines. */

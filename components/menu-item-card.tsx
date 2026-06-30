@@ -27,13 +27,17 @@ import {
   getPlatilloPrecioProteinaTamanoDefault,
   getPlatilloTamanoLabel,
   getProteinasForPlatillo,
+  resolveMenuImageUrl,
+  resolveProteinaImagen,
   type BebidaTamano,
   type Proteina,
-  imagenProteinaPorId,
+  type ProteinaPlatillo,
 } from "@/lib/menu-data"
 import {
   platilloCartSuffix,
   platilloLineNombre,
+  platilloProteinaDisplayNombre,
+  proteinaDisplayLabel,
   type PlatilloPickerFlags,
 } from "@/lib/platillo-config"
 
@@ -57,8 +61,8 @@ interface MenuItemCardProps {
   proteinaImagenes?: Partial<Record<Proteina, string>>
   collapsible?: boolean
   categoryBadge?: string
-  /** One collage cell per protein (/menu). */
-  presetProteina?: Proteina
+  /** One card per protein on category pages (/menu/tacos, etc.). */
+  presetProteina?: ProteinaPlatillo
   tileImagen?: string
 }
 
@@ -88,7 +92,7 @@ export function MenuItemCard({
   const { addItem } = useCart()
   const { catalog } = useMenuCatalogContext()
   const customizationConfig = useCustomizationConfig(categoriaId, platilloId)
-  const [selectedProteina, setSelectedProteina] = useState<Proteina>(
+  const [selectedProteina, setSelectedProteina] = useState<ProteinaPlatillo>(
     presetProteina ?? "Asada",
   )
   const [cantidad, setCantidad] = useState(1)
@@ -213,6 +217,14 @@ export function MenuItemCard({
     })()
 
   const sinProteinas = tieneProteinas && proteinasDisponibles.length === 0
+  const presetProteinaAgotada =
+    lockProteina &&
+    tieneProteinas &&
+    (catalog?.isProteinaOut(categoriaId, selectedProteina, pid) ?? false)
+
+  const displayNombre = presetProteina
+    ? platilloProteinaDisplayNombre(nombre, presetProteina, categoriaId)
+    : nombre
 
   const desdePrecio = tieneProteinas
     ? proteinasDisponibles.length > 0
@@ -227,7 +239,9 @@ export function MenuItemCard({
         )
       : precio
 
-  const thumbSrc = tileImagen ?? imagen
+  const thumbSrc = presetProteina
+    ? resolveProteinaImagen(presetProteina, proteinaImagenes, imagen)
+    : resolveMenuImageUrl(tileImagen, imagen)
   const tilePrice = desdePrecio
 
   const handleAddToCart = () => {
@@ -251,6 +265,7 @@ export function MenuItemCard({
       tieneProteinas ? selectedProteina : undefined,
       platilloMeta,
       opcionId,
+      categoriaId,
     )
 
     for (let i = 0; i < cantidad; i++) {
@@ -344,10 +359,11 @@ export function MenuItemCard({
                   >
                     <span className="relative aspect-[4/3] w-full overflow-hidden rounded-md bg-muted">
                       <Image
-                        src={
-                          proteinaImagenes?.[proteina] ??
-                          imagenProteinaPorId[proteina]
-                        }
+                        src={resolveProteinaImagen(
+                          proteina,
+                          proteinaImagenes,
+                          imagen,
+                        )}
                         alt=""
                         fill
                         className="object-cover"
@@ -355,7 +371,7 @@ export function MenuItemCard({
                       />
                     </span>
                     <span className="px-0.5 text-center text-sm font-medium leading-tight">
-                      {proteina}
+                      {proteinaDisplayLabel(proteina, categoriaId)}
                       {agotada ? (
                         <span className="block text-xs">Agotado</span>
                       ) : (
@@ -438,7 +454,7 @@ export function MenuItemCard({
         </div>
         <Button
           onClick={handleAddToCart}
-          disabled={sinProteinas}
+          disabled={sinProteinas || presetProteinaAgotada}
           className={cn(
             "flex-1 transition-all",
             showSuccess && "bg-green-600 hover:bg-green-600",
@@ -518,8 +534,7 @@ export function MenuItemCard({
           <DialogContent className="sm:max-w-md max-h-[min(90vh,640px)] overflow-y-auto">
             <DialogHeader>
               <DialogTitle style={{ fontFamily: "var(--font-heading)" }}>
-                {nombre}
-                {presetProteina ? ` de ${presetProteina}` : ""}
+                {displayNombre}
               </DialogTitle>
               <DialogDescription>{descripcion}</DialogDescription>
               <p className="text-lg font-bold text-primary pt-1">${precio}</p>
@@ -534,16 +549,32 @@ export function MenuItemCard({
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow">
       <CardContent className="p-0">
+        <div className="relative aspect-square w-full bg-muted">
+          <Image
+            src={thumbSrc}
+            alt={displayNombre}
+            fill
+            className="object-cover"
+            sizes="(max-width: 640px) 100vw, 33vw"
+          />
+        </div>
         <div className="p-5">
-          <div className="flex items-start justify-between mb-2">
+          <div className="flex items-start justify-between mb-2 gap-3">
             <h3
               className="text-xl font-semibold text-foreground"
               style={{ fontFamily: "var(--font-heading)" }}
             >
-              {nombre}
+              {displayNombre}
             </h3>
-            <span className="text-lg font-bold text-primary">${precio}</span>
+            <span className="text-lg font-bold text-primary shrink-0">
+              ${precio}
+            </span>
           </div>
+          {presetProteinaAgotada ? (
+            <p className="text-sm font-medium text-destructive mb-2">
+              Agotado hoy
+            </p>
+          ) : null}
           <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
             {descripcion}
           </p>

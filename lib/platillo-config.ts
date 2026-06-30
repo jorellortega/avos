@@ -7,6 +7,37 @@ import type {
 import { isProteinaRegular } from "@/lib/menu-data"
 import { getPlatilloTamanoLabel } from "@/lib/menu-data"
 
+/** Customer-facing label when proteina is Regular (e.g. quesadilla de queso). */
+export function regularProteinaCustomerLabel(
+  categoriaId: string,
+): string | null {
+  if (categoriaId === "quesadillas") return "Queso"
+  return null
+}
+
+export function proteinaDisplayLabel(
+  proteina: ProteinaPlatillo,
+  categoriaId: string,
+): string {
+  if (isProteinaRegular(proteina)) {
+    return regularProteinaCustomerLabel(categoriaId) ?? proteina
+  }
+  return proteina
+}
+
+export function platilloProteinaDisplayNombre(
+  baseNombre: string,
+  proteina: ProteinaPlatillo | undefined,
+  categoriaId: string,
+): string {
+  if (!proteina) return baseNombre
+  if (isProteinaRegular(proteina)) {
+    const regularLabel = regularProteinaCustomerLabel(categoriaId)
+    return regularLabel ? `${baseNombre} de ${regularLabel}` : baseNombre
+  }
+  return `${baseNombre} de ${proteina}`
+}
+
 export type PlatilloPickerFlags = {
   tieneProteinas: boolean
   tieneTamanos: boolean
@@ -73,6 +104,7 @@ export function platilloLineNombre(
     "tamanoLabelChico" | "tamanoLabelGrande" | "opciones"
   >,
   opcionId?: string,
+  categoriaId?: string,
 ): string {
   const tamLabel =
     tamano && platillo ? getPlatilloTamanoLabel(platillo, tamano) : undefined
@@ -88,8 +120,12 @@ export function platilloLineNombre(
       ? `${baseNombre} (${tamLabel}) de ${proteina}`
       : `${baseNombre} de ${proteina}`
   }
-  if (flags.tieneProteinas && isProteinaRegular(proteina) && tamLabel) {
-    return `${baseNombre} (${tamLabel})`
+  if (flags.tieneProteinas && isProteinaRegular(proteina)) {
+    const base = categoriaId
+      ? platilloProteinaDisplayNombre(baseNombre, proteina, categoriaId)
+      : baseNombre
+    if (tamLabel) return `${base} (${tamLabel})`
+    return base
   }
   if (flags.tieneTamanos && tamLabel) {
     return `${baseNombre} (${tamLabel})`

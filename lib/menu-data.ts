@@ -29,6 +29,44 @@ export const imagenProteinaPorId: Record<Proteina, string> = {
   Camarón: PROTEINA_IMG_PLACEHOLDER,
 }
 
+const MENU_PLACEHOLDER_IMAGES = new Set([
+  PROTEINA_IMG_PLACEHOLDER,
+  "/placeholder.jpg",
+])
+
+export function isMenuPlaceholderImage(url?: string | null): boolean {
+  const u = url?.trim()
+  return !u || MENU_PLACEHOLDER_IMAGES.has(u)
+}
+
+/** Prefer real URLs; fall through when only placeholders are set. */
+export function resolveMenuImageUrl(
+  ...candidates: (string | null | undefined)[]
+): string {
+  for (const c of candidates) {
+    const u = c?.trim()
+    if (u && !isMenuPlaceholderImage(u)) return u
+  }
+  for (const c of candidates) {
+    const u = c?.trim()
+    if (u) return u
+  }
+  return PROTEINA_IMG_PLACEHOLDER
+}
+
+export function resolveProteinaImagen(
+  proteina: ProteinaPlatillo,
+  proteinaImagenes: Partial<Record<Proteina, string>> | undefined,
+  fallbackImagen: string,
+): string {
+  if (isProteinaRegular(proteina)) return resolveMenuImageUrl(fallbackImagen)
+  return resolveMenuImageUrl(
+    proteinaImagenes?.[proteina],
+    imagenProteinaPorId[proteina],
+    fallbackImagen,
+  )
+}
+
 export interface MenuItem {
   id: string
   categoria: string
@@ -145,7 +183,7 @@ export type CategoriaPlatillo = {
   opciones?: readonly PlatilloOpcion[]
   /** Absolute price per protein and size (ej. Carne Asada Fries, Tacos) */
   preciosProteinaTamano?: ProteinaTamanoPrecios
-  /** Limit protein picker (ej. tacos: sin Pastor; chilaquiles incluye Regular) */
+  /** Limit protein picker (ej. tacos: sin Pastor; chilaquiles/quesadillas incluyen Regular) */
   proteinas?: readonly ProteinaPlatillo[]
 }
 
@@ -194,8 +232,9 @@ export const platillosPorCategoria: Partial<
       precioGrande: 65,
       tamanoLabelChico: "Chica",
       tamanoLabelGrande: "Grande",
-      proteinas: ["Asada", "Pollo", "Chorizo", "Carnitas"],
+      proteinas: ["Regular", "Asada", "Pollo", "Chorizo", "Carnitas"],
       preciosProteinaTamano: {
+        Regular: { chico: 42, grande: 62 },
         Asada: { chico: 45, grande: 65 },
         Pollo: { chico: 42, grande: 62 },
         Chorizo: { chico: 42, grande: 62 },

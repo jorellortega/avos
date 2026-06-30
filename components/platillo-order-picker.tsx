@@ -16,7 +16,7 @@ import {
   type ProteinaPlatillo,
 } from "@/lib/menu-data"
 import type { MenuCatalogHelpers } from "@/lib/menu-catalog-shared"
-import { platilloPickerFlags } from "@/lib/platillo-config"
+import { platilloPickerFlags, proteinaDisplayLabel } from "@/lib/platillo-config"
 import { cn } from "@/lib/utils"
 
 type PlatilloOrderPickerProps = {
@@ -125,7 +125,9 @@ export function PlatilloOrderPicker({
                     sizes="120px"
                   />
                 </span>
-                <span className="font-semibold py-1.5 text-sm">{proteina}</span>
+                <span className="font-semibold py-1.5 text-sm">
+                  {proteinaDisplayLabel(proteina, categoria.id)}
+                </span>
                 <span className="text-xs text-muted-foreground pb-2">
                   ${precio}
                   {flags.tieneTamanos ? (

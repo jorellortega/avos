@@ -223,6 +223,7 @@ Reglas:
 ${conversationalRule}- IMPORTANTE: Si piden tacos/tortas/burritos/quesadillas/platillos SIN decir proteína, igual incluye la línea con categoriaId y platilloId correctos y cantidad, pero OMITE el campo "proteina" (no adivines). Ej: "3 tacos" → cantidad 3, categoriaId tacos, sin proteina.
 - IMPORTANTE: Si piden un platillo con tamaños (tacos, quesadillas, burritos, chilaquiles, etc.) SIN decir chico o grande, incluye categoriaId y platilloId pero OMITE "platilloTamano" (no asumas chico). Ej: "2 tacos asada" sin tamaño → proteina Asada, sin platilloTamano.
 - Chilaquiles sin carne / sencillos / solos → platilloId "chilaquiles" y proteina "Regular". Con pollo/asada/etc. → mismo platilloId con la proteina indicada.
+- Quesadilla solo de queso / sin carne → platilloId "quesadillas" y proteina "Regular". Con asada/pollo/etc. → mismo platilloId con la proteina indicada.
 - Acompañamientos (categoriaId "acompanamientos"): guacamole-extra, tortillas-maiz — precio fijo, sin proteína ($2 c/u tortillas de maíz). papas-fritas, arroz, frijoles — chico/grande (platilloTamano), sin proteína; si no dicen tamaño, OMITE platilloTamano.
 - Proteína extra (categoriaId "proteina-extra"): asada-vaso, pollo-vaso — precio fijo, sin proteína.
 - "small/chico/pequeño" → platilloTamano "chico"; "large/grande" → platilloTamano "grande" en platillos con tamaño.
